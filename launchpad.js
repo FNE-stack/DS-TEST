@@ -6,7 +6,7 @@
     var GITHUB_REPO = "DS-TEST";
     var GITHUB_BRANCH = "main";
     var GITHUB_FILE = "plan.json";
-    var GITHUB_TOKEN = "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";
+    var GITHUB_TOKEN = window.LAUNCHPAD_TOKEN || "";
     var GITHUB_API = "https://api.github.com/repos/" + GITHUB_OWNER + "/" + GITHUB_REPO + "/contents/" + GITHUB_FILE;
     var AUTO_REFRESH_MS = 15000;
     
