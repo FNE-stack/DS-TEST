@@ -6,10 +6,9 @@
     var GITHUB_REPO = "DS-TEST";
     var GITHUB_BRANCH = "main";
     var GITHUB_FILE = "plan.json";
-    var GITHUB_TOKEN = "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";
-    var REMOTE_PLAN_URL = "https://raw.githubusercontent.com/" + GITHUB_OWNER + "/" + GITHUB_REPO + "/" + GITHUB_BRANCH + "/" + GITHUB_FILE;
+    var GITHUB_TOKEN = "PASTE_YOUR_NEW_TOKEN_HERE";
     var GITHUB_API = "https://api.github.com/repos/" + GITHUB_OWNER + "/" + GITHUB_REPO + "/contents/" + GITHUB_FILE;
-    var AUTO_REFRESH_MS = 15000; // pull from GitHub every 15s
+    var AUTO_REFRESH_MS = 15000;
     
     var villageMap = {};
     var currentSha = null;
@@ -27,7 +26,7 @@
     var status = $("<div style='margin-top:5px;font-size:11px;color:#555;'></div>");
     var tableContainer = $("<div></div>");
     
-    panel.append("<div style='margin-bottom:5px;font-size:12px;'>Paste a new plan and Push, or just Refresh to see current shared plan:</div>")
+    panel.append("<div style='margin-bottom:5px;font-size:12px;'>Paste a new plan and Push, or Refresh to see current shared plan:</div>")
          .append(textarea).append(pushBtn).append(refreshBtn).append(wipeBtn)
          .append(status).append(tableContainer);
     
@@ -87,14 +86,17 @@
         return p;
     }
     
-    // Identify which player is acting (for sentBy label). Falls back to "?".
     var ME = (typeof game_data !== "undefined" && game_data.player && game_data.player.name) ? game_data.player.name : "?";
     
     // === GitHub ===
+    function authHeaders() {
+        return { "Authorization": "Bearer " + GITHUB_TOKEN, "Accept": "application/vnd.github+json" };
+    }
+    
     function githubGet(callback) {
         $.ajax({
             url: GITHUB_API + "?ref=" + GITHUB_BRANCH + "&_=" + Date.now(),
-            headers: { "Authorization": "token " + GITHUB_TOKEN, "Accept": "application/vnd.github+json" },
+            headers: authHeaders(),
             success: function(data) {
                 currentSha = data.sha;
                 try {
@@ -110,7 +112,7 @@
     }
     
     function githubPut(planObj, message, callback) {
-        if (isWriting) { setStatus("Write already in progress, retry shortly.", "orange"); return; }
+        if (isWriting) { setStatus("Write in progress, retry shortly.", "orange"); return; }
         isWriting = true;
         var content = JSON.stringify(planObj, null, 2);
         var body = {
@@ -122,7 +124,7 @@
         $.ajax({
             url: GITHUB_API,
             method: "PUT",
-            headers: { "Authorization": "token " + GITHUB_TOKEN, "Accept": "application/vnd.github+json" },
+            headers: authHeaders(),
             contentType: "application/json",
             data: JSON.stringify(body),
             success: function(resp) {
@@ -135,9 +137,8 @@
                 if (xhr.status === 409 || xhr.status === 422) {
                     setStatus("Conflict — refreshing and retrying...", "orange");
                     githubGet(function(latest){
-                        if (latest) { currentPlan = mergeSent(latest, currentPlan); }
+                        if (latest && latest.attacks) currentPlan = mergeSent(latest.attacks, currentPlan);
                         renderPlan(currentPlan);
-                        // retry once
                         githubPut({ attacks: currentPlan }, message, callback);
                     });
                 } else {
@@ -152,12 +153,12 @@
         $.ajax({
             url: GITHUB_API,
             method: "DELETE",
-            headers: { "Authorization": "token " + GITHUB_TOKEN, "Accept": "application/vnd.github+json" },
+            headers: authHeaders(),
             contentType: "application/json",
             data: JSON.stringify({ message: "wipe plan", sha: currentSha, branch: GITHUB_BRANCH }),
             success: function() {
                 currentSha = null; currentPlan = [];
-                setStatus("Plan wiped on GitHub.", "green");
+                setStatus("Plan wiped.", "green");
                 renderPlan([]);
                 if (callback) callback();
             },
@@ -165,7 +166,6 @@
         });
     }
     
-    // Merge "sent" flags from oldPlan into newPlan when same attack identity
     function mergeSent(newAttacks, oldAttacks) {
         if (!oldAttacks || oldAttacks.length === 0) return newAttacks;
         return newAttacks.map(function(att) {
@@ -197,7 +197,7 @@
         
         plan.forEach(function(att, i) {
             var ts = Object.keys(att.troops).map(function(u){ return att.troops[u]+" "+u; }).join(", ");
-            var statusCell = att.sent ? ("<span style='color:#080;'>Sent by " + (att.sentBy||"?") + "</span>") : "—";
+            var statusCell = att.sent ? ("<span style='color:#080;'>Sent by " + (att.sentBy||"?") + "</span>") : "--";
             var row = $("<tr>" +
                 "<td>"+(i+1)+"</td>" +
                 "<td style='font-size:11px;'>"+villageLabel(att.originId)+"</td>" +
@@ -217,7 +217,7 @@
                 att.sentBy = ME;
                 att.sentAt = Date.now();
                 $(this).prop("disabled", true).text("Sent");
-                setStatus("Marking as sent on GitHub...");
+                setStatus("Marking as sent...");
                 githubPut({ attacks: currentPlan }, "mark sent: " + att.originId + "->" + att.targetId + " by " + ME, function(){
                     setStatus("Sent status synced.", "green");
                     renderPlan(currentPlan);
@@ -235,9 +235,9 @@
         if (!src) { setStatus("Paste attacks first.", "red"); return; }
         var plan = src.split("\n").map(parseLine).filter(Boolean);
         if (plan.length === 0) { setStatus("No valid attacks.", "red"); return; }
-        if (!confirm("Push " + plan.length + " attacks? This OVERWRITES the current shared plan and resets all sent statuses.")) return;
+        if (!confirm("Push " + plan.length + " attacks? Overwrites current shared plan and resets sent statuses.")) return;
         loadVillages(function(){
-            githubGet(function(){ // refresh sha first
+            githubGet(function(){
                 githubPut({ attacks: plan }, "new plan (" + plan.length + " attacks)", function(){
                     setStatus("New plan pushed.", "green");
                     currentPlan = plan;
@@ -264,7 +264,7 @@
         githubGet(function(){ githubDelete(); });
     });
     
-    // === Initial load + auto-refresh ===
+    // === Init + auto-refresh ===
     loadVillages(function(){
         githubGet(function(data){
             if (data && data.attacks) renderPlan(data.attacks);
@@ -277,10 +277,7 @@
         if (isWriting) return;
         githubGet(function(data){
             if (!data || !data.attacks) return;
-            // Only re-render if something actually changed
-            var oldStr = JSON.stringify(currentPlan);
-            var newStr = JSON.stringify(data.attacks);
-            if (oldStr !== newStr) renderPlan(data.attacks);
+            if (JSON.stringify(currentPlan) !== JSON.stringify(data.attacks)) renderPlan(data.attacks);
         });
     }, AUTO_REFRESH_MS);
     
@@ -293,8 +290,8 @@
             var d = t - now;
             if (d <= 0) {
                 $(this).text("READY").css({color:"#080",fontWeight:"bold"});
-                if (!$(this).closest("tr").css("background-color").includes("232")) // skip if already greyed (sent)
-                    $(this).closest("tr").css("background","#d4ffd4");
+                var tr = $(this).closest("tr");
+                if (!tr.hasClass("sent-row")) tr.css("background","#d4ffd4");
             } else {
                 var h = Math.floor(d/3600000), m = Math.floor((d%3600000)/60000), s = Math.floor((d%60000)/1000);
                 $(this).text(h+"h "+m+"m "+s+"s");
