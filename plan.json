@@ -9,9 +9,9 @@
         "axe": 500
       },
       "raw": "3547&4714&axe&1777809600000&0&false&true&axe=NTAw",
-      "sent": false,
-      "sentBy": null,
-      "sentAt": null
+      "sent": true,
+      "sentBy": "Donald John Trump",
+      "sentAt": 1777748316075
     },
     {
       "originId": "3547",
