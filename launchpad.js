@@ -16,17 +16,17 @@
     var isWriting = false;
     
     // === UI ===
-    var panel = $("<div id='launchpad-panel' style='background:#f4e4bc;border:1px solid #804000;padding:10px;margin:8px 0;font-family:Verdana;'></div>");
-    panel.append("<h3 style='margin:0 0 8px 0;'>Attack Launchpad (shared)</h3>");
+    var panel = $("<div id='launchpad-panel' style='background:#f4e4bc;border:1px solid #804000;padding:10px;margin:8px 0;font-family:Verdana;max-width:100%;box-sizing:border-box;'></div>");
+    panel.append("<h3 style='margin:0 0 8px 0;'>Angriffsplaner (geteilt)</h3>");
     
-    var textarea = $("<textarea style='width:100%;height:120px;font-family:monospace;font-size:11px;'></textarea>");
-    var pushBtn = $("<button style='margin-top:5px;'>Push New Plan</button>");
-    var refreshBtn = $("<button style='margin-top:5px;margin-left:5px;'>Refresh</button>");
-    var wipeBtn = $("<button style='margin-top:5px;margin-left:5px;background:#fcc;'>Wipe Plan</button>");
+    var textarea = $("<textarea style='width:100%;height:120px;font-family:monospace;font-size:11px;box-sizing:border-box;'></textarea>");
+    var pushBtn = $("<button style='margin-top:5px;'>Plan hochladen</button>");
+    var refreshBtn = $("<button style='margin-top:5px;margin-left:5px;'>Aktualisieren</button>");
+    var wipeBtn = $("<button style='margin-top:5px;margin-left:5px;background:#fcc;'>Plan löschen</button>");
     var status = $("<div style='margin-top:5px;font-size:11px;color:#555;'></div>");
-    var tableContainer = $("<div></div>");
+    var tableContainer = $("<div style='overflow-x:auto;max-width:100%;'></div>");
     
-    panel.append("<div style='margin-bottom:5px;font-size:12px;'>Paste a new plan and Push, or Refresh to see current shared plan:</div>")
+    panel.append("<div style='margin-bottom:5px;font-size:12px;'>Plan einfügen und Hochladen, oder Aktualisieren um aktuellen geteilten Plan zu sehen:</div>")
          .append(textarea).append(pushBtn).append(refreshBtn).append(wipeBtn)
          .append(status).append(tableContainer);
     
@@ -82,7 +82,9 @@
     
     function buildUrl(a) {
         var p = "/game.php?village=" + a.originId + "&screen=place&target=" + a.targetId;
-        for (var u in a.troops) p += "&" + u + "=" + a.troops[u];
+        for (var u in a.troops) {
+            if (a.troops[u] > 0) p += "&" + u + "=" + a.troops[u];
+        }
         return p;
     }
     
@@ -102,17 +104,17 @@
                 try {
                     var content = decodeURIComponent(escape(atob(data.content.replace(/\n/g, ""))));
                     callback(JSON.parse(content));
-                } catch(e) { setStatus("Bad JSON in plan.json: " + e.message, "red"); callback(null); }
+                } catch(e) { setStatus("Ungültiges JSON in plan.json: " + e.message, "red"); callback(null); }
             },
             error: function(xhr) {
                 if (xhr.status === 404) { currentSha = null; callback(null); }
-                else { setStatus("GitHub GET failed: " + xhr.status, "red"); callback(null); }
+                else { setStatus("GitHub GET fehlgeschlagen: " + xhr.status, "red"); callback(null); }
             }
         });
     }
     
     function githubPut(planObj, message, callback) {
-        if (isWriting) { setStatus("Write in progress, retry shortly.", "orange"); return; }
+        if (isWriting) { setStatus("Schreibvorgang läuft, bitte erneut versuchen.", "orange"); return; }
         isWriting = true;
         var content = JSON.stringify(planObj, null, 2);
         var body = {
@@ -135,34 +137,34 @@
             error: function(xhr) {
                 isWriting = false;
                 if (xhr.status === 409 || xhr.status === 422) {
-                    setStatus("Conflict — refreshing and retrying...", "orange");
+                    setStatus("Konflikt — aktualisiere und versuche erneut...", "orange");
                     githubGet(function(latest){
                         if (latest && latest.attacks) currentPlan = mergeSent(latest.attacks, currentPlan);
                         renderPlan(currentPlan);
                         githubPut({ attacks: currentPlan }, message, callback);
                     });
                 } else {
-                    setStatus("GitHub PUT failed: " + xhr.status, "red");
+                    setStatus("GitHub PUT fehlgeschlagen: " + xhr.status, "red");
                 }
             }
         });
     }
     
     function githubDelete(callback) {
-        if (!currentSha) { setStatus("Nothing to wipe.", "orange"); return; }
+        if (!currentSha) { setStatus("Nichts zu löschen.", "orange"); return; }
         $.ajax({
             url: GITHUB_API,
             method: "DELETE",
             headers: authHeaders(),
             contentType: "application/json",
-            data: JSON.stringify({ message: "wipe plan", sha: currentSha, branch: GITHUB_BRANCH }),
+            data: JSON.stringify({ message: "Plan gelöscht", sha: currentSha, branch: GITHUB_BRANCH }),
             success: function() {
                 currentSha = null; currentPlan = [];
-                setStatus("Plan wiped.", "green");
+                setStatus("Plan gelöscht.", "green");
                 renderPlan([]);
                 if (callback) callback();
             },
-            error: function(xhr) { setStatus("GitHub DELETE failed: " + xhr.status, "red"); }
+            error: function(xhr) { setStatus("GitHub DELETE fehlgeschlagen: " + xhr.status, "red"); }
         });
     }
     
@@ -186,44 +188,69 @@
         currentPlan = plan;
         tableContainer.empty();
         if (plan.length === 0) {
-            tableContainer.append("<div style='color:#888;margin:8px 0;'>No attacks loaded.</div>");
+            tableContainer.append("<div style='color:#888;margin:8px 0;'>Keine Angriffe geladen.</div>");
             return;
         }
         var sentCount = plan.filter(function(a){return a.sent;}).length;
-        tableContainer.append("<div style='margin:8px 0;'>Plan: <b>" + plan.length + "</b> attacks, <b>" + sentCount + "</b> sent.</div>");
+        tableContainer.append("<div style='margin:8px 0;'>Plan: <b>" + plan.length + "</b> Angriffe, <b>" + sentCount + "</b> gesendet.</div>");
         
-        var table = $("<table class='vis' width='100%'><thead><tr><th>#</th><th>Origin</th><th>Target</th><th>Troops</th><th>Arrival</th><th>Countdown</th><th>Status</th><th>Send</th></tr></thead><tbody></tbody></table>");
+        var table = $("<table class='vis' style='width:100%;min-width:600px;table-layout:auto;'><thead><tr><th>#</th><th>Herkunft</th><th>Ziel</th><th>Truppen</th><th>Ankunft</th><th>Countdown</th><th>Status</th><th>Aktion</th></tr></thead><tbody></tbody></table>");
         var tbody = table.find("tbody");
         
         plan.forEach(function(att, i) {
-            var ts = Object.keys(att.troops).map(function(u){ return att.troops[u]+" "+u; }).join(", ");
-            var statusCell = att.sent ? ("<span style='color:#080;'>Sent by " + (att.sentBy||"?") + "</span>") : "--";
+            var ts = Object.keys(att.troops)
+                .filter(function(u){ return att.troops[u] > 0; })
+                .map(function(u){ return att.troops[u]+" "+u; })
+                .join(", ");
+            var statusCell = att.sent ? ("<span style='color:#080;'>Gesendet von " + (att.sentBy||"?") + "</span>") : "--";
+            var countdownCell = att.sent
+                ? "<td style='color:#999;white-space:nowrap;'>—</td>"
+                : "<td class='cd' data-target='"+att.arrivalMs+"' style='white-space:nowrap;'>--</td>";
+            
             var row = $("<tr>" +
                 "<td>"+(i+1)+"</td>" +
-                "<td style='font-size:11px;'>"+villageLabel(att.originId)+"</td>" +
-                "<td style='font-size:11px;'>"+villageLabel(att.targetId)+"</td>" +
-                "<td style='font-size:11px;'>"+ts+"</td>" +
-                "<td style='font-size:11px;'>"+new Date(att.arrivalMs).toLocaleString()+"</td>" +
-                "<td class='cd' data-target='"+att.arrivalMs+"'>--</td>" +
+                "<td style='font-size:11px;word-break:break-word;max-width:140px;'>"+villageLabel(att.originId)+"</td>" +
+                "<td style='font-size:11px;word-break:break-word;max-width:140px;'>"+villageLabel(att.targetId)+"</td>" +
+                "<td style='font-size:11px;word-break:break-word;max-width:160px;'>"+ts+"</td>" +
+                "<td style='font-size:11px;white-space:nowrap;'>"+new Date(att.arrivalMs).toLocaleString()+"</td>" +
+                countdownCell +
                 "<td style='font-size:11px;'>"+statusCell+"</td>" +
-                "<td></td></tr>");
+                "<td style='white-space:nowrap;'></td></tr>");
             if (att.sent) row.css("background","#e8e8e8").css("opacity","0.7");
             
-            var btn = $("<button class='btn'>Send</button>");
-            if (att.sent) btn.prop("disabled", true).text("Sent");
-            btn.on("click", function() {
-                window.open(buildUrl(att), "_blank");
-                att.sent = true;
-                att.sentBy = ME;
-                att.sentAt = Date.now();
-                $(this).prop("disabled", true).text("Sent");
-                setStatus("Marking as sent...");
-                githubPut({ attacks: currentPlan }, "mark sent: " + att.originId + "->" + att.targetId + " by " + ME, function(){
-                    setStatus("Sent status synced.", "green");
-                    renderPlan(currentPlan);
+            var actionCell = row.find("td").last();
+            
+            if (!att.sent) {
+                var sendBtn = $("<button class='btn'>Senden</button>");
+                sendBtn.on("click", function() {
+                    window.open(buildUrl(att), "_blank");
+                    att.sent = true;
+                    att.sentBy = ME;
+                    att.sentAt = Date.now();
+                    setStatus("Markiere als gesendet...");
+                    githubPut({ attacks: currentPlan }, "gesendet: " + att.originId + "->" + att.targetId + " von " + ME, function(){
+                        setStatus("Status synchronisiert.", "green");
+                        renderPlan(currentPlan);
+                    });
                 });
-            });
-            row.find("td").last().append(btn);
+                actionCell.append(sendBtn);
+            } else {
+                var revokeBtn = $("<button style='background:#fcc;'>Zurücksetzen</button>");
+                revokeBtn.on("click", function() {
+                    if (!confirm("Diesen Angriff als NICHT gesendet markieren? Nutzen falls der Versand im Spiel fehlgeschlagen ist oder du versehentlich geklickt hast.")) return;
+                    att.sent = false;
+                    var prevSentBy = att.sentBy;
+                    att.sentBy = null;
+                    att.sentAt = null;
+                    setStatus("Setze Status zurück...");
+                    githubPut({ attacks: currentPlan }, "zurückgesetzt: " + att.originId + "->" + att.targetId + " (war " + prevSentBy + ")", function(){
+                        setStatus("Zurückgesetzt.", "green");
+                        renderPlan(currentPlan);
+                    });
+                });
+                actionCell.append(revokeBtn);
+            }
+            
             tbody.append(row);
         });
         tableContainer.append(table);
@@ -232,14 +259,14 @@
     // === Buttons ===
     pushBtn.on("click", function() {
         var src = textarea.val().trim();
-        if (!src) { setStatus("Paste attacks first.", "red"); return; }
+        if (!src) { setStatus("Bitte zuerst Angriffe einfügen.", "red"); return; }
         var plan = src.split("\n").map(parseLine).filter(Boolean);
-        if (plan.length === 0) { setStatus("No valid attacks.", "red"); return; }
-        if (!confirm("Push " + plan.length + " attacks? Overwrites current shared plan and resets sent statuses.")) return;
+        if (plan.length === 0) { setStatus("Keine gültigen Angriffe.", "red"); return; }
+        if (!confirm("Plan mit " + plan.length + " Angriffen hochladen? Überschreibt aktuellen geteilten Plan und setzt alle Sende-Status zurück.")) return;
         loadVillages(function(){
             githubGet(function(){
-                githubPut({ attacks: plan }, "new plan (" + plan.length + " attacks)", function(){
-                    setStatus("New plan pushed.", "green");
+                githubPut({ attacks: plan }, "neuer Plan (" + plan.length + " Angriffe)", function(){
+                    setStatus("Neuer Plan hochgeladen.", "green");
                     currentPlan = plan;
                     renderPlan(plan);
                     textarea.val("").css("height","40px");
@@ -250,17 +277,17 @@
     
     refreshBtn.on("click", function() {
         loadVillages(function(){
-            setStatus("Refreshing...");
+            setStatus("Aktualisiere...");
             githubGet(function(data){
-                if (!data || !data.attacks) { renderPlan([]); setStatus("No plan on GitHub.", "orange"); return; }
+                if (!data || !data.attacks) { renderPlan([]); setStatus("Kein Plan auf GitHub.", "orange"); return; }
                 renderPlan(data.attacks);
-                setStatus("Refreshed.", "green");
+                setStatus("Aktualisiert.", "green");
             });
         });
     });
     
     wipeBtn.on("click", function() {
-        if (!confirm("Wipe shared plan for everyone?")) return;
+        if (!confirm("Geteilten Plan für alle löschen?")) return;
         githubGet(function(){ githubDelete(); });
     });
     
@@ -268,7 +295,7 @@
     loadVillages(function(){
         githubGet(function(data){
             if (data && data.attacks) renderPlan(data.attacks);
-            else setStatus("No plan on GitHub yet — paste one and Push.", "orange");
+            else setStatus("Noch kein Plan auf GitHub — Plan einfügen und hochladen.", "orange");
         });
     });
     
@@ -289,7 +316,7 @@
             var t = parseInt($(this).data("target"));
             var d = t - now;
             if (d <= 0) {
-                $(this).text("READY").css({color:"#080",fontWeight:"bold"});
+                $(this).text("BEREIT").css({color:"#080",fontWeight:"bold"});
                 var tr = $(this).closest("tr");
                 if (!tr.hasClass("sent-row")) tr.css("background","#d4ffd4");
             } else {
