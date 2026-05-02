@@ -1,0 +1,30 @@
+{
+  "attacks": [
+    {
+      "originId": "3547",
+      "targetId": "4714",
+      "slowest": "axe",
+      "arrivalMs": 1777809600000,
+      "troops": {
+        "axe": 500
+      },
+      "raw": "3547&4714&axe&1777809600000&0&false&true&axe=NTAw",
+      "sent": false,
+      "sentBy": null,
+      "sentAt": null
+    },
+    {
+      "originId": "3547",
+      "targetId": "4714",
+      "slowest": "axe",
+      "arrivalMs": 1777809780000,
+      "troops": {
+        "axe": 500
+      },
+      "raw": "3547&4714&axe&1777809780000&0&false&true&axe=NTAw",
+      "sent": false,
+      "sentBy": null,
+      "sentAt": null
+    }
+  ]
+}
