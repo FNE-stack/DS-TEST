@@ -71,6 +71,7 @@
             }
         });
         return {
+            id: parts[0] + "_" + parts[1] + "_" + parts[3],
             originId: parts[0],
             targetId: parts[1],
             slowest: parts[2],
@@ -205,7 +206,62 @@
         });
     }
 
-    // === Action handlers (extracted so closures work correctly in loops) ===
+    // === Sticky countdown widget (shown after mobile Senden, persists across pages) ===
+    function showCountdownWidget(pending) {
+        $("#lp-widget").remove();
+
+        var widget = $("<div id='lp-widget' style='position:fixed;top:0;left:0;right:0;z-index:99999;background:#5a1f00;color:#ffe8c0;padding:8px 12px;font-family:Verdana;font-size:13px;display:flex;flex-wrap:wrap;align-items:center;gap:8px;box-sizing:border-box;box-shadow:0 2px 6px rgba(0,0,0,0.5);'></div>");
+
+        var cdSpan  = $("<b style='font-size:14px;'>--</b>");
+        var info    = $("<div style='flex:1;min-width:160px;line-height:1.6;'></div>");
+        info.append("<div><b>Ziel:</b> " + (pending.targetLabel || pending.targetId) + "</div>");
+        info.append($("<div></div>").append("<b>Ankunft:</b> " + new Date(pending.arrivalMs).toLocaleTimeString() + " &nbsp;").append(cdSpan));
+
+        var confirmBtn = $("<button style='min-height:40px;padding:6px 14px;font-size:13px;background:#afa;border:1px solid #060;border-radius:3px;cursor:pointer;font-weight:bold;'>✓ Gesendet</button>");
+        var dismissBtn = $("<button style='min-height:40px;padding:6px 10px;font-size:13px;background:transparent;color:#ffe8c0;border:1px solid #ffe8c0;border-radius:3px;cursor:pointer;'>✕</button>");
+
+        function closeWidget() {
+            localStorage.removeItem("lp_active");
+            widget.remove();
+            if (window._lpWidgetInt) clearInterval(window._lpWidgetInt);
+        }
+
+        confirmBtn.on("click", function() {
+            confirmBtn.text("...").prop("disabled", true);
+            githubGet(function(data) {
+                if (!data || !data.attacks) { closeWidget(); return; }
+                var plan = data.attacks;
+                var att = plan.find(function(a){
+                    return a.id === pending.id ||
+                        (a.originId === pending.originId && a.targetId === pending.targetId && a.arrivalMs === pending.arrivalMs);
+                });
+                if (att) { att.sent = true; att.sentBy = ME; att.sentAt = Date.now(); }
+                githubPut({ attacks: plan }, "gesendet: " + pending.originId + "->" + pending.targetId + " von " + ME, function(){
+                    closeWidget();
+                    if (currentPlan.length > 0) renderPlan(mergeSent(plan, currentPlan));
+                });
+            });
+        });
+
+        dismissBtn.on("click", closeWidget);
+
+        widget.append(info).append(confirmBtn).append(dismissBtn);
+        $("body").prepend(widget);
+
+        if (window._lpWidgetInt) clearInterval(window._lpWidgetInt);
+        window._lpWidgetInt = setInterval(function() {
+            if (!$("#lp-widget").length) { clearInterval(window._lpWidgetInt); return; }
+            var d = pending.arrivalMs - serverNow();
+            if (d <= 0) {
+                cdSpan.text("BEREIT!").css("color", "#ff0");
+            } else {
+                var h = Math.floor(d / 3600000), m = Math.floor((d % 3600000) / 60000), s = Math.floor((d % 60000) / 1000);
+                cdSpan.text(h + "h " + m + "m " + s + "s");
+            }
+        }, 500);
+    }
+
+    // === Action handlers ===
     function makeSendHandler(att) {
         return function() {
             var url = buildUrl(att);
@@ -215,7 +271,7 @@
             setStatus("Markiere als gesendet...");
             githubPut({ attacks: currentPlan }, "gesendet: " + att.originId + "->" + att.targetId + " von " + ME, function(){
                 setStatus("Status synchronisiert.", "green");
-                if (!isMobile()) renderPlan(currentPlan);
+                renderPlan(currentPlan);
             });
             navigate(url);
         };
@@ -238,31 +294,66 @@
 
     // === Render: card layout for mobile ===
     function renderCards(plan) {
-        var sendBtnStyle   = "width:100%;min-height:44px;padding:8px;font-size:14px;font-weight:bold;background:#afa;border:1px solid #080;margin-top:8px;box-sizing:border-box;";
-        var revokeBtnStyle = "width:100%;min-height:40px;padding:6px;font-size:13px;background:#fcc;border:1px solid #a00;margin-top:6px;box-sizing:border-box;";
+        var sendBtnStyle   = "width:100%;min-height:44px;padding:8px;font-size:14px;font-weight:bold;background:#afa;border:1px solid #080;margin-top:8px;box-sizing:border-box;cursor:pointer;";
+        var revokeBtnStyle = "width:100%;min-height:40px;padding:6px;font-size:13px;background:#fcc;border:1px solid #a00;margin-top:6px;box-sizing:border-box;cursor:pointer;";
 
-        plan.forEach(function(att, i) {
-            var card = $("<div class='lp-card' style='border:1px solid #a07030;background:" + (att.sent ? "#e4e4e4" : "#fff8e8") + ";border-radius:4px;padding:10px;margin:8px 0;opacity:" + (att.sent ? "0.75" : "1") + ";'></div>");
-            card.append("<div style='font-weight:bold;font-size:14px;margin-bottom:6px;'>#" + (i + 1) + (att.sent ? " ✓ gesendet" : "") + "</div>");
+        var unsent = plan.filter(function(a){ return !a.sent; });
+        var sent   = plan.filter(function(a){ return a.sent; });
+
+        unsent.forEach(function(att) {
+            var idx = plan.indexOf(att);
+            var card = $("<div class='lp-card' style='border:1px solid #a07030;background:#fff8e8;border-radius:4px;padding:10px;margin:8px 0;'></div>");
+            card.append("<div style='font-weight:bold;font-size:14px;margin-bottom:6px;'>#" + (idx + 1) + "</div>");
             card.append("<div style='font-size:13px;margin:2px 0;'><b>Von:</b> " + villageLabel(att.originId) + "</div>");
             card.append("<div style='font-size:13px;margin:2px 0;'><b>Auf:</b> " + villageLabel(att.targetId) + "</div>");
             card.append("<div style='font-size:12px;margin:2px 0;'>" + (troopsHtml(att.troops) || "keine Truppen") + "</div>");
             card.append("<div style='font-size:12px;margin:4px 0;'><b>Ankunft:</b> " + new Date(att.arrivalMs).toLocaleString() + "</div>");
+            card.append("<div style='font-size:13px;font-weight:bold;margin:4px 0;'>Countdown: <span class='cd' data-target='" + att.arrivalMs + "'>--</span></div>");
 
-            if (!att.sent) {
-                card.append("<div style='font-size:13px;font-weight:bold;margin:4px 0;'>Countdown: <span class='cd' data-target='" + att.arrivalMs + "'>--</span></div>");
-                var sendBtn = $("<button style='" + sendBtnStyle + "'>Senden</button>");
-                sendBtn.on("click", makeSendHandler(att));
-                card.append(sendBtn);
-            } else {
-                card.append("<div style='font-size:13px;color:#080;margin:4px 0;'>Gesendet von <b>" + (att.sentBy || "?") + "</b></div>");
+            var sendBtn = $("<button style='" + sendBtnStyle + "'>Senden</button>");
+            sendBtn.on("click", function() {
+                // Store pending attack for the sticky widget on the next page
+                try {
+                    localStorage.setItem("lp_active", JSON.stringify({
+                        id: att.id,
+                        originId: att.originId,
+                        targetId: att.targetId,
+                        targetLabel: villageLabel(att.targetId),
+                        arrivalMs: att.arrivalMs
+                    }));
+                } catch(e) {}
+                location.href = buildUrl(att);
+            });
+            card.append(sendBtn);
+            tableContainer.append(card);
+        });
+
+        if (sent.length > 0) {
+            var toggleBtn = $("<button style='width:100%;margin:8px 0;padding:8px;font-size:12px;background:#e8e8e8;border:1px solid #aaa;border-radius:4px;cursor:pointer;'>" + sent.length + " gesendete Angriffe anzeigen ▼</button>");
+            var sentContainer = $("<div style='display:none;'></div>");
+
+            sent.forEach(function(att) {
+                var idx = plan.indexOf(att);
+                var card = $("<div class='lp-card' style='border:1px solid #a07030;background:#e4e4e4;border-radius:4px;padding:10px;margin:8px 0;opacity:0.75;'></div>");
+                card.append("<div style='font-weight:bold;font-size:13px;margin-bottom:4px;'>#" + (idx + 1) + " ✓</div>");
+                card.append("<div style='font-size:12px;margin:2px 0;'><b>Von:</b> " + villageLabel(att.originId) + "</div>");
+                card.append("<div style='font-size:12px;margin:2px 0;'><b>Auf:</b> " + villageLabel(att.targetId) + "</div>");
+                card.append("<div style='font-size:12px;margin:2px 0;'>" + (troopsHtml(att.troops) || "—") + "</div>");
+                card.append("<div style='font-size:12px;color:#080;margin:4px 0;'>Gesendet von <b>" + (att.sentBy || "?") + "</b></div>");
                 var revokeBtn = $("<button style='" + revokeBtnStyle + "'>Zurücksetzen</button>");
                 revokeBtn.on("click", makeRevokeHandler(att));
                 card.append(revokeBtn);
-            }
+                sentContainer.append(card);
+            });
 
-            tableContainer.append(card);
-        });
+            var expanded = false;
+            toggleBtn.on("click", function(){
+                expanded = !expanded;
+                sentContainer.toggle(expanded);
+                toggleBtn.text(expanded ? "Gesendete ausblenden ▲" : sent.length + " gesendete Angriffe anzeigen ▼");
+            });
+            tableContainer.append(toggleBtn).append(sentContainer);
+        }
     }
 
     // === Render: table layout for desktop ===
@@ -353,6 +444,13 @@
         if (!confirm("Geteilten Plan für alle löschen?")) return;
         githubGet(function(){ githubDelete(); });
     });
+
+    // === Sticky countdown widget — show if a mobile send is in progress ===
+    (function() {
+        var pending = null;
+        try { pending = JSON.parse(localStorage.getItem("lp_active") || "null"); } catch(e) {}
+        if (pending && pending.arrivalMs) showCountdownWidget(pending);
+    })();
 
     // === Init + auto-refresh ===
     loadVillages(function(){
