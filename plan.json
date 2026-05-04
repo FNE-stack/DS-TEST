@@ -14,9 +14,11 @@
         "light": null,
         "marcher": null,
         "heavy": null,
+        "ram": 25,
         "catapult": null,
         "knight": null,
-        "snob": null
+        "snob": null,
+        "militia": 0
       },
       "raw": "3547&2401&ram&1777926101000&8&false&false&spear=/sword=/axe=/archer=/spy=MjAw/light=/marcher=/heavy=/ram=MjU=/catapult=/knight=/snob=/militia=MA==",
       "sent": false,
