@@ -1,0 +1,27 @@
+{
+  "attacks": [
+    {
+      "originId": "3547",
+      "targetId": "2401",
+      "slowest": "ram",
+      "arrivalMs": 1777926101000,
+      "troops": {
+        "spear": null,
+        "sword": null,
+        "axe": null,
+        "archer": null,
+        "spy": 200,
+        "light": null,
+        "marcher": null,
+        "heavy": null,
+        "catapult": null,
+        "knight": null,
+        "snob": null
+      },
+      "raw": "3547&2401&ram&1777926101000&8&false&false&spear=/sword=/axe=/archer=/spy=MjAw/light=/marcher=/heavy=/ram=Mg==/catapult=/knight=/snob=/militia=MA==",
+      "sent": false,
+      "sentBy": null,
+      "sentAt": null
+    }
+  ]
+}
