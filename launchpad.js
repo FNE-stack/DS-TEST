@@ -1,6 +1,6 @@
 (function(){
     $("#launchpad-panel").remove();
-    
+
     // === CONFIG ===
     var GITHUB_OWNER = "FNE-stack";
     var GITHUB_REPO = "DS-TEST";
@@ -65,9 +65,9 @@
         if (parts.length < 8) return null;
         var troops = {};
         parts[7].split("/").forEach(function(t){
-            var kv = t.split("=");
-            if (kv.length === 2) {
-                try { troops[kv[0]] = parseInt(atob(kv[1])); } catch(e){}
+            var eq = t.indexOf("=");
+            if (eq > 0) {
+                try { troops[t.substring(0, eq)] = parseInt(atob(t.substring(eq + 1))); } catch(e){}
             }
         });
         return {
@@ -181,6 +181,15 @@
         });
     }
 
+    function troopsHtml(troops) {
+        return Object.keys(troops)
+            .filter(function(u){ return troops[u] > 0; })
+            .map(function(u){
+                return "<img src='/graphic/unit/unit_" + u + ".png' title='" + u + "' style='width:18px;height:18px;vertical-align:middle;'> " + troops[u];
+            })
+            .join(" &nbsp;");
+    }
+
     function mergeSent(newAttacks, oldAttacks) {
         if (!oldAttacks || oldAttacks.length === 0) return newAttacks;
         return newAttacks.map(function(att) {
@@ -233,16 +242,11 @@
         var revokeBtnStyle = "width:100%;min-height:40px;padding:6px;font-size:13px;background:#fcc;border:1px solid #a00;margin-top:6px;box-sizing:border-box;";
 
         plan.forEach(function(att, i) {
-            var ts = Object.keys(att.troops)
-                .filter(function(u){ return att.troops[u] > 0; })
-                .map(function(u){ return att.troops[u] + " " + u; })
-                .join(", ");
-
             var card = $("<div class='lp-card' style='border:1px solid #a07030;background:" + (att.sent ? "#e4e4e4" : "#fff8e8") + ";border-radius:4px;padding:10px;margin:8px 0;opacity:" + (att.sent ? "0.75" : "1") + ";'></div>");
             card.append("<div style='font-weight:bold;font-size:14px;margin-bottom:6px;'>#" + (i + 1) + (att.sent ? " ✓ gesendet" : "") + "</div>");
             card.append("<div style='font-size:13px;margin:2px 0;'><b>Von:</b> " + villageLabel(att.originId) + "</div>");
             card.append("<div style='font-size:13px;margin:2px 0;'><b>Auf:</b> " + villageLabel(att.targetId) + "</div>");
-            card.append("<div style='font-size:12px;margin:2px 0;color:#555;'>" + (ts || "keine Truppen") + "</div>");
+            card.append("<div style='font-size:12px;margin:2px 0;'>" + (troopsHtml(att.troops) || "keine Truppen") + "</div>");
             card.append("<div style='font-size:12px;margin:4px 0;'><b>Ankunft:</b> " + new Date(att.arrivalMs).toLocaleString() + "</div>");
 
             if (!att.sent) {
@@ -267,10 +271,6 @@
         var tbody = table.find("tbody");
 
         plan.forEach(function(att, i) {
-            var ts = Object.keys(att.troops)
-                .filter(function(u){ return att.troops[u] > 0; })
-                .map(function(u){ return att.troops[u] + " " + u; })
-                .join(", ");
             var statusCell = att.sent ? ("<span style='color:#080;'>Gesendet von " + (att.sentBy || "?") + "</span>") : "--";
             var countdownCell = att.sent
                 ? "<td style='color:#999;white-space:nowrap;'>—</td>"
@@ -280,7 +280,7 @@
                 "<td>" + (i + 1) + "</td>" +
                 "<td style='font-size:11px;word-break:break-word;max-width:140px;'>" + villageLabel(att.originId) + "</td>" +
                 "<td style='font-size:11px;word-break:break-word;max-width:140px;'>" + villageLabel(att.targetId) + "</td>" +
-                "<td style='font-size:11px;word-break:break-word;max-width:160px;'>" + ts + "</td>" +
+                "<td style='font-size:11px;'>" + troopsHtml(att.troops) + "</td>" +
                 "<td style='font-size:11px;white-space:nowrap;'>" + new Date(att.arrivalMs).toLocaleString() + "</td>" +
                 countdownCell +
                 "<td style='font-size:11px;'>" + statusCell + "</td>" +
