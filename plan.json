@@ -17,9 +17,9 @@
         "snob": null
       },
       "raw": "3547&2401&ram&1777926101000&8&false&false&spear=MjQ=/sword=/axe=/archer=/spy=MTE=/light=/marcher=/heavy=/ram=Mg==/catapult=/knight=/snob=/militia=MA==",
-      "sent": false,
-      "sentBy": null,
-      "sentAt": null
+      "sent": true,
+      "sentBy": "Donald John Trump",
+      "sentAt": 1777888338953
     }
   ]
 }
