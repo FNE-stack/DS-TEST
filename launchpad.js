@@ -2,6 +2,7 @@
     $("#launchpad-panel").remove();
 
     // === CONFIG ===
+    var VERSION = "v28";
     var GITHUB_OWNER = "FNE-stack";
     var GITHUB_REPO = "DS-TEST";
     var GITHUB_BRANCH = "main";
@@ -19,7 +20,7 @@
 
     // === UI ===
     var panel = $("<div id='launchpad-panel' style='background:#f4e4bc;border:1px solid #804000;padding:10px;margin:8px 0;font-family:Verdana;max-width:100%;box-sizing:border-box;'></div>");
-    panel.append("<h3 style='margin:0 0 8px 0;font-size:14px;'>Angriffsplaner (geteilt)</h3>");
+    panel.append("<h3 style='margin:0 0 8px 0;font-size:14px;'>Angriffsplaner (geteilt) <span style='font-size:11px;color:#888;font-weight:normal;'>" + VERSION + "</span></h3>");
 
     var textarea = $("<textarea style='width:100%;height:80px;font-family:monospace;font-size:11px;box-sizing:border-box;'></textarea>");
 
@@ -221,7 +222,7 @@
         var dismissBtn = $("<button style='min-height:40px;padding:6px 10px;font-size:13px;background:transparent;color:#ffe8c0;border:1px solid #ffe8c0;border-radius:3px;cursor:pointer;'>✕</button>");
 
         function closeWidget() {
-            localStorage.removeItem("lp_active");
+            window.name = "";
             widget.remove();
             if (window._lpWidgetInt) clearInterval(window._lpWidgetInt);
         }
@@ -279,7 +280,6 @@
 
     function makeRevokeHandler(att) {
         return function() {
-            if (!confirm("Diesen Angriff als NICHT gesendet markieren? Nutzen falls der Versand im Spiel fehlgeschlagen ist oder du versehentlich geklickt hast.")) return;
             att.sent = false;
             var prevSentBy = att.sentBy;
             att.sentBy = null;
@@ -312,17 +312,20 @@
 
             var sendBtn = $("<button style='" + sendBtnStyle + "'>Senden</button>");
             sendBtn.on("click", function() {
-                // Store pending attack for the sticky widget on the next page
+                var url = buildUrl(att);
                 try {
-                    localStorage.setItem("lp_active", JSON.stringify({
-                        id: att.id,
-                        originId: att.originId,
-                        targetId: att.targetId,
-                        targetLabel: villageLabel(att.targetId),
-                        arrivalMs: att.arrivalMs
-                    }));
+                    window.name = "LP:" + JSON.stringify({
+                        id: att.id, originId: att.originId, targetId: att.targetId,
+                        targetLabel: villageLabel(att.targetId), arrivalMs: att.arrivalMs
+                    });
                 } catch(e) {}
-                location.href = buildUrl(att);
+                // Transform card: replace Senden with live countdown + nav link
+                var repl = $("<div style='margin-top:8px;'></div>");
+                repl.append("<div style='font-size:11px;color:#555;margin-bottom:2px;'>Ankunft: " + new Date(att.arrivalMs).toLocaleTimeString() + "</div>");
+                repl.append("<div style='font-size:26px;font-weight:bold;text-align:center;padding:6px 0;'><span class='cd' data-target='" + att.arrivalMs + "'>--</span></div>");
+                repl.append("<a href='" + url + "' target='_blank' style='display:block;text-align:center;min-height:48px;line-height:48px;font-size:15px;font-weight:bold;background:#afa;border:1px solid #080;border-radius:4px;text-decoration:none;color:#000;box-sizing:border-box;'>&#9654; Angriff senden</a>");
+                sendBtn.replaceWith(repl);
+                card.css({"border-color": "#080", "background": "#f0fff0"});
             });
             card.append(sendBtn);
             tableContainer.append(card);
@@ -448,7 +451,7 @@
     // === Sticky countdown widget — show if a mobile send is in progress ===
     (function() {
         var pending = null;
-        try { pending = JSON.parse(localStorage.getItem("lp_active") || "null"); } catch(e) {}
+        try { if (window.name && window.name.indexOf("LP:") === 0) pending = JSON.parse(window.name.slice(3)); } catch(e) {}
         if (pending && pending.arrivalMs) showCountdownWidget(pending);
     })();
 
