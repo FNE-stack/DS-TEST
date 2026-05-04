@@ -1,6 +1,6 @@
 (function(){
     $("#launchpad-panel").remove();
-
+    
     // === CONFIG ===
     var GITHUB_OWNER = "FNE-stack";
     var GITHUB_REPO = "DS-TEST";
