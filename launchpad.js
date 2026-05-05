@@ -2,7 +2,7 @@
     $("#launchpad-panel").remove();
 
     // === CONFIG ===
-    var VERSION = "v28";
+    var VERSION = "v30";
     var GITHUB_OWNER = "FNE-stack";
     var GITHUB_REPO = "DS-TEST";
     var GITHUB_BRANCH = "main";
@@ -87,6 +87,63 @@
 
     var serverOffset = (typeof Timing !== "undefined" && Timing.offset_server) ? Timing.offset_server : 0;
     function serverNow() { return Date.now() + serverOffset; }
+
+    var PENDING_KEY = "lp_pending_attack";
+    var PENDING_COOKIE = "lp_pending_attack";
+    function setCookie(name, value, maxAgeSec) {
+        document.cookie = name + "=" + encodeURIComponent(value) + "; path=/; max-age=" + maxAgeSec + "; SameSite=Lax";
+    }
+    function getCookie(name) {
+        var key = name + "=";
+        var parts = document.cookie ? document.cookie.split(";") : [];
+        for (var i = 0; i < parts.length; i++) {
+            var c = parts[i].trim();
+            if (c.indexOf(key) === 0) return decodeURIComponent(c.substring(key.length));
+        }
+        return null;
+    }
+    function clearCookie(name) {
+        document.cookie = name + "=; path=/; max-age=0; SameSite=Lax";
+    }
+    function savePendingAttack(pending) {
+        try { window.name = "LP:" + JSON.stringify(pending); } catch(e) {}
+        try { sessionStorage.setItem(PENDING_KEY, JSON.stringify(pending)); } catch(e) {}
+        try { localStorage.setItem(PENDING_KEY, JSON.stringify(pending)); } catch(e) {}
+        try { setCookie(PENDING_COOKIE, JSON.stringify(pending), 1800); } catch(e) {}
+    }
+    function loadPendingAttack() {
+        var pending = null;
+        try {
+            if (window.name && window.name.indexOf("LP:") === 0) {
+                pending = JSON.parse(window.name.slice(3));
+            }
+        } catch(e) {}
+        if (pending && pending.arrivalMs) return pending;
+
+        try {
+            var ss = sessionStorage.getItem(PENDING_KEY);
+            if (ss) pending = JSON.parse(ss);
+        } catch(e) {}
+        if (pending && pending.arrivalMs) return pending;
+
+        try {
+            var raw = localStorage.getItem(PENDING_KEY);
+            if (raw) pending = JSON.parse(raw);
+        } catch(e) {}
+        if (pending && pending.arrivalMs) return pending;
+
+        try {
+            var ck = getCookie(PENDING_COOKIE);
+            if (ck) pending = JSON.parse(ck);
+        } catch(e) {}
+        return (pending && pending.arrivalMs) ? pending : null;
+    }
+    function clearPendingAttack() {
+        try { window.name = ""; } catch(e) {}
+        try { sessionStorage.removeItem(PENDING_KEY); } catch(e) {}
+        try { localStorage.removeItem(PENDING_KEY); } catch(e) {}
+        try { clearCookie(PENDING_COOKIE); } catch(e) {}
+    }
 
     function buildUrl(a) {
         var p = "/game.php?village=" + a.originId + "&screen=place&target=" + a.targetId;
@@ -222,7 +279,7 @@
         var dismissBtn = $("<button style='min-height:40px;padding:6px 10px;font-size:13px;background:transparent;color:#ffe8c0;border:1px solid #ffe8c0;border-radius:3px;cursor:pointer;'>✕</button>");
 
         function closeWidget() {
-            window.name = "";
+            clearPendingAttack();
             widget.remove();
             if (window._lpWidgetInt) clearInterval(window._lpWidgetInt);
         }
@@ -312,20 +369,14 @@
 
             var sendBtn = $("<button style='" + sendBtnStyle + "'>Senden</button>");
             sendBtn.on("click", function() {
-                var url = buildUrl(att);
-                try {
-                    window.name = "LP:" + JSON.stringify({
-                        id: att.id, originId: att.originId, targetId: att.targetId,
-                        targetLabel: villageLabel(att.targetId), arrivalMs: att.arrivalMs
-                    });
-                } catch(e) {}
-                // Transform card: replace Senden with live countdown + nav link
-                var repl = $("<div style='margin-top:8px;'></div>");
-                repl.append("<div style='font-size:11px;color:#555;margin-bottom:2px;'>Ankunft: " + new Date(att.arrivalMs).toLocaleTimeString() + "</div>");
-                repl.append("<div style='font-size:26px;font-weight:bold;text-align:center;padding:6px 0;'><span class='cd' data-target='" + att.arrivalMs + "'>--</span></div>");
-                repl.append("<a href='" + url + "' target='_blank' style='display:block;text-align:center;min-height:48px;line-height:48px;font-size:15px;font-weight:bold;background:#afa;border:1px solid #080;border-radius:4px;text-decoration:none;color:#000;box-sizing:border-box;'>&#9654; Angriff senden</a>");
-                sendBtn.replaceWith(repl);
-                card.css({"border-color": "#080", "background": "#f0fff0"});
+                savePendingAttack({
+                    id: att.id,
+                    originId: att.originId,
+                    targetId: att.targetId,
+                    targetLabel: villageLabel(att.targetId),
+                    arrivalMs: att.arrivalMs
+                });
+                location.href = buildUrl(att);
             });
             card.append(sendBtn);
             tableContainer.append(card);
@@ -414,12 +465,23 @@
     }
 
     // === Buttons ===
+    var pushConfirmed = false, pushTimer = null;
     pushBtn.on("click", function() {
         var src = textarea.val().trim();
         if (!src) { setStatus("Bitte zuerst Angriffe einfügen.", "red"); return; }
         var plan = src.split("\n").map(parseLine).filter(Boolean);
         if (plan.length === 0) { setStatus("Keine gültigen Angriffe.", "red"); return; }
-        if (!confirm("Plan mit " + plan.length + " Angriffen hochladen? Überschreibt aktuellen geteilten Plan und setzt alle Sende-Status zurück.")) return;
+        if (!pushConfirmed) {
+            pushConfirmed = true;
+            pushBtn.text("Sicher? (" + plan.length + ")");
+            setStatus("Überschreibt geteilten Plan für alle — nochmal tippen zum Bestätigen.", "orange");
+            clearTimeout(pushTimer);
+            pushTimer = setTimeout(function(){ pushConfirmed = false; pushBtn.text("Plan hochladen"); setStatus(""); }, 3000);
+            return;
+        }
+        clearTimeout(pushTimer);
+        pushConfirmed = false;
+        pushBtn.text("Plan hochladen");
         loadVillages(function(){
             githubGet(function(){
                 githubPut({ attacks: plan }, "neuer Plan (" + plan.length + " Angriffe)", function(){
@@ -443,15 +505,25 @@
         });
     });
 
+    var wipeConfirmed = false, wipeTimer = null;
     wipeBtn.on("click", function() {
-        if (!confirm("Geteilten Plan für alle löschen?")) return;
+        if (!wipeConfirmed) {
+            wipeConfirmed = true;
+            wipeBtn.text("Sicher?");
+            setStatus("Löscht Plan für alle — nochmal tippen zum Bestätigen.", "orange");
+            clearTimeout(wipeTimer);
+            wipeTimer = setTimeout(function(){ wipeConfirmed = false; wipeBtn.text("Plan löschen"); setStatus(""); }, 3000);
+            return;
+        }
+        clearTimeout(wipeTimer);
+        wipeConfirmed = false;
+        wipeBtn.text("Plan löschen");
         githubGet(function(){ githubDelete(); });
     });
 
     // === Sticky countdown widget — show if a mobile send is in progress ===
     (function() {
-        var pending = null;
-        try { if (window.name && window.name.indexOf("LP:") === 0) pending = JSON.parse(window.name.slice(3)); } catch(e) {}
+        var pending = loadPendingAttack();
         if (pending && pending.arrivalMs) showCountdownWidget(pending);
     })();
 
