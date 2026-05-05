@@ -77,6 +77,7 @@
             targetId: parts[1],
             slowest: parts[2],
             arrivalMs: parseInt(parts[3]),
+            distance: parseFloat(parts[4]),
             troops: troops,
             raw: line,
             sent: false,
@@ -87,6 +88,48 @@
 
     var serverOffset = (typeof Timing !== "undefined" && Timing.offset_server) ? Timing.offset_server : 0;
     function serverNow() { return Date.now() + serverOffset; }
+    var worldSpeed = (typeof game_data !== "undefined" && game_data.world && game_data.world.speed) ? (+game_data.world.speed || 1) : 1;
+    var unitSpeed = (typeof game_data !== "undefined" && game_data.world && game_data.world.unit_speed) ? (+game_data.world.unit_speed || 1) : 1;
+    var UNIT_SPEEDS = {
+        spear: 18, sword: 22, axe: 18, archer: 18, spy: 9,
+        light: 10, marcher: 10, heavy: 11, ram: 30, catapult: 30,
+        knight: 10, snob: 35, militia: 18
+    };
+
+    function getSendMs(att) {
+        if (!att) return null;
+        if (att.sendMs && !isNaN(att.sendMs)) return parseInt(att.sendMs, 10);
+
+        var arrivalMs = parseInt(att.arrivalMs, 10);
+        var slowestMpf = parseFloat(att.slowest);
+        if ((!slowestMpf || isNaN(slowestMpf)) && att.slowest) {
+            var unitKey = String(att.slowest).toLowerCase();
+            if (UNIT_SPEEDS[unitKey]) slowestMpf = UNIT_SPEEDS[unitKey];
+        }
+        var distance = parseFloat(att.distance);
+        var fromV = villageMap[String(att.originId)] || villageMap[att.originId];
+        var toV = villageMap[String(att.targetId)] || villageMap[att.targetId];
+        if (!arrivalMs || isNaN(arrivalMs)) return null;
+
+        if (distance && !isNaN(distance) && slowestMpf && !isNaN(slowestMpf)) {
+            var travelSecsFromImport = distance * slowestMpf * 60 / (worldSpeed * unitSpeed);
+            return Math.round(arrivalMs - travelSecsFromImport * 1000);
+        }
+
+        if (!fromV || !toV || !slowestMpf || isNaN(slowestMpf)) return arrivalMs;
+
+        var dist = Math.hypot((+fromV.x) - (+toV.x), (+fromV.y) - (+toV.y));
+        if (!isFinite(dist)) return arrivalMs;
+
+        var travelSecs = dist * slowestMpf * 60 / (worldSpeed * unitSpeed);
+        return Math.round(arrivalMs - travelSecs * 1000);
+    }
+
+    function fmtHms(ms) {
+        var t = Math.max(0, Math.floor(ms / 1000));
+        var h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), s = t % 60;
+        return h + "h " + m + "m " + s + "s";
+    }
 
     var PENDING_KEY = "lp_pending_attack";
     var PENDING_COOKIE = "lp_pending_attack";
@@ -273,6 +316,9 @@
         var cdSpan  = $("<b style='font-size:14px;'>--</b>");
         var info    = $("<div style='flex:1;min-width:160px;line-height:1.6;'></div>");
         info.append("<div><b>Ziel:</b> " + (pending.targetLabel || pending.targetId) + "</div>");
+        if (pending.sendMs) {
+            info.append("<div><b>Senden um:</b> " + new Date(pending.sendMs).toLocaleTimeString() + "</div>");
+        }
         info.append($("<div></div>").append("<b>Ankunft:</b> " + new Date(pending.arrivalMs).toLocaleTimeString() + " &nbsp;").append(cdSpan));
 
         var confirmBtn = $("<button style='min-height:40px;padding:6px 14px;font-size:13px;background:#afa;border:1px solid #060;border-radius:3px;cursor:pointer;font-weight:bold;'>✓ Gesendet</button>");
@@ -309,12 +355,12 @@
         if (window._lpWidgetInt) clearInterval(window._lpWidgetInt);
         window._lpWidgetInt = setInterval(function() {
             if (!$("#lp-widget").length) { clearInterval(window._lpWidgetInt); return; }
-            var d = pending.arrivalMs - serverNow();
+            var targetMs = pending.sendMs || pending.arrivalMs;
+            var d = targetMs - serverNow();
             if (d <= 0) {
-                cdSpan.text("BEREIT!").css("color", "#ff0");
+                cdSpan.text("JETZT SENDEN!").css("color", "#ff0");
             } else {
-                var h = Math.floor(d / 3600000), m = Math.floor((d % 3600000) / 60000), s = Math.floor((d % 60000) / 1000);
-                cdSpan.text(h + "h " + m + "m " + s + "s");
+                cdSpan.text(fmtHms(d));
             }
         }, 500);
     }
@@ -365,7 +411,11 @@
             card.append("<div style='font-size:13px;margin:2px 0;'><b>Auf:</b> " + villageLabel(att.targetId) + "</div>");
             card.append("<div style='font-size:12px;margin:2px 0;'>" + (troopsHtml(att.troops) || "keine Truppen") + "</div>");
             card.append("<div style='font-size:12px;margin:4px 0;'><b>Ankunft:</b> " + new Date(att.arrivalMs).toLocaleString() + "</div>");
-            card.append("<div style='font-size:13px;font-weight:bold;margin:4px 0;'>Countdown: <span class='cd' data-target='" + att.arrivalMs + "'>--</span></div>");
+            var sendMs = getSendMs(att);
+            if (sendMs) {
+                card.append("<div style='font-size:12px;margin:2px 0;'><b>Senden um:</b> " + new Date(sendMs).toLocaleString() + "</div>");
+            }
+            card.append("<div style='font-size:13px;font-weight:bold;margin:4px 0;'>Senden in: <span class='cd' data-target='" + (sendMs || att.arrivalMs) + "'>--</span></div>");
 
             var sendBtn = $("<button style='" + sendBtnStyle + "'>Senden</button>");
             sendBtn.on("click", function() {
@@ -374,7 +424,8 @@
                     originId: att.originId,
                     targetId: att.targetId,
                     targetLabel: villageLabel(att.targetId),
-                    arrivalMs: att.arrivalMs
+                    arrivalMs: att.arrivalMs,
+                    sendMs: getSendMs(att)
                 });
                 location.href = buildUrl(att);
             });
@@ -412,14 +463,15 @@
 
     // === Render: table layout for desktop ===
     function renderTable(plan) {
-        var table = $("<table class='vis' style='width:100%;table-layout:auto;'><thead><tr><th>#</th><th>Herkunft</th><th>Ziel</th><th>Truppen</th><th>Ankunft</th><th>Countdown</th><th>Status</th><th>Aktion</th></tr></thead><tbody></tbody></table>");
+        var table = $("<table class='vis' style='width:100%;table-layout:auto;'><thead><tr><th>#</th><th>Herkunft</th><th>Ziel</th><th>Truppen</th><th>Ankunft</th><th>Senden um</th><th>Senden in</th><th>Status</th><th>Aktion</th></tr></thead><tbody></tbody></table>");
         var tbody = table.find("tbody");
 
         plan.forEach(function(att, i) {
+            var sendMs = getSendMs(att);
             var statusCell = att.sent ? ("<span style='color:#080;'>Gesendet von " + (att.sentBy || "?") + "</span>") : "--";
             var countdownCell = att.sent
                 ? "<td style='color:#999;white-space:nowrap;'>—</td>"
-                : "<td class='cd' data-target='" + att.arrivalMs + "' style='white-space:nowrap;'>--</td>";
+                : "<td class='cd' data-target='" + (sendMs || att.arrivalMs) + "' style='white-space:nowrap;'>--</td>";
 
             var row = $("<tr>" +
                 "<td>" + (i + 1) + "</td>" +
@@ -427,6 +479,7 @@
                 "<td style='font-size:11px;word-break:break-word;max-width:140px;'>" + villageLabel(att.targetId) + "</td>" +
                 "<td style='font-size:11px;'>" + troopsHtml(att.troops) + "</td>" +
                 "<td style='font-size:11px;white-space:nowrap;'>" + new Date(att.arrivalMs).toLocaleString() + "</td>" +
+                "<td style='font-size:11px;white-space:nowrap;'>" + (sendMs ? new Date(sendMs).toLocaleString() : "—") + "</td>" +
                 countdownCell +
                 "<td style='font-size:11px;'>" + statusCell + "</td>" +
                 "<td style='white-space:nowrap;'></td></tr>");
@@ -552,12 +605,16 @@
             var t = parseInt($(this).data("target"));
             var d = t - now;
             if (d <= 0) {
-                $(this).text("BEREIT").css({ color: "#080", fontWeight: "bold" });
+                var late = Math.abs(d);
+                if (late < 120000) {
+                    $(this).text("JETZT!").css({ color: "#080", fontWeight: "bold" });
+                } else {
+                    $(this).text("zu spät " + fmtHms(late)).css({ color: "#b00", fontWeight: "bold" });
+                }
                 var container = $(this).closest("tr,.lp-card");
                 if (!container.hasClass("sent-row")) container.css("background", "#d4ffd4");
             } else {
-                var h = Math.floor(d / 3600000), m = Math.floor((d % 3600000) / 60000), s = Math.floor((d % 60000) / 1000);
-                $(this).text(h + "h " + m + "m " + s + "s");
+                $(this).text(fmtHms(d));
             }
         });
     }, 200);
