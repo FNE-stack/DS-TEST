@@ -2,7 +2,7 @@
     $("#launchpad-panel").remove();
 
     // === CONFIG ===
-    var VERSION = "v31";
+    var VERSION = "v32";
     var GITHUB_OWNER = "FNE-stack";
     var GITHUB_REPO = "DS-TEST";
     var GITHUB_BRANCH = "main";
@@ -81,7 +81,7 @@
             targetId: parts[1],
             slowest: parts[2],
             arrivalMs: arrivalMs,
-            distance: parseFloat(parts[4]),
+            catapultTarget: parts[4],
             troops: troops,
             raw: line,
             sent: false,
@@ -118,37 +118,22 @@
         if (att.sendMs && !isNaN(att.sendMs)) return parseInt(att.sendMs, 10);
 
         var arrivalMs = parseInt(att.arrivalMs, 10);
-        var fromV = villageMap[String(att.originId)] || villageMap[att.originId];
-        var toV = villageMap[String(att.targetId)] || villageMap[att.targetId];
         if (!arrivalMs || isNaN(arrivalMs)) return null;
 
-        // Prefer imported route data: these values come from the planner line itself.
-        var importedDistance = parseFloat(att.distance);
+        var fromV = villageMap[String(att.originId)] || villageMap[att.originId];
+        var toV   = villageMap[String(att.targetId)] || villageMap[att.targetId];
+        if (!fromV || !toV) return null;
+
         var slowestMpf = null;
         if (att.slowest) {
-            var slowestRaw = parseFloat(att.slowest);
-            if (slowestRaw && !isNaN(slowestRaw)) {
-                slowestMpf = slowestRaw;
-            } else {
-                var unitKey = String(att.slowest).toLowerCase();
-                if (UNIT_SPEEDS[unitKey]) slowestMpf = UNIT_SPEEDS[unitKey];
-            }
+            var unitKey = String(att.slowest).toLowerCase();
+            if (UNIT_SPEEDS[unitKey]) slowestMpf = UNIT_SPEEDS[unitKey];
         }
-
-        if (importedDistance && !isNaN(importedDistance) && slowestMpf && !isNaN(slowestMpf)) {
-            var travelSecsFromImport = importedDistance * slowestMpf * 60 / (worldSpeed * unitSpeed);
-            return Math.round(arrivalMs - travelSecsFromImport * 1000);
-        }
-
-        // Fallback: derive from troops + village coordinates if import fields are missing.
-        if (!slowestMpf || isNaN(slowestMpf)) {
-            slowestMpf = slowestMinutesPerFieldFromTroops(att.troops);
-        }
-
-        if (!fromV || !toV || !slowestMpf || isNaN(slowestMpf)) return null;
+        if (!slowestMpf) slowestMpf = slowestMinutesPerFieldFromTroops(att.troops);
+        if (!slowestMpf) return null;
 
         var dist = Math.hypot((+fromV.x) - (+toV.x), (+fromV.y) - (+toV.y));
-        if (!isFinite(dist)) return null;
+        if (!isFinite(dist) || dist === 0) return null;
 
         var travelSecs = dist * slowestMpf * 60 / (worldSpeed * unitSpeed);
         return Math.round(arrivalMs - travelSecs * 1000);
