@@ -2,7 +2,7 @@
     $("#launchpad-panel").remove();
 
     // === CONFIG ===
-    var VERSION = "v40";
+    var VERSION = "v41";
     var GITHUB_OWNER = "FNE-stack";
     var GITHUB_REPO = "DS-TEST";
     var GITHUB_BRANCH = "main";
@@ -52,10 +52,7 @@
         if (!pending) return false;
         var screen = (typeof game_data !== "undefined") ? game_data.screen : null;
         var villageId = (typeof game_data !== "undefined" && game_data.village) ? String(game_data.village.id) : null;
-        var urlTarget = new URLSearchParams(location.search).get("target");
-        return screen === "place" &&
-               villageId === String(pending.originId) &&
-               (!urlTarget || urlTarget === String(pending.targetId));
+        return screen === "place" && villageId === String(pending.originId);
     })();
 
     var mount = $("#contentContainer").length ? $("#contentContainer") : $("body");
@@ -733,47 +730,78 @@
         githubGet(function(){ githubDelete(); });
     });
 
-    // === AJAX navigation hook — re-injects overlay or panel after every TW screen change ===
-    $(document).off("ajaxComplete.lp").on("ajaxComplete.lp", function() {
-        setTimeout(function() {
-            var p = loadPendingAttack();
-            var screen = (typeof game_data !== "undefined") ? game_data.screen : null;
-            if (!screen) return;
+    // === Screen-change handler — called after any TW navigation ===
+    function handleScreenReady() {
+        var p = loadPendingAttack();
+        var screen = (typeof game_data !== "undefined") ? game_data.screen : null;
+        if (!screen) return;
 
-            mount = $("#contentContainer").length ? $("#contentContainer") : $("body");
+        mount = $("#contentContainer").length ? $("#contentContainer") : $("body");
 
-            // location.search is stale after AJAX nav — rely on game_data only
-            var villageId = (typeof game_data !== "undefined" && game_data.village) ? String(game_data.village.id) : null;
-            var onPlace = p && screen === "place" && villageId === String(p.originId);
+        var villageId = (typeof game_data !== "undefined" && game_data.village) ? String(game_data.village.id) : null;
+        var onPlace = p && screen === "place" && villageId === String(p.originId);
 
-            if (onPlace && !$("#lp-overlay").length) {
-                injectAttackOverlay(p);
-                if (window._lpInt) clearInterval(window._lpInt);
-                window._lpInt = setInterval(function() {
-                    var now = serverNow();
-                    $("#lp-overlay .cd").each(function(){
-                        var t = parseInt($(this).data("target"));
-                        var d = t - now;
-                        if (d <= 0) {
-                            $(this).text(Math.abs(d) < 120000 ? "JETZT!" : "zu spät").css({ color: "#ff0", fontWeight: "bold" });
-                        } else {
-                            $(this).text(fmtHms(d));
+        if (onPlace && !$("#lp-overlay").length) {
+            injectAttackOverlay(p);
+            if (window._lpInt) clearInterval(window._lpInt);
+            window._lpInt = setInterval(function() {
+                var now = serverNow();
+                $("#lp-overlay .cd").each(function(){
+                    var t = parseInt($(this).data("target"));
+                    var d = t - now;
+                    if (d <= 0) {
+                        $(this).text(Math.abs(d) < 120000 ? "JETZT!" : "zu spät").css({ color: "#ff0", fontWeight: "bold" });
+                    } else {
+                        $(this).text(fmtHms(d));
+                    }
+                });
+            }, 200);
+        } else if (!onPlace && !$("#launchpad-panel").length) {
+            mount.prepend(panel);
+            tableContainer.empty();
+            loadVillages(function(){
+                githubGet(function(data){
+                    if (data && data.attacks) renderPlan(data.attacks);
+                });
+            });
+            if (p && p.arrivalMs && !$("#lp-widget").length) showCountdownWidget(p);
+        } else if (!onPlace && p && p.arrivalMs && !$("#lp-widget").length) {
+            showCountdownWidget(p);
+        }
+    }
+
+    // === Navigation detection ===
+    // TribalWars.redirect uses native XHR — ajaxComplete never fires for it.
+    // Use MutationObserver on #contentContainer as primary trigger.
+    var _lpNavTimer = null;
+    function scheduleScreenCheck() {
+        clearTimeout(_lpNavTimer);
+        _lpNavTimer = setTimeout(handleScreenReady, 300);
+    }
+
+    var _lpObserver = new MutationObserver(scheduleScreenCheck);
+    var _lpCC = document.getElementById("contentContainer");
+    if (_lpCC) {
+        _lpObserver.observe(_lpCC, { childList: true });
+        // Also watch the parent in case TW replaces #contentContainer itself
+        if (_lpCC.parentElement) {
+            new MutationObserver(function(mutations) {
+                mutations.forEach(function(m) {
+                    m.addedNodes.forEach(function(node) {
+                        if (node.id === "contentContainer") {
+                            _lpObserver.disconnect();
+                            _lpObserver.observe(node, { childList: true });
                         }
                     });
-                }, 200);
-            } else if (!onPlace && !$("#launchpad-panel").length) {
-                mount.prepend(panel);
-                tableContainer.empty();
-                loadVillages(function(){
-                    githubGet(function(data){
-                        if (data && data.attacks) renderPlan(data.attacks);
-                    });
                 });
-                if (p && p.arrivalMs && !$("#lp-widget").length) showCountdownWidget(p);
-            } else if (!onPlace && p && p.arrivalMs && !$("#lp-widget").length) {
-                showCountdownWidget(p);
-            }
-        }, 250);
+            }).observe(_lpCC.parentElement, { childList: true });
+        }
+    }
+
+    // ajaxComplete as fallback (fires for jQuery-based TW requests if any)
+    $(document).off("ajaxComplete.lp").on("ajaxComplete.lp", function(_e, xhr) {
+        if (xhr && xhr.status === 0) return; // skip aborted requests
+        scheduleScreenCheck();
     });
 
     if (onAttackScreen) {
