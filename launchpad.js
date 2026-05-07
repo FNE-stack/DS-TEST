@@ -71,12 +71,16 @@
                 try { troops[t.substring(0, eq)] = parseInt(atob(t.substring(eq + 1))); } catch(e){}
             }
         });
+        var arrivalRaw = parseInt(parts[3], 10);
+        // Some planners export epoch seconds, others epoch milliseconds.
+        var arrivalMs = (arrivalRaw > 0 && arrivalRaw < 1000000000000) ? (arrivalRaw * 1000) : arrivalRaw;
+
         return {
             id: parts[0] + "_" + parts[1] + "_" + parts[3],
             originId: parts[0],
             targetId: parts[1],
             slowest: parts[2],
-            arrivalMs: parseInt(parts[3]),
+            arrivalMs: arrivalMs,
             distance: parseFloat(parts[4]),
             troops: troops,
             raw: line,
@@ -96,24 +100,49 @@
         knight: 10, snob: 35, militia: 18
     };
 
+    function slowestMinutesPerFieldFromTroops(troops) {
+        if (!troops) return null;
+        var slowest = null;
+        Object.keys(troops).forEach(function(unitKey) {
+            var count = +troops[unitKey] || 0;
+            if (count <= 0) return;
+            var mpf = UNIT_SPEEDS[String(unitKey).toLowerCase()];
+            if (!mpf) return;
+            if (slowest === null || mpf > slowest) slowest = mpf;
+        });
+        return slowest;
+    }
+
     function getSendMs(att) {
         if (!att) return null;
         if (att.sendMs && !isNaN(att.sendMs)) return parseInt(att.sendMs, 10);
 
         var arrivalMs = parseInt(att.arrivalMs, 10);
-        var slowestMpf = parseFloat(att.slowest);
-        if ((!slowestMpf || isNaN(slowestMpf)) && att.slowest) {
-            var unitKey = String(att.slowest).toLowerCase();
-            if (UNIT_SPEEDS[unitKey]) slowestMpf = UNIT_SPEEDS[unitKey];
-        }
-        var distance = parseFloat(att.distance);
         var fromV = villageMap[String(att.originId)] || villageMap[att.originId];
         var toV = villageMap[String(att.targetId)] || villageMap[att.targetId];
         if (!arrivalMs || isNaN(arrivalMs)) return null;
 
-        if (distance && !isNaN(distance) && slowestMpf && !isNaN(slowestMpf)) {
-            var travelSecsFromImport = distance * slowestMpf * 60 / (worldSpeed * unitSpeed);
+        // Prefer imported route data: these values come from the planner line itself.
+        var importedDistance = parseFloat(att.distance);
+        var slowestMpf = null;
+        if (att.slowest) {
+            var slowestRaw = parseFloat(att.slowest);
+            if (slowestRaw && !isNaN(slowestRaw)) {
+                slowestMpf = slowestRaw;
+            } else {
+                var unitKey = String(att.slowest).toLowerCase();
+                if (UNIT_SPEEDS[unitKey]) slowestMpf = UNIT_SPEEDS[unitKey];
+            }
+        }
+
+        if (importedDistance && !isNaN(importedDistance) && slowestMpf && !isNaN(slowestMpf)) {
+            var travelSecsFromImport = importedDistance * slowestMpf * 60 / (worldSpeed * unitSpeed);
             return Math.round(arrivalMs - travelSecsFromImport * 1000);
+        }
+
+        // Fallback: derive from troops + village coordinates if import fields are missing.
+        if (!slowestMpf || isNaN(slowestMpf)) {
+            slowestMpf = slowestMinutesPerFieldFromTroops(att.troops);
         }
 
         if (!fromV || !toV || !slowestMpf || isNaN(slowestMpf)) return arrivalMs;
