@@ -2,7 +2,7 @@
     $("#launchpad-panel").remove();
 
     // === CONFIG ===
-    var VERSION = "v30";
+    var VERSION = "v31";
     var GITHUB_OWNER = "FNE-stack";
     var GITHUB_REPO = "DS-TEST";
     var GITHUB_BRANCH = "main";
@@ -145,10 +145,10 @@
             slowestMpf = slowestMinutesPerFieldFromTroops(att.troops);
         }
 
-        if (!fromV || !toV || !slowestMpf || isNaN(slowestMpf)) return arrivalMs;
+        if (!fromV || !toV || !slowestMpf || isNaN(slowestMpf)) return null;
 
         var dist = Math.hypot((+fromV.x) - (+toV.x), (+fromV.y) - (+toV.y));
-        if (!isFinite(dist)) return arrivalMs;
+        if (!isFinite(dist)) return null;
 
         var travelSecs = dist * slowestMpf * 60 / (worldSpeed * unitSpeed);
         return Math.round(arrivalMs - travelSecs * 1000);
@@ -157,7 +157,17 @@
     function fmtHms(ms) {
         var t = Math.max(0, Math.floor(ms / 1000));
         var h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), s = t % 60;
-        return h + "h " + m + "m " + s + "s";
+        return h + "h " + (m < 10 ? "0" : "") + m + "m " + (s < 10 ? "0" : "") + s + "s";
+    }
+
+    function fmtTime(ms) {
+        var d = new Date(ms);
+        var now = new Date();
+        var dDay = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+        var nDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+        var diff = Math.round((dDay - nDay) / 86400000);
+        var prefix = diff === 0 ? "heute" : diff === 1 ? "morgen" : d.toLocaleDateString([], {day:"2-digit",month:"2-digit"});
+        return prefix + " " + d.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit", second:"2-digit"});
     }
 
     var PENDING_KEY = "lp_pending_attack";
@@ -342,13 +352,16 @@
 
         var widget = $("<div id='lp-widget' style='position:fixed;top:0;left:0;right:0;z-index:99999;background:#5a1f00;color:#ffe8c0;padding:8px 12px;font-family:Verdana;font-size:13px;display:flex;flex-wrap:wrap;align-items:center;gap:8px;box-sizing:border-box;box-shadow:0 2px 6px rgba(0,0,0,0.5);'></div>");
 
-        var cdSpan  = $("<b style='font-size:14px;'>--</b>");
-        var info    = $("<div style='flex:1;min-width:160px;line-height:1.6;'></div>");
+        var cdLabel = pending.sendMs ? "Losschicken in" : "Ankunft in";
+        var cdSpan  = $("<span style='font-size:16px;font-weight:bold;'>--</span>");
+        var info    = $("<div style='flex:1;min-width:160px;line-height:1.7;'></div>");
         info.append("<div><b>Ziel:</b> " + (pending.targetLabel || pending.targetId) + "</div>");
+        info.append($("<div></div>").append("<b>" + cdLabel + ":</b> &nbsp;").append(cdSpan));
         if (pending.sendMs) {
-            info.append("<div><b>Senden um:</b> " + new Date(pending.sendMs).toLocaleTimeString() + "</div>");
+            info.append("<div style='font-size:11px;opacity:0.8;'>⚑ " + fmtTime(pending.sendMs) + " &nbsp; ⚐ " + fmtTime(pending.arrivalMs) + "</div>");
+        } else {
+            info.append("<div style='font-size:11px;opacity:0.8;'>⚐ Ankunft: " + fmtTime(pending.arrivalMs) + "</div>");
         }
-        info.append($("<div></div>").append("<b>Ankunft:</b> " + new Date(pending.arrivalMs).toLocaleTimeString() + " &nbsp;").append(cdSpan));
 
         var confirmBtn = $("<button style='min-height:40px;padding:6px 14px;font-size:13px;background:#afa;border:1px solid #060;border-radius:3px;cursor:pointer;font-weight:bold;'>✓ Gesendet</button>");
         var dismissBtn = $("<button style='min-height:40px;padding:6px 10px;font-size:13px;background:transparent;color:#ffe8c0;border:1px solid #ffe8c0;border-radius:3px;cursor:pointer;'>✕</button>");
@@ -426,35 +439,45 @@
 
     // === Render: card layout for mobile ===
     function renderCards(plan) {
-        var sendBtnStyle   = "width:100%;min-height:44px;padding:8px;font-size:14px;font-weight:bold;background:#afa;border:1px solid #080;margin-top:8px;box-sizing:border-box;cursor:pointer;";
-        var revokeBtnStyle = "width:100%;min-height:40px;padding:6px;font-size:13px;background:#fcc;border:1px solid #a00;margin-top:6px;box-sizing:border-box;cursor:pointer;";
-
         var unsent = plan.filter(function(a){ return !a.sent; });
         var sent   = plan.filter(function(a){ return a.sent; });
 
         unsent.forEach(function(att) {
             var idx = plan.indexOf(att);
-            var card = $("<div class='lp-card' style='border:1px solid #a07030;background:#fff8e8;border-radius:4px;padding:10px;margin:8px 0;'></div>");
-            card.append("<div style='font-weight:bold;font-size:14px;margin-bottom:6px;'>#" + (idx + 1) + "</div>");
-            card.append("<div style='font-size:13px;margin:2px 0;'><b>Von:</b> " + villageLabel(att.originId) + "</div>");
-            card.append("<div style='font-size:13px;margin:2px 0;'><b>Auf:</b> " + villageLabel(att.targetId) + "</div>");
-            card.append("<div style='font-size:12px;margin:2px 0;'>" + (troopsHtml(att.troops) || "keine Truppen") + "</div>");
-            card.append("<div style='font-size:12px;margin:4px 0;'><b>Ankunft:</b> " + new Date(att.arrivalMs).toLocaleString() + "</div>");
             var sendMs = getSendMs(att);
-            if (sendMs) {
-                card.append("<div style='font-size:12px;margin:2px 0;'><b>Senden um:</b> " + new Date(sendMs).toLocaleString() + "</div>");
-            }
-            card.append("<div style='font-size:13px;font-weight:bold;margin:4px 0;'>Senden in: <span class='cd' data-target='" + (sendMs || att.arrivalMs) + "'>--</span></div>");
+            var cdTarget = sendMs || att.arrivalMs;
 
-            var sendBtn = $("<button style='" + sendBtnStyle + "'>Senden</button>");
+            var card = $("<div class='lp-card' style='border:1px solid #a07030;background:#fff8e8;border-radius:6px;padding:10px;margin:8px 0;box-sizing:border-box;'></div>");
+
+            // Header: number + origin → target
+            card.append("<div style='font-size:12px;color:#804000;margin-bottom:4px;word-break:break-word;'>" +
+                "<b>#" + (idx + 1) + "</b> &nbsp;" + villageLabel(att.originId) + " <b>→</b> " + villageLabel(att.targetId) +
+                "</div>");
+
+            // Troops
+            var tHtml = troopsHtml(att.troops);
+            if (tHtml) card.append("<div style='margin-bottom:6px;line-height:1.6;'>" + tHtml + "</div>");
+
+            // Countdown box — prominent
+            var cdLabel = sendMs ? "Losschicken in" : "Ankunft in";
+            card.append("<div style='background:#5a1f00;color:#ffe8c0;border-radius:4px;padding:6px 8px;margin-bottom:6px;text-align:center;'>" +
+                "<div style='font-size:10px;letter-spacing:1px;text-transform:uppercase;opacity:0.75;margin-bottom:2px;'>" + cdLabel + "</div>" +
+                "<div style='font-size:22px;font-weight:bold;letter-spacing:1px;'><span class='cd' data-target='" + cdTarget + "'>--</span></div>" +
+                "</div>");
+
+            // Send time + arrival (compact, secondary)
+            var timesHtml = "";
+            if (sendMs) timesHtml += "<span style='margin-right:12px;'>⚑ " + fmtTime(sendMs) + "</span>";
+            timesHtml += "<span style='opacity:0.65;'>⚐ " + fmtTime(att.arrivalMs) + "</span>";
+            card.append("<div style='font-size:11px;color:#555;margin-bottom:8px;'>" + timesHtml + "</div>");
+
+            // Send button
+            var sendBtn = $("<button style='width:100%;min-height:44px;padding:8px;font-size:14px;font-weight:bold;background:#afa;border:1px solid #080;border-radius:4px;cursor:pointer;box-sizing:border-box;'>Senden</button>");
             sendBtn.on("click", function() {
                 savePendingAttack({
-                    id: att.id,
-                    originId: att.originId,
-                    targetId: att.targetId,
+                    id: att.id, originId: att.originId, targetId: att.targetId,
                     targetLabel: villageLabel(att.targetId),
-                    arrivalMs: att.arrivalMs,
-                    sendMs: getSendMs(att)
+                    arrivalMs: att.arrivalMs, sendMs: sendMs
                 });
                 location.href = buildUrl(att);
             });
@@ -463,25 +486,24 @@
         });
 
         if (sent.length > 0) {
-            var toggleBtn = $("<button style='width:100%;margin:8px 0;padding:8px;font-size:12px;background:#e8e8e8;border:1px solid #aaa;border-radius:4px;cursor:pointer;'>" + sent.length + " gesendete Angriffe anzeigen ▼</button>");
+            var toggleBtn = $("<button style='width:100%;margin:8px 0;padding:8px;font-size:12px;background:#e0d4b0;border:1px solid #a07030;border-radius:4px;cursor:pointer;'>" + sent.length + " gesendete Angriffe anzeigen ▼</button>");
             var sentContainer = $("<div style='display:none;'></div>");
 
             sent.forEach(function(att) {
                 var idx = plan.indexOf(att);
-                var card = $("<div class='lp-card' style='border:1px solid #a07030;background:#e4e4e4;border-radius:4px;padding:10px;margin:8px 0;opacity:0.75;'></div>");
-                card.append("<div style='font-weight:bold;font-size:13px;margin-bottom:4px;'>#" + (idx + 1) + " ✓</div>");
-                card.append("<div style='font-size:12px;margin:2px 0;'><b>Von:</b> " + villageLabel(att.originId) + "</div>");
-                card.append("<div style='font-size:12px;margin:2px 0;'><b>Auf:</b> " + villageLabel(att.targetId) + "</div>");
-                card.append("<div style='font-size:12px;margin:2px 0;'>" + (troopsHtml(att.troops) || "—") + "</div>");
-                card.append("<div style='font-size:12px;color:#080;margin:4px 0;'>Gesendet von <b>" + (att.sentBy || "?") + "</b></div>");
-                var revokeBtn = $("<button style='" + revokeBtnStyle + "'>Zurücksetzen</button>");
+                var sCard = $("<div class='lp-card' style='border:1px solid #bbb;background:#e8e8e8;border-radius:4px;padding:8px;margin:4px 0;opacity:0.75;box-sizing:border-box;'></div>");
+                sCard.append("<div style='font-size:12px;margin-bottom:4px;word-break:break-word;'>" +
+                    "<b>#" + (idx + 1) + " ✓</b> &nbsp;" + villageLabel(att.originId) + " → " + villageLabel(att.targetId) +
+                    "</div>");
+                sCard.append("<div style='font-size:11px;color:#080;margin-bottom:6px;'>Gesendet von <b>" + (att.sentBy || "?") + "</b></div>");
+                var revokeBtn = $("<button style='width:100%;min-height:36px;font-size:12px;background:#fcc;border:1px solid #a00;border-radius:3px;cursor:pointer;'>Zurücksetzen</button>");
                 revokeBtn.on("click", makeRevokeHandler(att));
-                card.append(revokeBtn);
-                sentContainer.append(card);
+                sCard.append(revokeBtn);
+                sentContainer.append(sCard);
             });
 
             var expanded = false;
-            toggleBtn.on("click", function(){
+            toggleBtn.on("click", function() {
                 expanded = !expanded;
                 sentContainer.toggle(expanded);
                 toggleBtn.text(expanded ? "Gesendete ausblenden ▲" : sent.length + " gesendete Angriffe anzeigen ▼");
@@ -492,27 +514,43 @@
 
     // === Render: table layout for desktop ===
     function renderTable(plan) {
-        var table = $("<table class='vis' style='width:100%;table-layout:auto;'><thead><tr><th>#</th><th>Herkunft</th><th>Ziel</th><th>Truppen</th><th>Ankunft</th><th>Senden um</th><th>Senden in</th><th>Status</th><th>Aktion</th></tr></thead><tbody></tbody></table>");
+        var table = $("<table class='vis' style='width:100%;table-layout:fixed;'>" +
+            "<thead><tr>" +
+            "<th style='width:28px;'>#</th>" +
+            "<th>Von</th><th>Nach</th><th>Truppen</th>" +
+            "<th style='width:90px;'>Losschicken in</th>" +
+            "<th style='width:110px;'>Senden / Ankunft</th>" +
+            "<th style='width:80px;'>Status</th>" +
+            "<th style='width:90px;'>Aktion</th>" +
+            "</tr></thead><tbody></tbody></table>");
         var tbody = table.find("tbody");
 
         plan.forEach(function(att, i) {
             var sendMs = getSendMs(att);
-            var statusCell = att.sent ? ("<span style='color:#080;'>Gesendet von " + (att.sentBy || "?") + "</span>") : "--";
-            var countdownCell = att.sent
-                ? "<td style='color:#999;white-space:nowrap;'>—</td>"
-                : "<td class='cd' data-target='" + (sendMs || att.arrivalMs) + "' style='white-space:nowrap;'>--</td>";
+            var cdTarget = sendMs || att.arrivalMs;
+
+            var timesHtml = sendMs
+                ? ("<div style='font-size:10px;'>⚑ " + fmtTime(sendMs) + "</div>" +
+                   "<div style='font-size:10px;opacity:0.65;'>⚐ " + fmtTime(att.arrivalMs) + "</div>")
+                : ("<div style='font-size:10px;'>⚐ " + fmtTime(att.arrivalMs) + "</div>");
+
+            var cdCell = att.sent
+                ? "<td style='color:#999;text-align:center;'>—</td>"
+                : "<td class='cd' data-target='" + cdTarget + "' style='text-align:center;font-weight:bold;white-space:nowrap;'>--</td>";
+
+            var statusHtml = att.sent ? "<span style='color:#080;font-size:11px;'>✓ " + (att.sentBy || "?") + "</span>" : "";
 
             var row = $("<tr>" +
-                "<td>" + (i + 1) + "</td>" +
-                "<td style='font-size:11px;word-break:break-word;max-width:140px;'>" + villageLabel(att.originId) + "</td>" +
-                "<td style='font-size:11px;word-break:break-word;max-width:140px;'>" + villageLabel(att.targetId) + "</td>" +
+                "<td style='text-align:center;'>" + (i + 1) + "</td>" +
+                "<td style='font-size:11px;word-break:break-word;'>" + villageLabel(att.originId) + "</td>" +
+                "<td style='font-size:11px;word-break:break-word;'>" + villageLabel(att.targetId) + "</td>" +
                 "<td style='font-size:11px;'>" + troopsHtml(att.troops) + "</td>" +
-                "<td style='font-size:11px;white-space:nowrap;'>" + new Date(att.arrivalMs).toLocaleString() + "</td>" +
-                "<td style='font-size:11px;white-space:nowrap;'>" + (sendMs ? new Date(sendMs).toLocaleString() : "—") + "</td>" +
-                countdownCell +
-                "<td style='font-size:11px;'>" + statusCell + "</td>" +
-                "<td style='white-space:nowrap;'></td></tr>");
-            if (att.sent) row.css("background", "#e8e8e8").css("opacity", "0.7");
+                cdCell +
+                "<td>" + timesHtml + "</td>" +
+                "<td>" + statusHtml + "</td>" +
+                "<td style='text-align:center;'></td>" +
+                "</tr>");
+            if (att.sent) row.css({ background: "#e8e8e8", opacity: "0.7" });
 
             var actionCell = row.find("td").last();
             if (!att.sent) {
@@ -520,7 +558,7 @@
                 sendBtn.on("click", makeSendHandler(att));
                 actionCell.append(sendBtn);
             } else {
-                var revokeBtn = $("<button style='background:#fcc;'>Zurücksetzen</button>");
+                var revokeBtn = $("<button style='background:#fcc;font-size:11px;'>Zurücksetzen</button>");
                 revokeBtn.on("click", makeRevokeHandler(att));
                 actionCell.append(revokeBtn);
             }
@@ -636,9 +674,9 @@
             if (d <= 0) {
                 var late = Math.abs(d);
                 if (late < 120000) {
-                    $(this).text("JETZT!").css({ color: "#080", fontWeight: "bold" });
+                    $(this).text("JETZT!").css({ color: "#ff0", fontWeight: "bold", textShadow: "0 0 4px #f80" });
                 } else {
-                    $(this).text("zu spät " + fmtHms(late)).css({ color: "#b00", fontWeight: "bold" });
+                    $(this).text("zu spät").css({ color: "#f44", fontWeight: "bold" });
                 }
                 var container = $(this).closest("tr,.lp-card");
                 if (!container.hasClass("sent-row")) container.css("background", "#d4ffd4");
