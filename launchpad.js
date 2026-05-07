@@ -2,7 +2,7 @@
     $("#launchpad-panel").remove();
 
     // === CONFIG ===
-    var VERSION = "v33";
+    var VERSION = "v34";
     var GITHUB_OWNER = "FNE-stack";
     var GITHUB_REPO = "DS-TEST";
     var GITHUB_BRANCH = "main";
@@ -637,11 +637,17 @@
         githubGet(function(){ githubDelete(); });
     });
 
-    // === Sticky countdown widget — show if a mobile send is in progress ===
+    // === Sticky countdown widget — show on load and re-show after every TW AJAX navigation ===
     (function() {
         var pending = loadPendingAttack();
         if (pending && pending.arrivalMs) showCountdownWidget(pending);
     })();
+
+    $(document).off("ajaxComplete.lp").on("ajaxComplete.lp", function() {
+        if ($("#lp-widget").length) return;
+        var pending = loadPendingAttack();
+        if (pending && pending.arrivalMs) showCountdownWidget(pending);
+    });
 
     // === Init + auto-refresh ===
     loadVillages(function(){
