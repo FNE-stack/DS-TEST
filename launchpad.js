@@ -2,7 +2,7 @@
     $("#launchpad-panel").remove();
 
     // === CONFIG ===
-    var VERSION = "v37";
+    var VERSION = "v38";
     var GITHUB_OWNER = "FNE-stack";
     var GITHUB_REPO = "DS-TEST";
     var GITHUB_BRANCH = "main";
@@ -559,7 +559,7 @@
                     targetLabel: villageLabel(att.targetId),
                     arrivalMs: att.arrivalMs, sendMs: sendMs
                 });
-                location.href = buildUrl(att);
+                navigate(buildUrl(att));
             });
             card.append(sendBtn);
             tableContainer.append(card);
