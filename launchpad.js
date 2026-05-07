@@ -2,7 +2,7 @@
     $("#launchpad-panel").remove();
 
     // === CONFIG ===
-    var VERSION = "v38";
+    var VERSION = "v39";
     var GITHUB_OWNER = "FNE-stack";
     var GITHUB_REPO = "DS-TEST";
     var GITHUB_BRANCH = "main";
@@ -484,15 +484,22 @@
     function makeSendHandler(att) {
         return function() {
             var url = buildUrl(att);
+            var sendMs = getSendMs(att);
             att.sent = true;
             att.sentBy = ME;
             att.sentAt = Date.now();
+            savePendingAttack({
+                id: att.id, originId: att.originId, targetId: att.targetId,
+                originLabel: villageLabel(att.originId),
+                targetLabel: villageLabel(att.targetId),
+                arrivalMs: att.arrivalMs, sendMs: sendMs
+            });
             setStatus("Markiere als gesendet...");
             githubPut({ attacks: currentPlan }, "gesendet: " + att.originId + "->" + att.targetId + " von " + ME, function(){
                 setStatus("Status synchronisiert.", "green");
                 renderPlan(currentPlan);
+                navigate(url);
             });
-            navigate(url);
         };
     }
 
