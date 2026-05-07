@@ -2,7 +2,7 @@
     $("#launchpad-panel").remove();
 
     // === CONFIG ===
-    var VERSION = "v32";
+    var VERSION = "v33";
     var GITHUB_OWNER = "FNE-stack";
     var GITHUB_REPO = "DS-TEST";
     var GITHUB_BRANCH = "main";
@@ -48,7 +48,7 @@
         $.get("/map/village.txt", function(data) {
             data.split("\n").forEach(function(line){
                 var p = line.split(",");
-                if (p.length >= 4) villageMap[p[0]] = { name: decodeURIComponent(p[1]), x: p[2], y: p[3] };
+                if (p.length >= 4) villageMap[p[0]] = { name: decodeURIComponent(p[1].replace(/\+/g, "%20")), x: p[2], y: p[3] };
             });
             callback();
         }).fail(callback);
@@ -434,14 +434,19 @@
 
             var card = $("<div class='lp-card' style='border:1px solid #a07030;background:#fff8e8;border-radius:6px;padding:10px;margin:8px 0;box-sizing:border-box;'></div>");
 
-            // Header: number + origin → target
-            card.append("<div style='font-size:12px;color:#804000;margin-bottom:4px;word-break:break-word;'>" +
-                "<b>#" + (idx + 1) + "</b> &nbsp;" + villageLabel(att.originId) + " <b>→</b> " + villageLabel(att.targetId) +
-                "</div>");
+            // Header: index + from / to on separate lines — no mid-arrow wrapping
+            card.append(
+                "<div style='margin-bottom:6px;'>" +
+                  "<div style='font-size:11px;font-weight:bold;color:#804000;margin-bottom:2px;'>#" + (idx + 1) + "</div>" +
+                  "<div style='font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' title='" + villageLabel(att.originId) + "'>" + villageLabel(att.originId) + "</div>" +
+                  "<div style='font-size:11px;color:#a07030;margin:1px 0;'>↓</div>" +
+                  "<div style='font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' title='" + villageLabel(att.targetId) + "'>" + villageLabel(att.targetId) + "</div>" +
+                "</div>"
+            );
 
             // Troops
             var tHtml = troopsHtml(att.troops);
-            if (tHtml) card.append("<div style='margin-bottom:6px;line-height:1.6;'>" + tHtml + "</div>");
+            if (tHtml) card.append("<div style='margin-bottom:8px;line-height:1.8;'>" + tHtml + "</div>");
 
             // Countdown box — prominent
             var cdLabel = sendMs ? "Losschicken in" : "Ankunft in";
@@ -450,11 +455,12 @@
                 "<div style='font-size:22px;font-weight:bold;letter-spacing:1px;'><span class='cd' data-target='" + cdTarget + "'>--</span></div>" +
                 "</div>");
 
-            // Send time + arrival (compact, secondary)
-            var timesHtml = "";
-            if (sendMs) timesHtml += "<span style='margin-right:12px;'>⚑ " + fmtTime(sendMs) + "</span>";
-            timesHtml += "<span style='opacity:0.65;'>⚐ " + fmtTime(att.arrivalMs) + "</span>";
-            card.append("<div style='font-size:11px;color:#555;margin-bottom:8px;'>" + timesHtml + "</div>");
+            // Send time + arrival — each on its own line, no wrapping surprises
+            var timesDiv = "<div style='font-size:11px;color:#555;margin-bottom:8px;line-height:1.8;'>";
+            if (sendMs) timesDiv += "<div>⚑&nbsp;<b>Senden:</b> " + fmtTime(sendMs) + "</div>";
+            timesDiv += "<div style='opacity:0.7;'>⚐&nbsp;<b>Ankunft:</b> " + fmtTime(att.arrivalMs) + "</div>";
+            timesDiv += "</div>";
+            card.append(timesDiv);
 
             // Send button
             var sendBtn = $("<button style='width:100%;min-height:44px;padding:8px;font-size:14px;font-weight:bold;background:#afa;border:1px solid #080;border-radius:4px;cursor:pointer;box-sizing:border-box;'>Senden</button>");
@@ -501,12 +507,13 @@
     function renderTable(plan) {
         var table = $("<table class='vis' style='width:100%;table-layout:fixed;'>" +
             "<thead><tr>" +
-            "<th style='width:28px;'>#</th>" +
-            "<th>Von</th><th>Nach</th><th>Truppen</th>" +
-            "<th style='width:90px;'>Losschicken in</th>" +
-            "<th style='width:110px;'>Senden / Ankunft</th>" +
-            "<th style='width:80px;'>Status</th>" +
-            "<th style='width:90px;'>Aktion</th>" +
+            "<th style='width:24px;'>#</th>" +
+            "<th>Von → Nach</th>" +
+            "<th>Truppen</th>" +
+            "<th style='width:100px;'>Losschicken in</th>" +
+            "<th style='width:120px;'>Senden / Ankunft</th>" +
+            "<th style='width:90px;'>Status</th>" +
+            "<th style='width:80px;'>Aktion</th>" +
             "</tr></thead><tbody></tbody></table>");
         var tbody = table.find("tbody");
 
@@ -514,21 +521,25 @@
             var sendMs = getSendMs(att);
             var cdTarget = sendMs || att.arrivalMs;
 
+            var routeHtml =
+                "<div style='font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' title='" + villageLabel(att.originId) + "'>" + villageLabel(att.originId) + "</div>" +
+                "<div style='font-size:10px;color:#a07030;'>↓</div>" +
+                "<div style='font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' title='" + villageLabel(att.targetId) + "'>" + villageLabel(att.targetId) + "</div>";
+
             var timesHtml = sendMs
-                ? ("<div style='font-size:10px;'>⚑ " + fmtTime(sendMs) + "</div>" +
-                   "<div style='font-size:10px;opacity:0.65;'>⚐ " + fmtTime(att.arrivalMs) + "</div>")
-                : ("<div style='font-size:10px;'>⚐ " + fmtTime(att.arrivalMs) + "</div>");
+                ? ("<div style='font-size:10px;white-space:nowrap;'>⚑ " + fmtTime(sendMs) + "</div>" +
+                   "<div style='font-size:10px;white-space:nowrap;opacity:0.65;'>⚐ " + fmtTime(att.arrivalMs) + "</div>")
+                : ("<div style='font-size:10px;white-space:nowrap;'>⚐ " + fmtTime(att.arrivalMs) + "</div>");
 
             var cdCell = att.sent
                 ? "<td style='color:#999;text-align:center;'>—</td>"
-                : "<td class='cd' data-target='" + cdTarget + "' style='text-align:center;font-weight:bold;white-space:nowrap;'>--</td>";
+                : "<td class='cd' data-target='" + cdTarget + "' style='text-align:center;font-weight:bold;white-space:nowrap;font-size:12px;'>--</td>";
 
             var statusHtml = att.sent ? "<span style='color:#080;font-size:11px;'>✓ " + (att.sentBy || "?") + "</span>" : "";
 
             var row = $("<tr>" +
-                "<td style='text-align:center;'>" + (i + 1) + "</td>" +
-                "<td style='font-size:11px;word-break:break-word;'>" + villageLabel(att.originId) + "</td>" +
-                "<td style='font-size:11px;word-break:break-word;'>" + villageLabel(att.targetId) + "</td>" +
+                "<td style='text-align:center;font-size:11px;'>" + (i + 1) + "</td>" +
+                "<td>" + routeHtml + "</td>" +
                 "<td style='font-size:11px;'>" + troopsHtml(att.troops) + "</td>" +
                 cdCell +
                 "<td>" + timesHtml + "</td>" +
