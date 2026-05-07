@@ -2,7 +2,7 @@
     $("#launchpad-panel").remove();
 
     // === CONFIG ===
-    var VERSION = "v39";
+    var VERSION = "v40";
     var GITHUB_OWNER = "FNE-stack";
     var GITHUB_REPO = "DS-TEST";
     var GITHUB_BRANCH = "main";
@@ -742,11 +742,9 @@
 
             mount = $("#contentContainer").length ? $("#contentContainer") : $("body");
 
+            // location.search is stale after AJAX nav — rely on game_data only
             var villageId = (typeof game_data !== "undefined" && game_data.village) ? String(game_data.village.id) : null;
-            var urlTarget = new URLSearchParams(location.search).get("target");
-            var onPlace = p && screen === "place" &&
-                villageId === String(p.originId) &&
-                (!urlTarget || urlTarget === String(p.targetId));
+            var onPlace = p && screen === "place" && villageId === String(p.originId);
 
             if (onPlace && !$("#lp-overlay").length) {
                 injectAttackOverlay(p);
@@ -775,7 +773,7 @@
             } else if (!onPlace && p && p.arrivalMs && !$("#lp-widget").length) {
                 showCountdownWidget(p);
             }
-        }, 150);
+        }, 250);
     });
 
     if (onAttackScreen) {
