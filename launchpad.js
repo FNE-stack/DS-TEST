@@ -2,7 +2,7 @@
     $("#launchpad-panel").remove();
 
     // === CONFIG ===
-    var VERSION = "v36";
+    var VERSION = "v37";
     var GITHUB_OWNER = "FNE-stack";
     var GITHUB_REPO = "DS-TEST";
     var GITHUB_BRANCH = "main";
@@ -240,8 +240,12 @@
         return p;
     }
 
-    // window.open is blocked in the TW mobile app — fall back to same-tab navigation
+    // TribalWars.redirect = AJAX swap (script survives); fall back to location.href
     function navigate(url) {
+        if (typeof TribalWars !== "undefined" && TribalWars.redirect) {
+            TribalWars.redirect(url);
+            return;
+        }
         var w = null;
         try { w = window.open(url, "_blank"); } catch(e) {}
         if (!w) location.href = url;
@@ -722,8 +726,53 @@
         githubGet(function(){ githubDelete(); });
     });
 
+    // === AJAX navigation hook — re-injects overlay or panel after every TW screen change ===
+    $(document).off("ajaxComplete.lp").on("ajaxComplete.lp", function() {
+        setTimeout(function() {
+            var p = loadPendingAttack();
+            var screen = (typeof game_data !== "undefined") ? game_data.screen : null;
+            if (!screen) return;
+
+            mount = $("#contentContainer").length ? $("#contentContainer") : $("body");
+
+            var villageId = (typeof game_data !== "undefined" && game_data.village) ? String(game_data.village.id) : null;
+            var urlTarget = new URLSearchParams(location.search).get("target");
+            var onPlace = p && screen === "place" &&
+                villageId === String(p.originId) &&
+                (!urlTarget || urlTarget === String(p.targetId));
+
+            if (onPlace && !$("#lp-overlay").length) {
+                injectAttackOverlay(p);
+                if (window._lpInt) clearInterval(window._lpInt);
+                window._lpInt = setInterval(function() {
+                    var now = serverNow();
+                    $("#lp-overlay .cd").each(function(){
+                        var t = parseInt($(this).data("target"));
+                        var d = t - now;
+                        if (d <= 0) {
+                            $(this).text(Math.abs(d) < 120000 ? "JETZT!" : "zu spät").css({ color: "#ff0", fontWeight: "bold" });
+                        } else {
+                            $(this).text(fmtHms(d));
+                        }
+                    });
+                }, 200);
+            } else if (!onPlace && !$("#launchpad-panel").length) {
+                mount.prepend(panel);
+                tableContainer.empty();
+                loadVillages(function(){
+                    githubGet(function(data){
+                        if (data && data.attacks) renderPlan(data.attacks);
+                    });
+                });
+                if (p && p.arrivalMs && !$("#lp-widget").length) showCountdownWidget(p);
+            } else if (!onPlace && p && p.arrivalMs && !$("#lp-widget").length) {
+                showCountdownWidget(p);
+            }
+        }, 150);
+    });
+
     if (onAttackScreen) {
-        // === FarmGod mode: in-page overlay only, no panel ===
+        // === Initial load already on the place screen (quickbar re-ran after full reload) ===
         injectAttackOverlay(pending);
         if (window._lpInt) clearInterval(window._lpInt);
         window._lpInt = setInterval(function() {
@@ -743,12 +792,6 @@
         mount.prepend(panel);
 
         if (pending && pending.arrivalMs) showCountdownWidget(pending);
-
-        $(document).off("ajaxComplete.lp").on("ajaxComplete.lp", function() {
-            if ($("#lp-widget").length) return;
-            var p = loadPendingAttack();
-            if (p && p.arrivalMs) showCountdownWidget(p);
-        });
 
         loadVillages(function(){
             githubGet(function(data){
