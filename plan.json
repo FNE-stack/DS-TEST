@@ -6,7 +6,7 @@
       "targetId": "14094",
       "slowest": "catapult",
       "arrivalMs": 1778271913000,
-      "distance": 43,
+      "catapultTarget": "43",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -33,7 +33,7 @@
       "targetId": "12127",
       "slowest": "catapult",
       "arrivalMs": 1778270858000,
-      "distance": 43,
+      "catapultTarget": "43",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -60,7 +60,7 @@
       "targetId": "7264",
       "slowest": "catapult",
       "arrivalMs": 1778262070000,
-      "distance": 14,
+      "catapultTarget": "14",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -82,12 +82,39 @@
       "sentAt": null
     },
     {
+      "id": "4885_11659_1778271935000",
+      "originId": "4885",
+      "targetId": "11659",
+      "slowest": "ram",
+      "arrivalMs": 1778271935000,
+      "catapultTarget": "8",
+      "troops": {
+        "spear": 0,
+        "sword": 0,
+        "axe": 6265,
+        "archer": null,
+        "spy": 0,
+        "light": 2540,
+        "marcher": null,
+        "heavy": 0,
+        "ram": 275,
+        "catapult": 0,
+        "knight": null,
+        "snob": 0,
+        "militia": 0
+      },
+      "raw": "4885&11659&ram&1778271935000&8&false&false&spear=MA==/sword=MA==/axe=NjI2NQ==/archer=/spy=MA==/light=MjU0MA==/marcher=/heavy=MA==/ram=Mjc1/catapult=MA==/knight=/snob=MA==/militia=MA==",
+      "sent": false,
+      "sentBy": null,
+      "sentAt": null
+    },
+    {
       "id": "2171_1428_1778270724000",
       "originId": "2171",
       "targetId": "1428",
       "slowest": "ram",
       "arrivalMs": 1778270724000,
-      "distance": 8,
+      "catapultTarget": "8",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -114,7 +141,7 @@
       "targetId": "11368",
       "slowest": "catapult",
       "arrivalMs": 1778262838000,
-      "distance": 14,
+      "catapultTarget": "14",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -141,7 +168,7 @@
       "targetId": "11622",
       "slowest": "catapult",
       "arrivalMs": 1778271625000,
-      "distance": 43,
+      "catapultTarget": "43",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -168,7 +195,7 @@
       "targetId": "2441",
       "slowest": "catapult",
       "arrivalMs": 1778259799000,
-      "distance": 14,
+      "catapultTarget": "14",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -195,7 +222,7 @@
       "targetId": "10918",
       "slowest": "catapult",
       "arrivalMs": 1778265109000,
-      "distance": 14,
+      "catapultTarget": "14",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -222,7 +249,7 @@
       "targetId": "1424",
       "slowest": "catapult",
       "arrivalMs": 1778272754000,
-      "distance": 43,
+      "catapultTarget": "43",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -249,7 +276,7 @@
       "targetId": "10421",
       "slowest": "catapult",
       "arrivalMs": 1778272273000,
-      "distance": 43,
+      "catapultTarget": "43",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -271,39 +298,12 @@
       "sentAt": null
     },
     {
-      "id": "1999_11659_1778271935000",
-      "originId": "1999",
-      "targetId": "11659",
-      "slowest": "ram",
-      "arrivalMs": 1778271935000,
-      "distance": 8,
-      "troops": {
-        "spear": 0,
-        "sword": 0,
-        "axe": 6265,
-        "archer": 0,
-        "spy": 0,
-        "light": 2540,
-        "marcher": 0,
-        "heavy": 0,
-        "ram": 275,
-        "catapult": 0,
-        "knight": 0,
-        "snob": 0,
-        "militia": 0
-      },
-      "raw": "1999&11659&ram&1778271935000&8&false&false&spear=MA==/sword=MA==/axe=NjI2NQ==/archer=MA==/spy=MA==/light=MjU0MA==/marcher=MA==/heavy=MA==/ram=Mjc1/catapult=MA==/knight=MA==/snob=MA==/militia=MA==",
-      "sent": false,
-      "sentBy": null,
-      "sentAt": null
-    },
-    {
       "id": "2618_1413_1778271507000",
       "originId": "2618",
       "targetId": "1413",
       "slowest": "catapult",
       "arrivalMs": 1778271507000,
-      "distance": 43,
+      "catapultTarget": "43",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -330,7 +330,7 @@
       "targetId": "7264",
       "slowest": "catapult",
       "arrivalMs": 1778271162000,
-      "distance": 43,
+      "catapultTarget": "43",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -357,7 +357,7 @@
       "targetId": "5148",
       "slowest": "catapult",
       "arrivalMs": 1778259603000,
-      "distance": 14,
+      "catapultTarget": "14",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -384,7 +384,7 @@
       "targetId": "9139",
       "slowest": "catapult",
       "arrivalMs": 1778263592000,
-      "distance": 14,
+      "catapultTarget": "14",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -411,7 +411,7 @@
       "targetId": "10643",
       "slowest": "catapult",
       "arrivalMs": 1778263124000,
-      "distance": 14,
+      "catapultTarget": "14",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -438,7 +438,7 @@
       "targetId": "363",
       "slowest": "catapult",
       "arrivalMs": 1778267970000,
-      "distance": 14,
+      "catapultTarget": "14",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -465,7 +465,7 @@
       "targetId": "9547",
       "slowest": "catapult",
       "arrivalMs": 1778271011000,
-      "distance": 14,
+      "catapultTarget": "14",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -492,7 +492,7 @@
       "targetId": "1557",
       "slowest": "catapult",
       "arrivalMs": 1778262306000,
-      "distance": 14,
+      "catapultTarget": "14",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -519,7 +519,7 @@
       "targetId": "1428",
       "slowest": "catapult",
       "arrivalMs": 1778259628000,
-      "distance": 14,
+      "catapultTarget": "14",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -546,7 +546,7 @@
       "targetId": "1280",
       "slowest": "catapult",
       "arrivalMs": 1778268891000,
-      "distance": 14,
+      "catapultTarget": "14",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -573,7 +573,7 @@
       "targetId": "11653",
       "slowest": "catapult",
       "arrivalMs": 1778265249000,
-      "distance": 14,
+      "catapultTarget": "14",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -600,7 +600,7 @@
       "targetId": "9406",
       "slowest": "catapult",
       "arrivalMs": 1778260002000,
-      "distance": 14,
+      "catapultTarget": "14",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -627,7 +627,7 @@
       "targetId": "7336",
       "slowest": "catapult",
       "arrivalMs": 1778264372000,
-      "distance": 14,
+      "catapultTarget": "14",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -654,7 +654,7 @@
       "targetId": "10542",
       "slowest": "catapult",
       "arrivalMs": 1778264171000,
-      "distance": 14,
+      "catapultTarget": "14",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -681,7 +681,7 @@
       "targetId": "1320",
       "slowest": "catapult",
       "arrivalMs": 1778263686000,
-      "distance": 14,
+      "catapultTarget": "14",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -708,7 +708,7 @@
       "targetId": "1322",
       "slowest": "catapult",
       "arrivalMs": 1778269131000,
-      "distance": 14,
+      "catapultTarget": "14",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -735,7 +735,7 @@
       "targetId": "4968",
       "slowest": "catapult",
       "arrivalMs": 1778259711000,
-      "distance": 14,
+      "catapultTarget": "14",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -762,7 +762,7 @@
       "targetId": "2758",
       "slowest": "catapult",
       "arrivalMs": 1778271091000,
-      "distance": 14,
+      "catapultTarget": "14",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -789,7 +789,7 @@
       "targetId": "6683",
       "slowest": "catapult",
       "arrivalMs": 1778259758000,
-      "distance": 14,
+      "catapultTarget": "14",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -816,7 +816,7 @@
       "targetId": "4009",
       "slowest": "catapult",
       "arrivalMs": 1778260807000,
-      "distance": 14,
+      "catapultTarget": "14",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -843,7 +843,7 @@
       "targetId": "7850",
       "slowest": "catapult",
       "arrivalMs": 1778260955000,
-      "distance": 14,
+      "catapultTarget": "14",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -870,7 +870,7 @@
       "targetId": "9200",
       "slowest": "catapult",
       "arrivalMs": 1778262058000,
-      "distance": 14,
+      "catapultTarget": "14",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -897,7 +897,7 @@
       "targetId": "9464",
       "slowest": "catapult",
       "arrivalMs": 1778264360000,
-      "distance": 14,
+      "catapultTarget": "14",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -924,7 +924,7 @@
       "targetId": "1413",
       "slowest": "catapult",
       "arrivalMs": 1778260094000,
-      "distance": 14,
+      "catapultTarget": "14",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -951,7 +951,7 @@
       "targetId": "1424",
       "slowest": "catapult",
       "arrivalMs": 1778262461000,
-      "distance": 14,
+      "catapultTarget": "14",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -978,7 +978,7 @@
       "targetId": "1566",
       "slowest": "catapult",
       "arrivalMs": 1778261325000,
-      "distance": 14,
+      "catapultTarget": "14",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -1005,7 +1005,7 @@
       "targetId": "10905",
       "slowest": "catapult",
       "arrivalMs": 1778260085000,
-      "distance": 14,
+      "catapultTarget": "14",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -1032,7 +1032,7 @@
       "targetId": "12013",
       "slowest": "catapult",
       "arrivalMs": 1778260701000,
-      "distance": 14,
+      "catapultTarget": "14",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -1059,7 +1059,7 @@
       "targetId": "9957",
       "slowest": "catapult",
       "arrivalMs": 1778259708000,
-      "distance": 14,
+      "catapultTarget": "14",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -1086,7 +1086,7 @@
       "targetId": "11144",
       "slowest": "catapult",
       "arrivalMs": 1778263196000,
-      "distance": 14,
+      "catapultTarget": "14",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -1113,7 +1113,7 @@
       "targetId": "3537",
       "slowest": "catapult",
       "arrivalMs": 1778260635000,
-      "distance": 14,
+      "catapultTarget": "14",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -1140,7 +1140,7 @@
       "targetId": "2319",
       "slowest": "catapult",
       "arrivalMs": 1778273053000,
-      "distance": 14,
+      "catapultTarget": "14",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -1167,7 +1167,7 @@
       "targetId": "1928",
       "slowest": "catapult",
       "arrivalMs": 1778259603000,
-      "distance": 14,
+      "catapultTarget": "14",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -1194,7 +1194,7 @@
       "targetId": "1561",
       "slowest": "catapult",
       "arrivalMs": 1778261599000,
-      "distance": 14,
+      "catapultTarget": "14",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -1221,7 +1221,7 @@
       "targetId": "424",
       "slowest": "catapult",
       "arrivalMs": 1778273699000,
-      "distance": 14,
+      "catapultTarget": "14",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -1248,7 +1248,7 @@
       "targetId": "5788",
       "slowest": "catapult",
       "arrivalMs": 1778262857000,
-      "distance": 14,
+      "catapultTarget": "14",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -1275,7 +1275,7 @@
       "targetId": "6348",
       "slowest": "catapult",
       "arrivalMs": 1778271450000,
-      "distance": 43,
+      "catapultTarget": "43",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -1302,7 +1302,7 @@
       "targetId": "7287",
       "slowest": "catapult",
       "arrivalMs": 1778269650000,
-      "distance": 14,
+      "catapultTarget": "14",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -1329,7 +1329,7 @@
       "targetId": "97",
       "slowest": "catapult",
       "arrivalMs": 1778271877000,
-      "distance": 14,
+      "catapultTarget": "14",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -1356,7 +1356,7 @@
       "targetId": "3756",
       "slowest": "catapult",
       "arrivalMs": 1778266332000,
-      "distance": 14,
+      "catapultTarget": "14",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -1383,7 +1383,7 @@
       "targetId": "6348",
       "slowest": "catapult",
       "arrivalMs": 1778272077000,
-      "distance": 14,
+      "catapultTarget": "14",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -1410,7 +1410,7 @@
       "targetId": "6211",
       "slowest": "catapult",
       "arrivalMs": 1778271276000,
-      "distance": 43,
+      "catapultTarget": "43",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -1437,7 +1437,7 @@
       "targetId": "7289",
       "slowest": "catapult",
       "arrivalMs": 1778264755000,
-      "distance": 14,
+      "catapultTarget": "14",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -1464,7 +1464,7 @@
       "targetId": "6211",
       "slowest": "catapult",
       "arrivalMs": 1778270640000,
-      "distance": 14,
+      "catapultTarget": "14",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -1491,7 +1491,7 @@
       "targetId": "2318",
       "slowest": "ram",
       "arrivalMs": 1778271483000,
-      "distance": 8,
+      "catapultTarget": "8",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -1518,7 +1518,7 @@
       "targetId": "7624",
       "slowest": "catapult",
       "arrivalMs": 1778270226000,
-      "distance": 14,
+      "catapultTarget": "14",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -1545,7 +1545,7 @@
       "targetId": "5826",
       "slowest": "catapult",
       "arrivalMs": 1778270459000,
-      "distance": 14,
+      "catapultTarget": "14",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -1572,7 +1572,7 @@
       "targetId": "6975",
       "slowest": "catapult",
       "arrivalMs": 1778260364000,
-      "distance": 14,
+      "catapultTarget": "14",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -1599,7 +1599,7 @@
       "targetId": "6898",
       "slowest": "catapult",
       "arrivalMs": 1778272462000,
-      "distance": 14,
+      "catapultTarget": "14",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -1626,7 +1626,7 @@
       "targetId": "5312",
       "slowest": "catapult",
       "arrivalMs": 1778270038000,
-      "distance": 14,
+      "catapultTarget": "14",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -1653,7 +1653,7 @@
       "targetId": "3006",
       "slowest": "catapult",
       "arrivalMs": 1778264298000,
-      "distance": 14,
+      "catapultTarget": "14",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -1680,7 +1680,7 @@
       "targetId": "3353",
       "slowest": "catapult",
       "arrivalMs": 1778269957000,
-      "distance": 14,
+      "catapultTarget": "14",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -1707,7 +1707,7 @@
       "targetId": "3442",
       "slowest": "catapult",
       "arrivalMs": 1778268196000,
-      "distance": 14,
+      "catapultTarget": "14",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -1734,7 +1734,7 @@
       "targetId": "7401",
       "slowest": "catapult",
       "arrivalMs": 1778268569000,
-      "distance": 14,
+      "catapultTarget": "14",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -1761,7 +1761,7 @@
       "targetId": "3227",
       "slowest": "catapult",
       "arrivalMs": 1778259761000,
-      "distance": 14,
+      "catapultTarget": "14",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -1788,7 +1788,7 @@
       "targetId": "3129",
       "slowest": "catapult",
       "arrivalMs": 1778269122000,
-      "distance": 14,
+      "catapultTarget": "14",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -1815,7 +1815,7 @@
       "targetId": "2002",
       "slowest": "catapult",
       "arrivalMs": 1778265582000,
-      "distance": 14,
+      "catapultTarget": "14",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -1842,7 +1842,7 @@
       "targetId": "6961",
       "slowest": "catapult",
       "arrivalMs": 1778269178000,
-      "distance": 14,
+      "catapultTarget": "14",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -1869,7 +1869,7 @@
       "targetId": "1997",
       "slowest": "catapult",
       "arrivalMs": 1778268375000,
-      "distance": 14,
+      "catapultTarget": "14",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -1896,7 +1896,7 @@
       "targetId": "107",
       "slowest": "catapult",
       "arrivalMs": 1778268129000,
-      "distance": 14,
+      "catapultTarget": "14",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -1923,7 +1923,7 @@
       "targetId": "6666",
       "slowest": "catapult",
       "arrivalMs": 1778271252000,
-      "distance": 14,
+      "catapultTarget": "14",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -1950,7 +1950,7 @@
       "targetId": "2265",
       "slowest": "catapult",
       "arrivalMs": 1778273236000,
-      "distance": 14,
+      "catapultTarget": "14",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -1977,7 +1977,7 @@
       "targetId": "1040",
       "slowest": "catapult",
       "arrivalMs": 1778268823000,
-      "distance": 14,
+      "catapultTarget": "14",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -2004,7 +2004,7 @@
       "targetId": "3121",
       "slowest": "catapult",
       "arrivalMs": 1778272154000,
-      "distance": 14,
+      "catapultTarget": "14",
       "troops": {
         "spear": 0,
         "sword": 0,
@@ -2031,7 +2031,7 @@
       "targetId": "10542",
       "slowest": "catapult",
       "arrivalMs": 1778271786000,
-      "distance": 43,
+      "catapultTarget": "43",
       "troops": {
         "spear": 0,
         "sword": 0,
