@@ -2,7 +2,7 @@
     $("#launchpad-panel").remove();
 
     // === CONFIG ===
-    var VERSION = "v48";
+    var VERSION = "v49";
     var GITHUB_OWNER = "FNE-stack";
     var GITHUB_REPO = "DS-TEST";
     var GITHUB_BRANCH = "main";
@@ -462,8 +462,14 @@
     }
 
     // === FarmGod-style in-page overlay for attack screen ===
+    var autoSendArmed = false;
+    var autoSendFired = false;
+
     function injectAttackOverlay(p) {
         $("#lp-overlay").remove();
+        if (window._lpInt) clearInterval(window._lpInt);
+        autoSendArmed = false;
+        autoSendFired = false;
 
         var sendMs   = p.sendMs   || null;
         var cdTarget = sendMs || p.arrivalMs;
@@ -488,15 +494,27 @@
         overlay.append(
             "<div style='background:#5a1f00;color:#ffe8c0;border-radius:4px;padding:8px 12px;margin-bottom:8px;text-align:center;'>" +
             "<div style='font-size:10px;letter-spacing:1px;text-transform:uppercase;opacity:0.75;margin-bottom:3px;'>" + cdLabel + "</div>" +
-            "<div style='font-size:28px;font-weight:bold;'><span class='cd' data-target='" + cdTarget + "'>--</span></div>" +
+            "<div id='lp-cd' style='font-size:28px;font-weight:bold;'>--</div>" +
             "</div>"
         );
 
-        var timesDiv = "<div style='font-size:11px;color:#555;margin-bottom:10px;line-height:1.9;'>";
+        var timesDiv = "<div style='font-size:11px;color:#555;margin-bottom:8px;line-height:1.9;'>";
         if (sendMs) timesDiv += "<div>⚑ <b>Senden:</b> " + fmtTime(sendMs) + "</div>";
         timesDiv += "<div>⚐ <b>Ankunft:</b> " + fmtTime(p.arrivalMs) + "</div>";
         timesDiv += "</div>";
         overlay.append(timesDiv);
+
+        // Auto-send toggle
+        var autoBtn = $("<button style='width:100%;min-height:38px;font-size:13px;font-weight:bold;background:#ddd;color:#555;border:1px solid #aaa;border-radius:4px;cursor:pointer;margin-bottom:6px;box-sizing:border-box;'>Auto-Senden: AUS</button>");
+        autoBtn.on("click", function() {
+            autoSendArmed = !autoSendArmed;
+            autoSendFired = false;
+            autoBtn.text(autoSendArmed ? "Auto-Senden: AN" : "Auto-Senden: AUS")
+                   .css(autoSendArmed
+                       ? {background:"#2a6000", color:"#fff", border:"1px solid #1a4000"}
+                       : {background:"#ddd",    color:"#555", border:"1px solid #aaa"});
+        });
+        overlay.append(autoBtn);
 
         var confirmBtn = $("<button style='width:100%;min-height:44px;padding:8px;font-size:14px;font-weight:bold;background:#afa;border:1px solid #080;border-radius:4px;cursor:pointer;box-sizing:border-box;margin-bottom:6px;'>✓ Gesendet</button>");
         confirmBtn.on("click", function() {
@@ -527,6 +545,36 @@
         overlay.append(dismissBtn);
 
         mount.prepend(overlay);
+
+        // Set catapult building target in TW's own select
+        if (p.catapultTarget && p.catapultTarget !== "0") {
+            setTimeout(function(){ $("select[name='building']").val(p.catapultTarget); }, 150);
+        }
+
+        // Timer — 100ms for precision near T=0
+        window._lpInt = setInterval(function() {
+            if (!$("#lp-overlay").length) { clearInterval(window._lpInt); return; }
+            var d = cdTarget - serverNow();
+            var $cd = $("#lp-cd");
+            if (d <= 0) {
+                $cd.text(Math.abs(d) < 120000 ? "JETZT!" : "zu spät").css({color:"#ff0", fontWeight:"bold"});
+                if (autoSendArmed && !autoSendFired && d > -4000) {
+                    autoSendFired = true;
+                    autoBtn.text("Auto-Senden: ausgelöst").css({background:"#a04000", color:"#fff", border:"1px solid #703000"});
+                    var btnName = (p.type === "support") ? "support" : "attack";
+                    var $tw = $("input[type='submit'][name='" + btnName + "'], button[name='" + btnName + "']");
+                    if (!$tw.length) {
+                        var needle = (p.type === "support") ? "Unterstützen" : "Angreifen";
+                        $tw = $("input[type='submit'], button[type='submit']").filter(function(){
+                            return ($(this).val() + $(this).text()).indexOf(needle) >= 0;
+                        });
+                    }
+                    if ($tw.length) $tw.first().trigger("click");
+                }
+            } else {
+                $cd.text(fmtHms(d)).css({color:"", fontWeight:""});
+            }
+        }, 100);
     }
 
     // === Action handlers ===
@@ -826,20 +874,7 @@
         var onPlace = p && screen === "place" && villageId === String(p.originId);
 
         if (onPlace && !$("#lp-overlay").length) {
-                injectAttackOverlay(p);
-            if (window._lpInt) clearInterval(window._lpInt);
-            window._lpInt = setInterval(function() {
-                var now = serverNow();
-                $("#lp-overlay .cd").each(function(){
-                    var t = parseInt($(this).data("target"));
-                    var d = t - now;
-                    if (d <= 0) {
-                        $(this).text(Math.abs(d) < 120000 ? "JETZT!" : "zu spät").css({ color: "#ff0", fontWeight: "bold" });
-                    } else {
-                        $(this).text(fmtHms(d));
-                    }
-                });
-            }, 200);
+            injectAttackOverlay(p);
         } else if (!onPlace && !$("#launchpad-panel").length) {
             mount.prepend(panel);
             tableContainer.empty();
@@ -891,19 +926,6 @@
     if (onAttackScreen) {
         // === Initial load already on the place screen (quickbar re-ran after full reload) ===
         injectAttackOverlay(pending);
-        if (window._lpInt) clearInterval(window._lpInt);
-        window._lpInt = setInterval(function() {
-            var now = serverNow();
-            $("#lp-overlay .cd").each(function(){
-                var t = parseInt($(this).data("target"));
-                var d = t - now;
-                if (d <= 0) {
-                    $(this).text(Math.abs(d) < 120000 ? "JETZT!" : "zu spät").css({ color: "#ff0", fontWeight: "bold" });
-                } else {
-                    $(this).text(fmtHms(d));
-                }
-            });
-        }, 200);
     } else {
         // === Normal mode: full panel ===
         mount.prepend(panel);
