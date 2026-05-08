@@ -2,7 +2,7 @@
     $("#launchpad-panel").remove();
 
     // === CONFIG ===
-    var VERSION = "v54";
+    var VERSION = "v55";
     var GITHUB_OWNER = "FNE-stack";
     var GITHUB_REPO = "DS-TEST";
     var GITHUB_BRANCH = "main";
@@ -568,6 +568,7 @@
                         if (autoNextEnabled) {
                             var nextAtt = findNextAttack(plan, p);
                             if (nextAtt) {
+                                autoSendFired = false;
                                 savePendingAttack({
                                     id: nextAtt.id, originId: nextAtt.originId, targetId: nextAtt.targetId,
                                     originLabel: villageLabel(nextAtt.originId),
@@ -633,10 +634,11 @@
                             $form.submit();
                         }
                     }
-                    // Auto-confirm to GitHub — fires regardless of overlay DOM state (works on mobile)
-                    setTimeout(function() {
-                        confirmBtn.trigger("click");
-                    }, 1000);
+                    // Persist marker to sessionStorage — survives full page reload on mobile
+                    try { sessionStorage.setItem("lp_autosent", JSON.stringify({
+                        id: p.id, originId: p.originId, targetId: p.targetId,
+                        arrivalMs: p.arrivalMs, type: p.type || "attack"
+                    })); } catch(e) {}
                 }
             } else {
                 $cd.text(fmtHms(d)).css({color:"", fontWeight:""});
@@ -929,8 +931,54 @@
         githubGet(function(){ githubDelete(); });
     });
 
+    // === Auto-sent handler — reads lp_autosent from sessionStorage and confirms to GitHub ===
+    // Called both at startup (full page reload) and from handleScreenReady (AJAX navigation).
+    function handleAutoSent() {
+        var raw = null;
+        try { raw = sessionStorage.getItem("lp_autosent"); } catch(e) {}
+        if (!raw) return false;
+        try { sessionStorage.removeItem("lp_autosent"); } catch(e) {}
+        var info;
+        try { info = JSON.parse(raw); } catch(e) { return false; }
+        loadVillages(function() {
+            githubGet(function(data) {
+                if (!data || !data.attacks) { clearPendingAttack(); return; }
+                var plan = data.attacks;
+                var att = plan.find(function(a) {
+                    return a.originId === info.originId &&
+                           a.targetId === info.targetId &&
+                           String(a.arrivalMs) === String(info.arrivalMs);
+                });
+                if (att) { att.sent = true; att.sentBy = ME; att.sentAt = Date.now(); }
+                githubPut({ attacks: plan }, "gesendet: " + info.originId + "->" + info.targetId + " von " + ME, function() {
+                    clearPendingAttack();
+                    if (autoNextEnabled) {
+                        var nextAtt = findNextAttack(plan, info);
+                        if (nextAtt) {
+                            autoSendFired = false;
+                            savePendingAttack({
+                                id: nextAtt.id, originId: nextAtt.originId, targetId: nextAtt.targetId,
+                                originLabel: villageLabel(nextAtt.originId),
+                                targetLabel: villageLabel(nextAtt.targetId),
+                                arrivalMs: nextAtt.arrivalMs, sendMs: getSendMs(nextAtt),
+                                type: info.type || "attack",
+                                catapultTarget: nextAtt.catapultTarget || null,
+                                troops: nextAtt.troops || null
+                            });
+                            navigate(buildUrl(nextAtt));
+                            return;
+                        }
+                    }
+                    navigate("/game.php?village=" + info.originId + "&screen=overview");
+                });
+            });
+        });
+        return true;
+    }
+
     // === Screen-change handler — called after any TW navigation ===
     function handleScreenReady() {
+        if (handleAutoSent()) return;
         var p = loadPendingAttack();
         var screen = (typeof game_data !== "undefined") ? game_data.screen : null;
         if (!screen) return;
@@ -990,7 +1038,9 @@
         scheduleScreenCheck();
     });
 
-    if (onAttackScreen) {
+    if (handleAutoSent()) {
+        // Auto-sent marker found — confirm + navigate handled above; skip normal startup
+    } else if (onAttackScreen) {
         // === Initial load already on the place screen (quickbar re-ran after full reload) ===
         injectAttackOverlay(pending);
     } else {
