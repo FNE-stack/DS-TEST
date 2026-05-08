@@ -2,7 +2,7 @@
     $("#launchpad-panel").remove();
 
     // === CONFIG ===
-    var VERSION = "v59";
+    var VERSION = "v60";
     var GITHUB_OWNER = "FNE-stack";
     var GITHUB_REPO = "DS-TEST";
     var GITHUB_BRANCH = "main";
@@ -329,6 +329,53 @@
                 });
             },
             error: function() { onError(); }
+        });
+    }
+
+    // Send an attack/support without navigating: GET the place screen to obtain the real form
+    // (incl. CSRF token), POST it to get the confirm page, POST that to actually send.
+    // Script never navigates, never dies. Falls back via onError() if any step fails.
+    function submitAttackDirect(att, btnName, onSuccess, onError) {
+        loadVillages(function() {
+            $.get(buildUrl(att), function(html) {
+                var $doc = $("<div>").append($.parseHTML(html, null, false));
+                var $form = $doc.find("form").filter(function(){
+                    return $(this).find("input[name='x'], input[name='y']").length > 0;
+                }).first();
+                if (!$form.length) { onError(); return; }
+
+                if (att.catapultTarget && att.catapultTarget !== "0") {
+                    $form.find("select[name='building']").val(att.catapultTarget);
+                }
+
+                var action = $form.attr("action") || "/game.php";
+                var data   = $form.find("input:not([type=submit],[type=button],[type=image]),select,textarea")
+                                  .filter(function(){ return !this.disabled && !!this.name; })
+                                  .serialize();
+                data += "&" + encodeURIComponent(btnName) + "=1";
+
+                $.ajax({ url: action, type: "POST", data: data,
+                    success: function(confirmHtml) {
+                        var $doc2 = $("<div>").append($.parseHTML(confirmHtml, null, false));
+                        var $cForm = $doc2.find("form").filter(function(){
+                            var act = $(this).attr("action") || "";
+                            return act.indexOf("try=confirm") >= 0 ||
+                                   $(this).find("input[name='try'][value='confirm']").length > 0;
+                        }).first();
+                        if (!$cForm.length) { onSuccess(); return; }
+                        var cAction = $cForm.attr("action") || action;
+                        var cData   = $cForm.find("input:not([type=submit],[type=button],[type=image]),select,textarea")
+                                            .filter(function(){ return !this.disabled && !!this.name; })
+                                            .serialize();
+                        cData += "&attack=1";
+                        $.ajax({ url: cAction, type: "POST", data: cData,
+                            success: function() { onSuccess(); },
+                            error: function() { onError(); }
+                        });
+                    },
+                    error: function() { onError(); }
+                });
+            }).fail(function() { onError(); });
         });
     }
 
@@ -729,25 +776,26 @@
     // === Action handlers ===
     function makeSendHandler(att, type) {
         return function() {
-            var url = buildUrl(att);
-            var sendMs = getSendMs(att);
-            att.sent = true;
-            att.sentBy = ME;
-            att.sentAt = Date.now();
-            savePendingAttack({
-                id: att.id, originId: att.originId, targetId: att.targetId,
-                originLabel: villageLabel(att.originId),
-                targetLabel: villageLabel(att.targetId),
-                arrivalMs: att.arrivalMs, sendMs: sendMs,
-                type: type,
-                catapultTarget: att.catapultTarget || null,
-                troops: att.troops || null
-            });
-            setStatus("Markiere als gesendet...");
-            githubPut({ attacks: currentPlan }, "gesendet: " + att.originId + "->" + att.targetId + " von " + ME, function(){
-                setStatus("Status synchronisiert.", "green");
-                renderPlan(currentPlan);
-                navigate(url);
+            var $btn = $(this);
+            $btn.prop("disabled", true);
+            setStatus("Sende...");
+            submitAttackDirect(att, type, function() {
+                att.sent = true; att.sentBy = ME; att.sentAt = Date.now();
+                githubPut({ attacks: currentPlan }, "gesendet: " + att.originId + "->" + att.targetId + " von " + ME, function(){
+                    setStatus("Gesendet!", "green");
+                    renderPlan(currentPlan);
+                });
+            }, function() {
+                $btn.prop("disabled", false);
+                setStatus("Direkt-Senden fehlgeschlagen — manuell senden.", "orange");
+                var sendMs = getSendMs(att);
+                savePendingAttack({
+                    id: att.id, originId: att.originId, targetId: att.targetId,
+                    originLabel: villageLabel(att.originId), targetLabel: villageLabel(att.targetId),
+                    arrivalMs: att.arrivalMs, sendMs: sendMs, type: type,
+                    catapultTarget: att.catapultTarget || null, troops: att.troops || null
+                });
+                navigate(buildUrl(att));
             });
         };
     }
@@ -815,16 +863,25 @@
                 var label = type === "attack" ? "Angreifen" : "Unterstützen";
                 var btn = $("<button style='flex:1;min-height:44px;padding:8px;font-size:13px;font-weight:bold;background:#afa;border:1px solid #080;border-radius:4px;cursor:pointer;box-sizing:border-box;'>" + label + "</button>");
                 btn.on("click", function() {
-                    savePendingAttack({
-                        id: att.id, originId: att.originId, targetId: att.targetId,
-                        originLabel: villageLabel(att.originId),
-                        targetLabel: villageLabel(att.targetId),
-                        arrivalMs: att.arrivalMs, sendMs: sendMs,
-                        type: type,
-                        catapultTarget: att.catapultTarget || null,
-                        troops: att.troops || null
+                    var $b = $(this);
+                    $b.text("...").prop("disabled", true);
+                    submitAttackDirect(att, type, function() {
+                        att.sent = true; att.sentBy = ME; att.sentAt = Date.now();
+                        githubPut({ attacks: currentPlan }, "gesendet: " + att.originId + "->" + att.targetId + " von " + ME, function(){
+                            setStatus("Gesendet!", "green");
+                            renderPlan(currentPlan);
+                        });
+                    }, function() {
+                        $b.text(label).prop("disabled", false);
+                        setStatus("Direkt-Senden fehlgeschlagen — öffne Angriffsscreen.", "orange");
+                        savePendingAttack({
+                            id: att.id, originId: att.originId, targetId: att.targetId,
+                            originLabel: villageLabel(att.originId), targetLabel: villageLabel(att.targetId),
+                            arrivalMs: att.arrivalMs, sendMs: sendMs, type: type,
+                            catapultTarget: att.catapultTarget || null, troops: att.troops || null
+                        });
+                        navigate(buildUrl(att));
                     });
-                    navigate(buildUrl(att));
                 });
                 btnRow.append(btn);
             });
