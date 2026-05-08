@@ -16,15 +16,10 @@
     var currentPlan = [];
     var isWriting = false;
 
-    // Panel session flag — set once per session by quickbar tap (window._lpForcePanel=true),
-    // then kept alive in sessionStorage across every page reload until user closes the panel.
-    if (window._lpForcePanel) {
-        try { sessionStorage.setItem("lp_panel_open", "1"); } catch(e) {}
-        delete window._lpForcePanel;
-    }
-    var panelOpen = (function() {
-        try { return sessionStorage.getItem("lp_panel_open") === "1"; } catch(e) { return false; }
-    })();
+    // Panel session flag — set on every quickbar tap, survives page reloads via sessionStorage
+    // so the panel re-appears automatically after each navigation while the script is alive.
+    try { sessionStorage.setItem("lp_panel_open", "1"); } catch(e) {}
+    var panelOpen = true;
 
     function isMobile() { return window.innerWidth < 700; }
 
