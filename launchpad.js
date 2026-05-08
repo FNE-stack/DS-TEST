@@ -2,7 +2,7 @@
     $("#launchpad-panel").remove();
 
     // === CONFIG ===
-    var VERSION = "v56";
+    var VERSION = "v57";
     var GITHUB_OWNER = "FNE-stack";
     var GITHUB_REPO = "DS-TEST";
     var GITHUB_BRANCH = "main";
@@ -303,6 +303,21 @@
         return p;
     }
 
+    // Submit attack/support form via AJAX — prevents the page reload that kills the script.
+    // Reads actual troop values from TW's own form fields so user edits are respected.
+    function ajaxSubmitAttack($form, btnName, onSuccess, onError) {
+        var method = ($form.attr("method") || "GET").toUpperCase();
+        var action = $form.attr("action") || "/game.php";
+        var data   = $form.find("input:not([type=submit],[type=button],[type=image]),select,textarea")
+                          .filter(function(){ return !this.disabled && !!this.name; })
+                          .serialize();
+        data += (data ? "&" : "") + encodeURIComponent(btnName) + "=1";
+        $.ajax({ url: action, type: method, data: data,
+            success: function() { onSuccess(); },
+            error:   function() { onError(); }
+        });
+    }
+
     // TribalWars.redirect = AJAX swap (script survives); fall back to location.href
     function navigate(url) {
         if (typeof TribalWars !== "undefined" && TribalWars.redirect) {
@@ -580,6 +595,7 @@
                 if (att) { att.sent = true; att.sentBy = ME; att.sentAt = Date.now(); }
                 githubPut({ attacks: plan }, "gesendet: " + p.originId + "->" + p.targetId + " von " + ME, function(){
                     clearPendingAttack();
+                    try { sessionStorage.removeItem("lp_autosent"); } catch(e) {}
                     if (window._lpInt) clearInterval(window._lpInt);
                     overlay.html("<div style='color:#080;font-size:14px;font-weight:bold;padding:10px 0;text-align:center;'>✓ Als gesendet markiert.</div>");
                     setTimeout(function() {
@@ -617,6 +633,34 @@
 
         mount.prepend(overlay);
 
+        // Hook TW's attack/support buttons to submit via AJAX (FarmGod-style blanket).
+        // This keeps the script alive after the attack is sent — no page reload.
+        var $twForm = $("form").filter(function(){
+            return $(this).find("input[name='x'], input[name='y']").length > 0;
+        }).first();
+        if ($twForm.length) {
+            var _bSel = "input[type='submit'][name='attack'],button[name='attack']," +
+                        "input[type='submit'][name='support'],button[name='support']";
+            $(_bSel).off("click.lp").on("click.lp", function(e) {
+                var bName = $(this).attr("name");
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                $(this).prop("disabled", true);
+                ajaxSubmitAttack($twForm, bName,
+                    function() { confirmBtn.trigger("click"); },
+                    function() {
+                        // AJAX failed — remove hook, fall back to native click + page reload
+                        $(_bSel).off("click.lp");
+                        try { sessionStorage.setItem("lp_autosent", JSON.stringify({
+                            id: p.id, originId: p.originId, targetId: p.targetId,
+                            arrivalMs: p.arrivalMs, type: bName
+                        })); } catch(e2) {}
+                        $(_bSel).filter("[name='" + bName + "']").prop("disabled", false).first()[0].click();
+                    }
+                );
+            });
+        }
+
         // Set catapult building target in TW's own select
         if (p.catapultTarget && p.catapultTarget !== "0") {
             setTimeout(function(){ $("select[name='building']").val(p.catapultTarget); }, 150);
@@ -641,18 +685,24 @@
                         });
                     }
                     if ($tw.length) {
-                        $tw.first()[0].click(); // native click — more reliable on mobile WebView
-                    } else {
-                        // Fallback: submit the form directly with the action parameter
-                        var $form = $("form").filter(function(){
-                            return $(this).find("input[name='x'], input[name='y']").length > 0;
-                        }).first();
-                        if ($form.length) {
-                            $("<input type='hidden'>").attr({name: btnName, value: "1"}).appendTo($form);
-                            $form.submit();
-                        }
+                        // Clicking TW's button triggers the .lp AJAX hook above if form was found,
+                        // otherwise falls through to native click → page reload.
+                        $tw.first()[0].click();
+                    } else if ($twForm.length) {
+                        // No button visible — submit via AJAX directly
+                        ajaxSubmitAttack($twForm, btnName,
+                            function() { confirmBtn.trigger("click"); },
+                            function() {
+                                try { sessionStorage.setItem("lp_autosent", JSON.stringify({
+                                    id: p.id, originId: p.originId, targetId: p.targetId,
+                                    arrivalMs: p.arrivalMs, type: p.type || "attack"
+                                })); } catch(e2) {}
+                                $("<input type='hidden'>").attr({name: btnName, value: "1"}).appendTo($twForm);
+                                $twForm.submit();
+                            }
+                        );
                     }
-                    // Persist marker to sessionStorage — survives full page reload on mobile
+                    // lp_autosent backup — cleared by confirmBtn on success, used on AJAX failure
                     try { sessionStorage.setItem("lp_autosent", JSON.stringify({
                         id: p.id, originId: p.originId, targetId: p.targetId,
                         arrivalMs: p.arrivalMs, type: p.type || "attack"
@@ -1023,8 +1073,19 @@
     }
 
     // === Navigation detection ===
-    // TribalWars.redirect uses native XHR — ajaxComplete never fires for it.
-    // Use MutationObserver on #contentContainer as primary trigger.
+    // Wrap TribalWars.redirect so our screen-check fires on every TW navigation.
+    // _lpHooked flag prevents double-wrapping if quickbar is tapped again.
+    if (typeof TribalWars !== "undefined" && TribalWars.redirect && !TribalWars._lpHooked) {
+        var _twRedir = TribalWars.redirect.bind(TribalWars);
+        TribalWars.redirect = function(url) {
+            var r = _twRedir(url);
+            scheduleScreenCheck();
+            return r;
+        };
+        TribalWars._lpHooked = true;
+    }
+
+    // MutationObserver on #contentContainer as primary trigger (also fires for non-redirect navigations).
     var _lpNavTimer = null;
     function scheduleScreenCheck() {
         clearTimeout(_lpNavTimer);
