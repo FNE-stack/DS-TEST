@@ -2,7 +2,7 @@
     $("#launchpad-panel").remove();
 
     // === CONFIG ===
-    var VERSION = "v45";
+    var VERSION = "v46";
     var GITHUB_OWNER = "FNE-stack";
     var GITHUB_REPO = "DS-TEST";
     var GITHUB_BRANCH = "main";
@@ -167,19 +167,28 @@
         snob:   "Adelshof",   watchtower:"Späherturm", church:  "Kirche",
         church_f:"Erstkirche",academy:  "Akademie"
     };
-    // DS Ultimate exports catapult target as a 1-based numeric ID
-    var BUILDING_IDS = {
-        "1":"main","2":"barracks","3":"stable","4":"garage","5":"smith",
-        "6":"place","7":"statue","8":"market","9":"wood","10":"stone",
-        "11":"iron","12":"farm","13":"storage","14":"hide","15":"wall",
-        "16":"snob","17":"watchtower","18":"church","19":"church_f"
-    };
+    // Dynamic building ID map — populated from TW's own catapult select on the place screen
+    var twBuildingIds = {};
+    function scanTwBuildingIds() {
+        $("select[name='building'] option").each(function() {
+            var val = $(this).val();
+            var text = $(this).text().trim();
+            if (val && val !== "0" && text) twBuildingIds[val] = text;
+        });
+    }
     function buildingHtml(key, troops) {
         if (!key || key === "0" || key === "none") return "";
         if (troops && !(troops.catapult > 0)) return "";
-        var k = BUILDING_IDS[String(key)] || String(key).toLowerCase();
-        var name = BUILDINGS[k] || k;
-        return "<img src='/graphic/buildings/" + k + ".png' " +
+        var k = String(key);
+        // Prefer TW's own label (populated from place screen select)
+        var name = twBuildingIds[k];
+        if (!name) {
+            // Fall back: try string key in BUILDINGS map
+            var mapped = BUILDINGS[k.toLowerCase()];
+            name = mapped || ("Gebäude #" + k);
+        }
+        var imgKey = k.toLowerCase();
+        return "<img src='/graphic/buildings/" + imgKey + ".png' " +
                "onerror='this.style.display=\"none\"' " +
                "title='" + name + "' style='width:18px;height:18px;vertical-align:middle;margin-right:3px;'>" +
                "<span>" + name + "</span>";
@@ -472,6 +481,7 @@
 
     // === FarmGod-style in-page overlay for attack screen ===
     function injectAttackOverlay(p) {
+        scanTwBuildingIds();
         $("#lp-overlay").remove();
 
         var sendMs   = p.sendMs   || null;
@@ -828,6 +838,7 @@
         var onPlace = p && screen === "place" && villageId === String(p.originId);
 
         if (onPlace && !$("#lp-overlay").length) {
+            scanTwBuildingIds();
             injectAttackOverlay(p);
             if (window._lpInt) clearInterval(window._lpInt);
             window._lpInt = setInterval(function() {
