@@ -2,7 +2,7 @@
     $("#launchpad-panel").remove();
 
     // === CONFIG ===
-    var VERSION = "v62";
+    var VERSION = "v63";
     var GITHUB_OWNER = "FNE-stack";
     var GITHUB_REPO = "DS-TEST";
     var GITHUB_BRANCH = "main";
@@ -360,52 +360,73 @@
         return parts.join("&");
     }
 
+    function fetchText(url, opts) {
+        return fetch(url, Object.assign({ credentials: "include" }, opts || {}))
+               .then(function(r) { return r.text(); });
+    }
+
     function submitAttackDirect(att, btnName, onSuccess, onError) {
         loadVillages(function() {
-            $.ajax({ url: buildUrl(att), type: "GET",
-                success: function(html) {
-                    var doc = parseDoc(html);
-                    var forms = doc.body.querySelectorAll("form");
-                    var placeForm = null;
-                    for (var i = 0; i < forms.length; i++) {
-                        if (forms[i].querySelector("input[name='x'], input[name='y']")) {
-                            placeForm = forms[i]; break;
+            // Step 1: GET place screen — use fetch (no X-Requested-With) so TW gives full HTML
+            fetchText(buildUrl(att))
+            .then(function(html) {
+                var doc = parseDoc(html);
+                var placeForm = null;
+                var forms = doc.body.querySelectorAll("form");
+                for (var i = 0; i < forms.length; i++) {
+                    if (forms[i].querySelector("input[name='x'], input[name='y']")) {
+                        placeForm = forms[i]; break;
+                    }
+                }
+                if (!placeForm) { onError("no-form"); return; }
+
+                // Ensure troop values match att.troops (handles 'axe' and 'unit_axe' naming)
+                var troops = att.troops || {};
+                Object.keys(troops).forEach(function(u) {
+                    var el = placeForm.querySelector("input[name='" + u + "']") ||
+                             placeForm.querySelector("input[name='unit_" + u + "']");
+                    if (el) el.value = troops[u] || 0;
+                });
+                if (att.catapultTarget && att.catapultTarget !== "0") {
+                    var bld = placeForm.querySelector("select[name='building']");
+                    if (bld) bld.value = att.catapultTarget;
+                }
+
+                var action = placeForm.getAttribute("action") || "/game.php";
+                var data = serializeForm(placeForm) + "&" + encodeURIComponent(btnName) + "=1";
+
+                // Step 2: POST place form → should get confirm page
+                fetchText(action, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                    body: data
+                })
+                .then(function(confirmHtml) {
+                    var cForm = findConfirmForm(parseDoc(confirmHtml));
+                    if (!cForm) { onError("no-confirm"); return; }
+
+                    var cAction = cForm.getAttribute("action") || action;
+                    var cData = serializeForm(cForm) + "&attack=1";
+
+                    // Step 3: POST confirm form → attack sent
+                    fetchText(cAction, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                        body: cData
+                    })
+                    .then(function(finalHtml) {
+                        // If confirm form still present, TW rejected the submission
+                        if (findConfirmForm(parseDoc(finalHtml))) {
+                            onError("confirm-rejected");
+                        } else {
+                            onSuccess();
                         }
-                    }
-                    if (!placeForm) { onError("no-form"); return; }
-
-                    // Force troop values from att.troops — handles both 'axe' and 'unit_axe' naming
-                    var troops = att.troops || {};
-                    Object.keys(troops).forEach(function(u) {
-                        var el = placeForm.querySelector("input[name='" + u + "']") ||
-                                 placeForm.querySelector("input[name='unit_" + u + "']");
-                        if (el) el.value = troops[u] || 0;
-                    });
-
-                    if (att.catapultTarget && att.catapultTarget !== "0") {
-                        var bld = placeForm.querySelector("select[name='building']");
-                        if (bld) bld.value = att.catapultTarget;
-                    }
-
-                    var action = placeForm.getAttribute("action") || "/game.php";
-                    var data = serializeForm(placeForm) + "&" + encodeURIComponent(btnName) + "=1";
-
-                    $.ajax({ url: action, type: "POST", data: data,
-                        success: function(confirmHtml) {
-                            var cForm = findConfirmForm(parseDoc(confirmHtml));
-                            if (!cForm) { onError("no-confirm"); return; }
-                            var cAction = cForm.getAttribute("action") || action;
-                            var cData = serializeForm(cForm) + "&attack=1";
-                            $.ajax({ url: cAction, type: "POST", data: cData,
-                                success: function() { onSuccess(); },
-                                error: function() { onError("confirm-post"); }
-                            });
-                        },
-                        error: function() { onError("place-post"); }
-                    });
-                },
-                error: function() { onError("place-get"); }
-            });
+                    })
+                    .catch(function() { onError("step3"); });
+                })
+                .catch(function() { onError("step2"); });
+            })
+            .catch(function() { onError("step1"); });
         });
     }
 
