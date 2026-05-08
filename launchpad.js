@@ -2,7 +2,7 @@
     $("#launchpad-panel").remove();
 
     // === CONFIG ===
-    var VERSION = "v43";
+    var VERSION = "v44";
     var GITHUB_OWNER = "FNE-stack";
     var GITHUB_REPO = "DS-TEST";
     var GITHUB_BRANCH = "main";
@@ -156,6 +156,23 @@
             if (slowest === null || mpf > slowest) slowest = mpf;
         });
         return slowest;
+    }
+
+    var BUILDINGS = {
+        main:       "Hauptgebäude",   barracks: "Kaserne",      stable:  "Stall",
+        garage:     "Werkstatt",      watchtower:"Späherturm",  snob:    "Adelshof",
+        smith:      "Schmiede",       place:    "Versammlungsplatz", statue: "Statue",
+        market:     "Markt",          wood:     "Holzfäller",   stone:   "Lehmgrube",
+        iron:       "Eisenmine",      farm:     "Bauernhof",    storage: "Speicher",
+        hide:       "Versteck",       wall:     "Wall",         church:  "Kirche",
+        church_f:   "Erstkirche",     academy:  "Akademie"
+    };
+    function buildingHtml(key) {
+        if (!key || key === "0" || key === "none") return "";
+        var k = String(key).toLowerCase();
+        var name = BUILDINGS[k] || key;
+        return "<img src='/graphic/buildings/" + k + ".png' title='" + name + "' style='width:18px;height:18px;vertical-align:middle;margin-right:3px;'>" +
+               "<span>" + name + "</span>";
     }
 
     function getSendMs(att) {
@@ -458,10 +475,13 @@
         overlay.append("<div style='font-size:10px;font-weight:bold;color:#804000;margin-bottom:8px;letter-spacing:1px;text-transform:uppercase;'>" + overlayTitle + "</div>");
 
         overlay.append(
-            "<div style='font-size:12px;margin-bottom:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' title='" + fromLabel + " → " + toLabel + "'>" +
+            "<div style='font-size:12px;margin-bottom:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' title='" + fromLabel + " → " + toLabel + "'>" +
             fromLabel + " <span style='color:#804000;'>→</span> " + toLabel +
             "</div>"
         );
+
+        var bHtml = buildingHtml(p.catapultTarget);
+        if (bHtml) overlay.append("<div style='font-size:11px;color:#804000;margin-bottom:8px;'>⚙&nbsp;" + bHtml + "</div>");
 
         var cdLabel = sendMs ? "Losschicken in" : "Ankunft in";
         overlay.append(
@@ -521,7 +541,8 @@
                 originLabel: villageLabel(att.originId),
                 targetLabel: villageLabel(att.targetId),
                 arrivalMs: att.arrivalMs, sendMs: sendMs,
-                type: isSupport(att) ? "support" : "attack"
+                type: isSupport(att) ? "support" : "attack",
+                catapultTarget: att.catapultTarget || null
             });
             setStatus("Markiere als gesendet...");
             githubPut({ attacks: currentPlan }, "gesendet: " + att.originId + "->" + att.targetId + " von " + ME, function(){
@@ -572,6 +593,9 @@
             var tHtml = troopsHtml(att.troops);
             if (tHtml) card.append("<div style='margin-bottom:8px;line-height:1.8;'>" + tHtml + "</div>");
 
+            var bHtml = buildingHtml(att.catapultTarget);
+            if (bHtml) card.append("<div style='font-size:11px;color:#804000;margin-bottom:8px;'>⚙&nbsp;" + bHtml + "</div>");
+
             // Countdown box — prominent
             var cdLabel = sendMs ? "Losschicken in" : "Ankunft in";
             card.append("<div style='background:#5a1f00;color:#ffe8c0;border-radius:4px;padding:6px 8px;margin-bottom:6px;text-align:center;'>" +
@@ -595,7 +619,8 @@
                     originLabel: villageLabel(att.originId),
                     targetLabel: villageLabel(att.targetId),
                     arrivalMs: att.arrivalMs, sendMs: sendMs,
-                    type: supp ? "support" : "attack"
+                    type: supp ? "support" : "attack",
+                    catapultTarget: att.catapultTarget || null
                 });
                 navigate(buildUrl(att));
             });
@@ -645,10 +670,12 @@
         function makeRow(att, i) {
             var sendMs = getSendMs(att);
             var cdTarget = sendMs || att.arrivalMs;
+            var bHtml = buildingHtml(att.catapultTarget);
             var routeHtml =
                 "<div style='font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' title='" + villageLabel(att.originId) + "'>" + villageLabel(att.originId) + "</div>" +
                 "<div style='font-size:10px;color:#a07030;'>↓</div>" +
-                "<div style='font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' title='" + villageLabel(att.targetId) + "'>" + villageLabel(att.targetId) + "</div>";
+                "<div style='font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' title='" + villageLabel(att.targetId) + "'>" + villageLabel(att.targetId) + "</div>" +
+                (bHtml ? "<div style='font-size:10px;color:#804000;margin-top:2px;'>⚙&nbsp;" + bHtml + "</div>" : "");
             var timesHtml = sendMs
                 ? ("<div style='font-size:10px;white-space:nowrap;'>⚑ " + fmtTime(sendMs) + "</div>" +
                    "<div style='font-size:10px;white-space:nowrap;opacity:0.65;'>⚐ " + fmtTime(att.arrivalMs) + "</div>")
