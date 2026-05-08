@@ -2,7 +2,7 @@
     $("#launchpad-panel").remove();
 
     // === CONFIG ===
-    var VERSION = "v47";
+    var VERSION = "v48";
     var GITHUB_OWNER = "FNE-stack";
     var GITHUB_REPO = "DS-TEST";
     var GITHUB_BRANCH = "main";
@@ -12,7 +12,6 @@
     var AUTO_REFRESH_MS = 15000;
 
     var villageMap = {};
-    var playerMap = {};
     var currentSha = null;
     var currentPlan = [];
     var isWriting = false;
@@ -71,37 +70,11 @@
             callback();
         }).fail(callback);
     }
-    function loadPlayers(callback) {
-        if (Object.keys(playerMap).length > 0) { callback(); return; }
-        $.get("/map/player.txt", function(data) {
-            data.split("\n").forEach(function(line){
-                var p = line.split(",");
-                if (p.length >= 3) playerMap[p[0]] = { allyId: p[2] };
-            });
-            callback();
-        }).fail(callback);
-    }
-    function loadData(callback) {
-        loadVillages(function(){ loadPlayers(callback); });
-    }
     function villageLabel(id) {
         var v = villageMap[id];
         return v ? v.name + " (" + v.x + "|" + v.y + ")" : id;
     }
-    function isSupport(att) {
-        var targetV = villageMap[String(att.targetId)];
-        if (!targetV || !targetV.playerId) return false;
-        var targetPid = String(targetV.playerId);
-        if (targetPid === "0") return false;
-        var myPid = String((typeof game_data !== "undefined" && game_data.player) ? game_data.player.id : "0");
-        if (targetPid === myPid) return true;
-        // Resolve my tribe from player.txt — more reliable than game_data.player.ally_id
-        var myEntry = playerMap[myPid];
-        var myAlly = myEntry ? String(myEntry.allyId) : "0";
-        if (myAlly === "0") return false;
-        var tp = playerMap[targetPid];
-        return tp ? String(tp.allyId) === myAlly : false;
-    }
+
 
     // === Parsing ===
     function parseLine(line) {
@@ -305,9 +278,7 @@
     }
 
     function buildUrl(a) {
-        var p = "/game.php?village=" + a.originId + "&screen=place";
-        if (isSupport(a)) p += "&mode=support";
-        p += "&target=" + a.targetId;
+        var p = "/game.php?village=" + a.originId + "&screen=place&target=" + a.targetId;
         for (var u in a.troops) {
             if (a.troops[u] > 0) p += "&" + u + "=" + a.troops[u];
         }
@@ -559,7 +530,7 @@
     }
 
     // === Action handlers ===
-    function makeSendHandler(att) {
+    function makeSendHandler(att, type) {
         return function() {
             var url = buildUrl(att);
             var sendMs = getSendMs(att);
@@ -571,7 +542,7 @@
                 originLabel: villageLabel(att.originId),
                 targetLabel: villageLabel(att.targetId),
                 arrivalMs: att.arrivalMs, sendMs: sendMs,
-                type: isSupport(att) ? "support" : "attack",
+                type: type,
                 catapultTarget: att.catapultTarget || null,
                 troops: att.troops || null
             });
@@ -641,22 +612,26 @@
             timesDiv += "</div>";
             card.append(timesDiv);
 
-            // Send button
-            var supp = isSupport(att);
-            var sendBtn = $("<button style='width:100%;min-height:44px;padding:8px;font-size:14px;font-weight:bold;background:#afa;border:1px solid #080;border-radius:4px;cursor:pointer;box-sizing:border-box;'>" + (supp ? "Unterstützen" : "Senden") + "</button>");
-            sendBtn.on("click", function() {
-                savePendingAttack({
-                    id: att.id, originId: att.originId, targetId: att.targetId,
-                    originLabel: villageLabel(att.originId),
-                    targetLabel: villageLabel(att.targetId),
-                    arrivalMs: att.arrivalMs, sendMs: sendMs,
-                    type: supp ? "support" : "attack",
-                    catapultTarget: att.catapultTarget || null,
-                troops: att.troops || null
+            // Send buttons — both always visible
+            var btnRow = $("<div style='display:flex;gap:6px;'></div>");
+            ["attack", "support"].forEach(function(type) {
+                var label = type === "attack" ? "Angreifen" : "Unterstützen";
+                var btn = $("<button style='flex:1;min-height:44px;padding:8px;font-size:13px;font-weight:bold;background:#afa;border:1px solid #080;border-radius:4px;cursor:pointer;box-sizing:border-box;'>" + label + "</button>");
+                btn.on("click", function() {
+                    savePendingAttack({
+                        id: att.id, originId: att.originId, targetId: att.targetId,
+                        originLabel: villageLabel(att.originId),
+                        targetLabel: villageLabel(att.targetId),
+                        arrivalMs: att.arrivalMs, sendMs: sendMs,
+                        type: type,
+                        catapultTarget: att.catapultTarget || null,
+                        troops: att.troops || null
+                    });
+                    navigate(buildUrl(att));
                 });
-                navigate(buildUrl(att));
+                btnRow.append(btn);
             });
-            card.append(sendBtn);
+            card.append(btnRow);
             tableContainer.append(card);
         });
 
@@ -696,7 +671,7 @@
             "<th style='width:100px;'>Losschicken in</th>" +
             "<th style='width:120px;'>Senden / Ankunft</th>" +
             "<th style='width:90px;'>Status</th>" +
-            "<th style='width:80px;'>Aktion</th>" +
+            "<th style='width:130px;'>Aktion</th>" +
             "</tr></thead>";
 
         function makeRow(att, i) {
@@ -728,9 +703,11 @@
             if (att.sent) row.css({ background: "#e8e8e8", opacity: "0.7" });
             var actionCell = row.find("td").last();
             if (!att.sent) {
-                var sendBtn = $("<button class='btn'>" + (isSupport(att) ? "Unterstützen" : "Senden") + "</button>");
-                sendBtn.on("click", makeSendHandler(att));
-                actionCell.append(sendBtn);
+                var atkBtn = $("<button class='btn' style='display:block;width:100%;margin-bottom:2px;font-size:11px;'>Angreifen</button>");
+                var supBtn = $("<button class='btn' style='display:block;width:100%;font-size:11px;'>Unterstützen</button>");
+                atkBtn.on("click", makeSendHandler(att, "attack"));
+                supBtn.on("click", makeSendHandler(att, "support"));
+                actionCell.append(atkBtn).append(supBtn);
             } else {
                 var revokeBtn = $("<button style='background:#fcc;font-size:11px;'>Zurücksetzen</button>");
                 revokeBtn.on("click", makeRevokeHandler(att));
@@ -798,7 +775,7 @@
         clearTimeout(pushTimer);
         pushConfirmed = false;
         pushBtn.text("Plan hochladen");
-        loadData(function(){
+        loadVillages(function(){
             githubGet(function(){
                 githubPut({ attacks: plan }, "neuer Plan (" + plan.length + " Angriffe)", function(){
                     setStatus("Neuer Plan hochgeladen.", "green");
@@ -811,7 +788,7 @@
     });
 
     refreshBtn.on("click", function() {
-        loadData(function(){
+        loadVillages(function(){
             setStatus("Aktualisiere...");
             githubGet(function(data){
                 if (!data || !data.attacks) { renderPlan([]); setStatus("Kein Plan auf GitHub.", "orange"); return; }
@@ -866,7 +843,7 @@
         } else if (!onPlace && !$("#launchpad-panel").length) {
             mount.prepend(panel);
             tableContainer.empty();
-            loadData(function(){
+            loadVillages(function(){
                 githubGet(function(data){
                     if (data && data.attacks) renderPlan(data.attacks);
                 });
@@ -933,7 +910,7 @@
 
         if (pending && pending.arrivalMs) showCountdownWidget(pending);
 
-        loadData(function(){
+        loadVillages(function(){
             githubGet(function(data){
                 if (data && data.attacks) renderPlan(data.attacks);
                 else setStatus("Noch kein Plan auf GitHub — Plan einfügen und hochladen.", "orange");
