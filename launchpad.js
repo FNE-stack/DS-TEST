@@ -2,7 +2,7 @@
     $("#launchpad-panel").remove();
 
     // === CONFIG ===
-    var VERSION = "v49";
+    var VERSION = "v50";
     var GITHUB_OWNER = "FNE-stack";
     var GITHUB_REPO = "DS-TEST";
     var GITHUB_BRANCH = "main";
@@ -562,14 +562,25 @@
                     autoSendFired = true;
                     autoBtn.text("Auto-Senden: ausgelöst").css({background:"#a04000", color:"#fff", border:"1px solid #703000"});
                     var btnName = (p.type === "support") ? "support" : "attack";
+                    var needle  = (p.type === "support") ? "Unterstützen" : "Angreifen";
                     var $tw = $("input[type='submit'][name='" + btnName + "'], button[name='" + btnName + "']");
                     if (!$tw.length) {
-                        var needle = (p.type === "support") ? "Unterstützen" : "Angreifen";
-                        $tw = $("input[type='submit'], button[type='submit']").filter(function(){
-                            return ($(this).val() + $(this).text()).indexOf(needle) >= 0;
+                        $tw = $("input[type='submit'], button").filter(function(){
+                            return (($(this).val() || "") + $(this).text()).indexOf(needle) >= 0;
                         });
                     }
-                    if ($tw.length) $tw.first().trigger("click");
+                    if ($tw.length) {
+                        $tw.first()[0].click(); // native click — more reliable on mobile WebView
+                    } else {
+                        // Fallback: submit the form directly with the action parameter
+                        var $form = $("form").filter(function(){
+                            return $(this).find("input[name='x'], input[name='y']").length > 0;
+                        }).first();
+                        if ($form.length) {
+                            $("<input type='hidden'>").attr({name: btnName, value: "1"}).appendTo($form);
+                            $form.submit();
+                        }
+                    }
                 }
             } else {
                 $cd.text(fmtHms(d)).css({color:"", fontWeight:""});
