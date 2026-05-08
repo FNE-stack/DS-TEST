@@ -2,7 +2,7 @@
     $("#launchpad-panel").remove();
 
     // === CONFIG ===
-    var VERSION = "v44";
+    var VERSION = "v45";
     var GITHUB_OWNER = "FNE-stack";
     var GITHUB_REPO = "DS-TEST";
     var GITHUB_BRANCH = "main";
@@ -159,19 +159,29 @@
     }
 
     var BUILDINGS = {
-        main:       "Hauptgebäude",   barracks: "Kaserne",      stable:  "Stall",
-        garage:     "Werkstatt",      watchtower:"Späherturm",  snob:    "Adelshof",
-        smith:      "Schmiede",       place:    "Versammlungsplatz", statue: "Statue",
-        market:     "Markt",          wood:     "Holzfäller",   stone:   "Lehmgrube",
-        iron:       "Eisenmine",      farm:     "Bauernhof",    storage: "Speicher",
-        hide:       "Versteck",       wall:     "Wall",         church:  "Kirche",
-        church_f:   "Erstkirche",     academy:  "Akademie"
+        main: "Hauptgebäude", barracks: "Kaserne",   stable:    "Stall",
+        garage: "Werkstatt",  smith:    "Schmiede",  place:     "Versammlungsplatz",
+        statue: "Statue",     market:   "Markt",     wood:      "Holzfäller",
+        stone:  "Lehmgrube",  iron:     "Eisenmine", farm:      "Bauernhof",
+        storage:"Speicher",   hide:     "Versteck",  wall:      "Wall",
+        snob:   "Adelshof",   watchtower:"Späherturm", church:  "Kirche",
+        church_f:"Erstkirche",academy:  "Akademie"
     };
-    function buildingHtml(key) {
+    // DS Ultimate exports catapult target as a 1-based numeric ID
+    var BUILDING_IDS = {
+        "1":"main","2":"barracks","3":"stable","4":"garage","5":"smith",
+        "6":"place","7":"statue","8":"market","9":"wood","10":"stone",
+        "11":"iron","12":"farm","13":"storage","14":"hide","15":"wall",
+        "16":"snob","17":"watchtower","18":"church","19":"church_f"
+    };
+    function buildingHtml(key, troops) {
         if (!key || key === "0" || key === "none") return "";
-        var k = String(key).toLowerCase();
-        var name = BUILDINGS[k] || key;
-        return "<img src='/graphic/buildings/" + k + ".png' title='" + name + "' style='width:18px;height:18px;vertical-align:middle;margin-right:3px;'>" +
+        if (troops && !(troops.catapult > 0)) return "";
+        var k = BUILDING_IDS[String(key)] || String(key).toLowerCase();
+        var name = BUILDINGS[k] || k;
+        return "<img src='/graphic/buildings/" + k + ".png' " +
+               "onerror='this.style.display=\"none\"' " +
+               "title='" + name + "' style='width:18px;height:18px;vertical-align:middle;margin-right:3px;'>" +
                "<span>" + name + "</span>";
     }
 
@@ -480,7 +490,7 @@
             "</div>"
         );
 
-        var bHtml = buildingHtml(p.catapultTarget);
+        var bHtml = buildingHtml(p.catapultTarget, p.troops);
         if (bHtml) overlay.append("<div style='font-size:11px;color:#804000;margin-bottom:8px;'>⚙&nbsp;" + bHtml + "</div>");
 
         var cdLabel = sendMs ? "Losschicken in" : "Ankunft in";
@@ -542,7 +552,8 @@
                 targetLabel: villageLabel(att.targetId),
                 arrivalMs: att.arrivalMs, sendMs: sendMs,
                 type: isSupport(att) ? "support" : "attack",
-                catapultTarget: att.catapultTarget || null
+                catapultTarget: att.catapultTarget || null,
+                troops: att.troops || null
             });
             setStatus("Markiere als gesendet...");
             githubPut({ attacks: currentPlan }, "gesendet: " + att.originId + "->" + att.targetId + " von " + ME, function(){
@@ -593,7 +604,7 @@
             var tHtml = troopsHtml(att.troops);
             if (tHtml) card.append("<div style='margin-bottom:8px;line-height:1.8;'>" + tHtml + "</div>");
 
-            var bHtml = buildingHtml(att.catapultTarget);
+            var bHtml = buildingHtml(att.catapultTarget, att.troops);
             if (bHtml) card.append("<div style='font-size:11px;color:#804000;margin-bottom:8px;'>⚙&nbsp;" + bHtml + "</div>");
 
             // Countdown box — prominent
@@ -620,7 +631,8 @@
                     targetLabel: villageLabel(att.targetId),
                     arrivalMs: att.arrivalMs, sendMs: sendMs,
                     type: supp ? "support" : "attack",
-                    catapultTarget: att.catapultTarget || null
+                    catapultTarget: att.catapultTarget || null,
+                troops: att.troops || null
                 });
                 navigate(buildUrl(att));
             });
@@ -670,7 +682,7 @@
         function makeRow(att, i) {
             var sendMs = getSendMs(att);
             var cdTarget = sendMs || att.arrivalMs;
-            var bHtml = buildingHtml(att.catapultTarget);
+            var bHtml = buildingHtml(att.catapultTarget, att.troops);
             var routeHtml =
                 "<div style='font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' title='" + villageLabel(att.originId) + "'>" + villageLabel(att.originId) + "</div>" +
                 "<div style='font-size:10px;color:#a07030;'>↓</div>" +
