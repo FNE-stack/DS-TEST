@@ -1,11 +1,11 @@
 {
   "attacks": [
     {
-      "id": "2507_3337_1778250660000",
+      "id": "2507_3337_1778252024000",
       "originId": "2507",
       "targetId": "3337",
       "slowest": "axe",
-      "arrivalMs": 1778250660000,
+      "arrivalMs": 1778252024000,
       "catapultTarget": "8",
       "troops": {
         "spear": null,
@@ -22,17 +22,17 @@
         "snob": null,
         "militia": 0
       },
-      "raw": "2507&3337&axe&1778250660000&8&false&false&spear=/sword=/axe=NTU=/archer=/spy=/light=/marcher=/heavy=/ram=MA==/catapult=/knight=/snob=/militia=MA==",
+      "raw": "2507&3337&axe&1778252024000&8&false&false&spear=/sword=/axe=NTU=/archer=/spy=/light=/marcher=/heavy=/ram=MA==/catapult=/knight=/snob=/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
     },
     {
-      "id": "2507_3337_1778250704000",
+      "id": "2507_3337_1778252073000",
       "originId": "2507",
       "targetId": "3337",
       "slowest": "axe",
-      "arrivalMs": 1778250704000,
+      "arrivalMs": 1778252073000,
       "catapultTarget": "8",
       "troops": {
         "spear": null,
@@ -49,17 +49,17 @@
         "snob": null,
         "militia": 0
       },
-      "raw": "2507&3337&axe&1778250704000&8&false&false&spear=/sword=/axe=NTU=/archer=/spy=/light=/marcher=/heavy=/ram=MA==/catapult=/knight=/snob=/militia=MA==",
+      "raw": "2507&3337&axe&1778252073000&8&false&false&spear=/sword=/axe=NTU=/archer=/spy=/light=/marcher=/heavy=/ram=MA==/catapult=/knight=/snob=/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
     },
     {
-      "id": "2507_3337_1778250780000",
+      "id": "2507_3337_1778252144000",
       "originId": "2507",
       "targetId": "3337",
       "slowest": "axe",
-      "arrivalMs": 1778250780000,
+      "arrivalMs": 1778252144000,
       "catapultTarget": "8",
       "troops": {
         "spear": null,
@@ -76,7 +76,7 @@
         "snob": null,
         "militia": 0
       },
-      "raw": "2507&3337&axe&1778250780000&8&false&false&spear=/sword=/axe=NTU=/archer=/spy=/light=/marcher=/heavy=/ram=MA==/catapult=/knight=/snob=/militia=MA==",
+      "raw": "2507&3337&axe&1778252144000&8&false&false&spear=/sword=/axe=NTU=/archer=/spy=/light=/marcher=/heavy=/ram=MA==/catapult=/knight=/snob=/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
