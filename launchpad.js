@@ -2,7 +2,7 @@
     $("#launchpad-panel").remove();
 
     // === CONFIG ===
-    var VERSION = "v60";
+    var VERSION = "v61";
     var GITHUB_OWNER = "FNE-stack";
     var GITHUB_REPO = "DS-TEST";
     var GITHUB_BRANCH = "main";
@@ -335,47 +335,69 @@
     // Send an attack/support without navigating: GET the place screen to obtain the real form
     // (incl. CSRF token), POST it to get the confirm page, POST that to actually send.
     // Script never navigates, never dies. Falls back via onError() if any step fails.
+    function parseDoc(html) {
+        return new DOMParser().parseFromString(html, "text/html");
+    }
+    function findConfirmForm(doc) {
+        var forms = doc.body.querySelectorAll("form");
+        for (var i = 0; i < forms.length; i++) {
+            var act = forms[i].getAttribute("action") || "";
+            if (act.indexOf("try=confirm") >= 0 || forms[i].querySelector("input[name='try'][value='confirm']")) {
+                return forms[i];
+            }
+        }
+        return null;
+    }
+    function serializeForm(form) {
+        var parts = [];
+        var els = form.querySelectorAll("input:not([type=submit]):not([type=button]):not([type=image]),select,textarea");
+        for (var i = 0; i < els.length; i++) {
+            var el = els[i];
+            if (el.disabled || !el.name) continue;
+            if ((el.type === "checkbox" || el.type === "radio") && !el.checked) continue;
+            parts.push(encodeURIComponent(el.name) + "=" + encodeURIComponent(el.value || ""));
+        }
+        return parts.join("&");
+    }
+
     function submitAttackDirect(att, btnName, onSuccess, onError) {
         loadVillages(function() {
-            $.get(buildUrl(att), function(html) {
-                var $doc = $("<div>").append($.parseHTML(html, null, false));
-                var $form = $doc.find("form").filter(function(){
-                    return $(this).find("input[name='x'], input[name='y']").length > 0;
-                }).first();
-                if (!$form.length) { onError(); return; }
+            $.ajax({ url: buildUrl(att), type: "GET",
+                success: function(html) {
+                    var doc = parseDoc(html);
+                    var forms = doc.body.querySelectorAll("form");
+                    var placeForm = null;
+                    for (var i = 0; i < forms.length; i++) {
+                        if (forms[i].querySelector("input[name='x'], input[name='y']")) {
+                            placeForm = forms[i]; break;
+                        }
+                    }
+                    if (!placeForm) { onError("no-form"); return; }
 
-                if (att.catapultTarget && att.catapultTarget !== "0") {
-                    $form.find("select[name='building']").val(att.catapultTarget);
-                }
+                    if (att.catapultTarget && att.catapultTarget !== "0") {
+                        var bld = placeForm.querySelector("select[name='building']");
+                        if (bld) bld.value = att.catapultTarget;
+                    }
 
-                var action = $form.attr("action") || "/game.php";
-                var data   = $form.find("input:not([type=submit],[type=button],[type=image]),select,textarea")
-                                  .filter(function(){ return !this.disabled && !!this.name; })
-                                  .serialize();
-                data += "&" + encodeURIComponent(btnName) + "=1";
+                    var action = placeForm.getAttribute("action") || "/game.php";
+                    var data = serializeForm(placeForm) + "&" + encodeURIComponent(btnName) + "=1";
 
-                $.ajax({ url: action, type: "POST", data: data,
-                    success: function(confirmHtml) {
-                        var $doc2 = $("<div>").append($.parseHTML(confirmHtml, null, false));
-                        var $cForm = $doc2.find("form").filter(function(){
-                            var act = $(this).attr("action") || "";
-                            return act.indexOf("try=confirm") >= 0 ||
-                                   $(this).find("input[name='try'][value='confirm']").length > 0;
-                        }).first();
-                        if (!$cForm.length) { onSuccess(); return; }
-                        var cAction = $cForm.attr("action") || action;
-                        var cData   = $cForm.find("input:not([type=submit],[type=button],[type=image]),select,textarea")
-                                            .filter(function(){ return !this.disabled && !!this.name; })
-                                            .serialize();
-                        cData += "&attack=1";
-                        $.ajax({ url: cAction, type: "POST", data: cData,
-                            success: function() { onSuccess(); },
-                            error: function() { onError(); }
-                        });
-                    },
-                    error: function() { onError(); }
-                });
-            }).fail(function() { onError(); });
+                    $.ajax({ url: action, type: "POST", data: data,
+                        success: function(confirmHtml) {
+                            var cForm = findConfirmForm(parseDoc(confirmHtml));
+                            if (!cForm) { onSuccess(); return; }
+                            var cAction = cForm.getAttribute("action") || action;
+                            var cData = serializeForm(cForm) + "&attack=1";
+                            $.ajax({ url: cAction, type: "POST", data: cData,
+                                success: function() { onSuccess(); },
+                                error: function() { onError("confirm-post"); }
+                            });
+                        },
+                        error: function() { onError("place-post"); }
+                    });
+                },
+                error: function() { onError("place-get"); }
+            });
         });
     }
 
@@ -871,9 +893,10 @@
                             setStatus("Gesendet!", "green");
                             renderPlan(currentPlan);
                         });
-                    }, function() {
-                        $b.text(label).prop("disabled", false);
-                        setStatus("Direkt-Senden fehlgeschlagen — öffne Angriffsscreen.", "orange");
+                    }, function(err) {
+                        $b.text("✕ " + (err || "Fehler")).css({background:"#fcc", border:"1px solid #a00"}).prop("disabled", false);
+                        setTimeout(function(){ $b.text(label).css({background:"", border:""}); }, 3000);
+                        setStatus("Direkt-Senden fehlgeschlagen (" + (err||"?") + ") — öffne Angriffsscreen.", "orange");
                         savePendingAttack({
                             id: att.id, originId: att.originId, targetId: att.targetId,
                             originLabel: villageLabel(att.originId), targetLabel: villageLabel(att.targetId),
