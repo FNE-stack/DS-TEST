@@ -2,7 +2,7 @@
     $("#launchpad-panel").remove();
 
     // === CONFIG ===
-    var VERSION = "v42";
+    var VERSION = "v43";
     var GITHUB_OWNER = "FNE-stack";
     var GITHUB_REPO = "DS-TEST";
     var GITHUB_BRANCH = "main";
@@ -95,7 +95,9 @@
         if (targetPid === "0") return false;
         var myPid = String((typeof game_data !== "undefined" && game_data.player) ? game_data.player.id : "0");
         if (targetPid === myPid) return true;
-        var myAlly = String((typeof game_data !== "undefined" && game_data.player) ? (game_data.player.ally_id || "0") : "0");
+        // Resolve my tribe from player.txt — more reliable than game_data.player.ally_id
+        var myEntry = playerMap[myPid];
+        var myAlly = myEntry ? String(myEntry.allyId) : "0";
         if (myAlly === "0") return false;
         var tp = playerMap[targetPid];
         return tp ? String(tp.allyId) === myAlly : false;
