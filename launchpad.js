@@ -2,7 +2,7 @@
     $("#launchpad-panel").remove();
 
     // === CONFIG ===
-    var VERSION = "v46";
+    var VERSION = "v47";
     var GITHUB_OWNER = "FNE-stack";
     var GITHUB_REPO = "DS-TEST";
     var GITHUB_BRANCH = "main";
@@ -167,13 +167,24 @@
         snob:   "Adelshof",   watchtower:"Späherturm", church:  "Kirche",
         church_f:"Erstkirche",academy:  "Akademie"
     };
-    // Dynamic building ID map — populated from TW's own catapult select on the place screen
+    // Dynamic building ID map — fetched once in the background from TW's attack form HTML
     var twBuildingIds = {};
-    function scanTwBuildingIds() {
-        $("select[name='building'] option").each(function() {
-            var val = $(this).val();
-            var text = $(this).text().trim();
-            if (val && val !== "0" && text) twBuildingIds[val] = text;
+    function loadBuildingIds(attacks) {
+        if (Object.keys(twBuildingIds).length > 0) return;
+        var probe = null;
+        for (var i = 0; i < attacks.length; i++) {
+            if (attacks[i].troops && attacks[i].troops.catapult > 0) { probe = attacks[i]; break; }
+        }
+        if (!probe) return;
+        $.get("/game.php?village=" + probe.originId + "&screen=place&target=" + probe.targetId, function(html) {
+            var selMatch = html.match(/name=["']building["'][\s\S]*?<\/select>/i);
+            if (!selMatch) return;
+            var re = /<option[^>]+value=["'](\d+)["'][^>]*>([^<]+)<\/option>/gi;
+            var m, found = false;
+            while ((m = re.exec(selMatch[0])) !== null) {
+                if (m[1] !== "0") { twBuildingIds[m[1]] = m[2].trim(); found = true; }
+            }
+            if (found && currentPlan.length > 0) renderPlan(currentPlan);
         });
     }
     function buildingHtml(key, troops) {
@@ -481,7 +492,6 @@
 
     // === FarmGod-style in-page overlay for attack screen ===
     function injectAttackOverlay(p) {
-        scanTwBuildingIds();
         $("#lp-overlay").remove();
 
         var sendMs   = p.sendMs   || null;
@@ -754,6 +764,7 @@
 
     function renderPlan(plan) {
         currentPlan = plan;
+        loadBuildingIds(plan);
         tableContainer.empty();
         if (plan.length === 0) {
             tableContainer.append("<div style='color:#888;margin:8px 0;'>Keine Angriffe geladen.</div>");
@@ -838,8 +849,7 @@
         var onPlace = p && screen === "place" && villageId === String(p.originId);
 
         if (onPlace && !$("#lp-overlay").length) {
-            scanTwBuildingIds();
-            injectAttackOverlay(p);
+                injectAttackOverlay(p);
             if (window._lpInt) clearInterval(window._lpInt);
             window._lpInt = setInterval(function() {
                 var now = serverNow();
