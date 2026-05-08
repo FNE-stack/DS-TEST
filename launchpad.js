@@ -2,7 +2,7 @@
     $("#launchpad-panel").remove();
 
     // === CONFIG ===
-    var VERSION = "v51";
+    var VERSION = "v52";
     var GITHUB_OWNER = "FNE-stack";
     var GITHUB_REPO = "DS-TEST";
     var GITHUB_BRANCH = "main";
@@ -531,6 +531,9 @@
                     clearPendingAttack();
                     if (window._lpInt) clearInterval(window._lpInt);
                     overlay.html("<div style='color:#080;font-size:14px;font-weight:bold;padding:10px 0;text-align:center;'>✓ Als gesendet markiert.</div>");
+                    setTimeout(function() {
+                        navigate("/game.php?village=" + p.originId + "&screen=overview");
+                    }, 600);
                 });
             });
         });
