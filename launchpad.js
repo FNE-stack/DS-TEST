@@ -2,7 +2,7 @@
     $("#launchpad-panel").remove();
 
     // === CONFIG ===
-    var VERSION = "v41";
+    var VERSION = "v42";
     var GITHUB_OWNER = "FNE-stack";
     var GITHUB_REPO = "DS-TEST";
     var GITHUB_BRANCH = "main";
@@ -12,6 +12,7 @@
     var AUTO_REFRESH_MS = 15000;
 
     var villageMap = {};
+    var playerMap = {};
     var currentSha = null;
     var currentPlan = [];
     var isWriting = false;
@@ -59,20 +60,45 @@
 
     function setStatus(msg, color) { status.text(msg).css("color", color || "#555"); }
 
-    // === Village data ===
+    // === Village + player data ===
     function loadVillages(callback) {
         if (Object.keys(villageMap).length > 0) { callback(); return; }
         $.get("/map/village.txt", function(data) {
             data.split("\n").forEach(function(line){
                 var p = line.split(",");
-                if (p.length >= 4) villageMap[p[0]] = { name: decodeURIComponent(p[1].replace(/\+/g, "%20")), x: p[2], y: p[3] };
+                if (p.length >= 4) villageMap[p[0]] = { name: decodeURIComponent(p[1].replace(/\+/g, "%20")), x: p[2], y: p[3], playerId: p[4] || "0" };
             });
             callback();
         }).fail(callback);
     }
+    function loadPlayers(callback) {
+        if (Object.keys(playerMap).length > 0) { callback(); return; }
+        $.get("/map/player.txt", function(data) {
+            data.split("\n").forEach(function(line){
+                var p = line.split(",");
+                if (p.length >= 3) playerMap[p[0]] = { allyId: p[2] };
+            });
+            callback();
+        }).fail(callback);
+    }
+    function loadData(callback) {
+        loadVillages(function(){ loadPlayers(callback); });
+    }
     function villageLabel(id) {
         var v = villageMap[id];
         return v ? v.name + " (" + v.x + "|" + v.y + ")" : id;
+    }
+    function isSupport(att) {
+        var targetV = villageMap[String(att.targetId)];
+        if (!targetV || !targetV.playerId) return false;
+        var targetPid = String(targetV.playerId);
+        if (targetPid === "0") return false;
+        var myPid = String((typeof game_data !== "undefined" && game_data.player) ? game_data.player.id : "0");
+        if (targetPid === myPid) return true;
+        var myAlly = String((typeof game_data !== "undefined" && game_data.player) ? (game_data.player.ally_id || "0") : "0");
+        if (myAlly === "0") return false;
+        var tp = playerMap[targetPid];
+        return tp ? String(tp.allyId) === myAlly : false;
     }
 
     // === Parsing ===
@@ -230,7 +256,9 @@
     }
 
     function buildUrl(a) {
-        var p = "/game.php?village=" + a.originId + "&screen=place&target=" + a.targetId;
+        var p = "/game.php?village=" + a.originId + "&screen=place";
+        if (isSupport(a)) p += "&mode=support";
+        p += "&target=" + a.targetId;
         for (var u in a.troops) {
             if (a.troops[u] > 0) p += "&" + u + "=" + a.troops[u];
         }
@@ -424,7 +452,8 @@
 
         var overlay = $("<div id='lp-overlay' style='background:#f4e4bc;border:2px solid #804000;border-radius:6px;padding:12px;margin:0 0 10px 0;font-family:Verdana;box-sizing:border-box;'></div>");
 
-        overlay.append("<div style='font-size:10px;font-weight:bold;color:#804000;margin-bottom:8px;letter-spacing:1px;text-transform:uppercase;'>Angriffsplaner — ausstehend</div>");
+        var overlayTitle = (p.type === "support") ? "Angriffsplaner — Unterstützung" : "Angriffsplaner — ausstehend";
+        overlay.append("<div style='font-size:10px;font-weight:bold;color:#804000;margin-bottom:8px;letter-spacing:1px;text-transform:uppercase;'>" + overlayTitle + "</div>");
 
         overlay.append(
             "<div style='font-size:12px;margin-bottom:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' title='" + fromLabel + " → " + toLabel + "'>" +
@@ -489,7 +518,8 @@
                 id: att.id, originId: att.originId, targetId: att.targetId,
                 originLabel: villageLabel(att.originId),
                 targetLabel: villageLabel(att.targetId),
-                arrivalMs: att.arrivalMs, sendMs: sendMs
+                arrivalMs: att.arrivalMs, sendMs: sendMs,
+                type: isSupport(att) ? "support" : "attack"
             });
             setStatus("Markiere als gesendet...");
             githubPut({ attacks: currentPlan }, "gesendet: " + att.originId + "->" + att.targetId + " von " + ME, function(){
@@ -555,13 +585,15 @@
             card.append(timesDiv);
 
             // Send button
-            var sendBtn = $("<button style='width:100%;min-height:44px;padding:8px;font-size:14px;font-weight:bold;background:#afa;border:1px solid #080;border-radius:4px;cursor:pointer;box-sizing:border-box;'>Senden</button>");
+            var supp = isSupport(att);
+            var sendBtn = $("<button style='width:100%;min-height:44px;padding:8px;font-size:14px;font-weight:bold;background:#afa;border:1px solid #080;border-radius:4px;cursor:pointer;box-sizing:border-box;'>" + (supp ? "Unterstützen" : "Senden") + "</button>");
             sendBtn.on("click", function() {
                 savePendingAttack({
                     id: att.id, originId: att.originId, targetId: att.targetId,
                     originLabel: villageLabel(att.originId),
                     targetLabel: villageLabel(att.targetId),
-                    arrivalMs: att.arrivalMs, sendMs: sendMs
+                    arrivalMs: att.arrivalMs, sendMs: sendMs,
+                    type: supp ? "support" : "attack"
                 });
                 navigate(buildUrl(att));
             });
@@ -598,8 +630,7 @@
 
     // === Render: table layout for desktop ===
     function renderTable(plan) {
-        var table = $("<table class='vis' style='width:100%;table-layout:fixed;'>" +
-            "<thead><tr>" +
+        var thead = "<thead><tr>" +
             "<th style='width:24px;'>#</th>" +
             "<th>Von → Nach</th>" +
             "<th>Truppen</th>" +
@@ -607,29 +638,23 @@
             "<th style='width:120px;'>Senden / Ankunft</th>" +
             "<th style='width:90px;'>Status</th>" +
             "<th style='width:80px;'>Aktion</th>" +
-            "</tr></thead><tbody></tbody></table>");
-        var tbody = table.find("tbody");
+            "</tr></thead>";
 
-        plan.forEach(function(att, i) {
+        function makeRow(att, i) {
             var sendMs = getSendMs(att);
             var cdTarget = sendMs || att.arrivalMs;
-
             var routeHtml =
                 "<div style='font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' title='" + villageLabel(att.originId) + "'>" + villageLabel(att.originId) + "</div>" +
                 "<div style='font-size:10px;color:#a07030;'>↓</div>" +
                 "<div style='font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' title='" + villageLabel(att.targetId) + "'>" + villageLabel(att.targetId) + "</div>";
-
             var timesHtml = sendMs
                 ? ("<div style='font-size:10px;white-space:nowrap;'>⚑ " + fmtTime(sendMs) + "</div>" +
                    "<div style='font-size:10px;white-space:nowrap;opacity:0.65;'>⚐ " + fmtTime(att.arrivalMs) + "</div>")
                 : ("<div style='font-size:10px;white-space:nowrap;'>⚐ " + fmtTime(att.arrivalMs) + "</div>");
-
             var cdCell = att.sent
                 ? "<td style='color:#999;text-align:center;'>—</td>"
                 : "<td class='cd' data-target='" + cdTarget + "' style='text-align:center;font-weight:bold;white-space:nowrap;font-size:12px;'>--</td>";
-
             var statusHtml = att.sent ? "<span style='color:#080;font-size:11px;'>✓ " + (att.sentBy || "?") + "</span>" : "";
-
             var row = $("<tr>" +
                 "<td style='text-align:center;font-size:11px;'>" + (i + 1) + "</td>" +
                 "<td>" + routeHtml + "</td>" +
@@ -640,10 +665,9 @@
                 "<td style='text-align:center;'></td>" +
                 "</tr>");
             if (att.sent) row.css({ background: "#e8e8e8", opacity: "0.7" });
-
             var actionCell = row.find("td").last();
             if (!att.sent) {
-                var sendBtn = $("<button class='btn'>Senden</button>");
+                var sendBtn = $("<button class='btn'>" + (isSupport(att) ? "Unterstützen" : "Senden") + "</button>");
                 sendBtn.on("click", makeSendHandler(att));
                 actionCell.append(sendBtn);
             } else {
@@ -651,9 +675,30 @@
                 revokeBtn.on("click", makeRevokeHandler(att));
                 actionCell.append(revokeBtn);
             }
-            tbody.append(row);
-        });
+            return row;
+        }
+
+        var unsent = plan.filter(function(a){ return !a.sent; });
+        var sent   = plan.filter(function(a){ return a.sent; });
+
+        var table = $("<table class='vis' style='width:100%;table-layout:fixed;'>" + thead + "<tbody></tbody></table>");
+        var tbody = table.find("tbody");
+        unsent.forEach(function(att){ tbody.append(makeRow(att, plan.indexOf(att))); });
         tableContainer.append(table);
+
+        if (sent.length > 0) {
+            var toggleBtn = $("<button style='width:100%;margin:8px 0;padding:6px;font-size:12px;background:#e0d4b0;border:1px solid #a07030;border-radius:4px;cursor:pointer;'>" + sent.length + " gesendete Angriffe anzeigen ▼</button>");
+            var sentTable = $("<table class='vis' style='width:100%;table-layout:fixed;display:none;'>" + thead + "<tbody></tbody></table>");
+            var sentBody = sentTable.find("tbody");
+            sent.forEach(function(att){ sentBody.append(makeRow(att, plan.indexOf(att))); });
+            var expanded = false;
+            toggleBtn.on("click", function() {
+                expanded = !expanded;
+                sentTable.toggle(expanded);
+                toggleBtn.text(expanded ? "Gesendete ausblenden ▲" : sent.length + " gesendete Angriffe anzeigen ▼");
+            });
+            tableContainer.append(toggleBtn).append(sentTable);
+        }
     }
 
     function renderPlan(plan) {
@@ -691,7 +736,7 @@
         clearTimeout(pushTimer);
         pushConfirmed = false;
         pushBtn.text("Plan hochladen");
-        loadVillages(function(){
+        loadData(function(){
             githubGet(function(){
                 githubPut({ attacks: plan }, "neuer Plan (" + plan.length + " Angriffe)", function(){
                     setStatus("Neuer Plan hochgeladen.", "green");
@@ -704,7 +749,7 @@
     });
 
     refreshBtn.on("click", function() {
-        loadVillages(function(){
+        loadData(function(){
             setStatus("Aktualisiere...");
             githubGet(function(data){
                 if (!data || !data.attacks) { renderPlan([]); setStatus("Kein Plan auf GitHub.", "orange"); return; }
@@ -759,7 +804,7 @@
         } else if (!onPlace && !$("#launchpad-panel").length) {
             mount.prepend(panel);
             tableContainer.empty();
-            loadVillages(function(){
+            loadData(function(){
                 githubGet(function(data){
                     if (data && data.attacks) renderPlan(data.attacks);
                 });
@@ -826,7 +871,7 @@
 
         if (pending && pending.arrivalMs) showCountdownWidget(pending);
 
-        loadVillages(function(){
+        loadData(function(){
             githubGet(function(data){
                 if (data && data.attacks) renderPlan(data.attacks);
                 else setStatus("Noch kein Plan auf GitHub — Plan einfügen und hochladen.", "orange");
