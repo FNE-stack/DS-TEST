@@ -2,7 +2,7 @@
     $("#launchpad-panel").remove();
 
     // === CONFIG ===
-    var VERSION = "v50";
+    var VERSION = "v51";
     var GITHUB_OWNER = "FNE-stack";
     var GITHUB_REPO = "DS-TEST";
     var GITHUB_BRANCH = "main";
@@ -581,6 +581,10 @@
                             $form.submit();
                         }
                     }
+                    // Auto-confirm to GitHub — fires if overlay still exists (AJAX flow, no reload)
+                    setTimeout(function() {
+                        if ($("#lp-overlay").length) confirmBtn.trigger("click");
+                    }, 1000);
                 }
             } else {
                 $cd.text(fmtHms(d)).css({color:"", fontWeight:""});
