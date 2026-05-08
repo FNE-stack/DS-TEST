@@ -2,7 +2,7 @@
     $("#launchpad-panel").remove();
 
     // === CONFIG ===
-    var VERSION = "v55";
+    var VERSION = "v56";
     var GITHUB_OWNER = "FNE-stack";
     var GITHUB_REPO = "DS-TEST";
     var GITHUB_BRANCH = "main";
@@ -15,6 +15,16 @@
     var currentSha = null;
     var currentPlan = [];
     var isWriting = false;
+
+    // Panel session flag — set once per session by quickbar tap (window._lpForcePanel=true),
+    // then kept alive in sessionStorage across every page reload until user closes the panel.
+    if (window._lpForcePanel) {
+        try { sessionStorage.setItem("lp_panel_open", "1"); } catch(e) {}
+        delete window._lpForcePanel;
+    }
+    var panelOpen = (function() {
+        try { return sessionStorage.getItem("lp_panel_open") === "1"; } catch(e) { return false; }
+    })();
 
     function isMobile() { return window.innerWidth < 700; }
 
@@ -38,8 +48,16 @@
         .append(textarea).append(btnRow)
         .append(status).append(tableContainer);
 
-    var toggleBody = $("<span style='cursor:pointer;font-size:12px;color:#804000;float:right;'>▼</span>");
-    panel.find("h3").append(toggleBody);
+    var toggleBody = $("<span style='cursor:pointer;font-size:12px;color:#804000;float:right;margin-left:6px;'>▼</span>");
+    var closePanel = $("<span style='cursor:pointer;font-size:12px;color:#804000;float:right;'>✕</span>");
+    closePanel.on("click", function() {
+        try { sessionStorage.removeItem("lp_panel_open"); } catch(e) {}
+        panelOpen = false;
+        panel.remove();
+        if (window._lpAuto) { clearInterval(window._lpAuto); window._lpAuto = null; }
+        if (window._lpInt)  { clearInterval(window._lpInt);  window._lpInt  = null; }
+    });
+    panel.find("h3").append(toggleBody).append(closePanel);
     toggleBody.on("click", function() {
         panelBody.toggle();
         toggleBody.text(panelBody.is(":visible") ? "▼" : "▶");
@@ -990,17 +1008,17 @@
 
         if (onPlace && !$("#lp-overlay").length && !autoSendFired) {
             injectAttackOverlay(p);
-        } else if (!onPlace && !$("#launchpad-panel").length) {
-            mount.prepend(panel);
-            tableContainer.empty();
-            loadVillages(function(){
-                githubGet(function(data){
-                    if (data && data.attacks) renderPlan(data.attacks);
+        } else if (!onPlace) {
+            if (panelOpen && !$("#launchpad-panel").length) {
+                mount.prepend(panel);
+                tableContainer.empty();
+                loadVillages(function(){
+                    githubGet(function(data){
+                        if (data && data.attacks) renderPlan(data.attacks);
+                    });
                 });
-            });
+            }
             if (p && p.arrivalMs && !$("#lp-widget").length) showCountdownWidget(p);
-        } else if (!onPlace && p && p.arrivalMs && !$("#lp-widget").length) {
-            showCountdownWidget(p);
         }
     }
 
@@ -1041,10 +1059,10 @@
     if (handleAutoSent()) {
         // Auto-sent marker found — confirm + navigate handled above; skip normal startup
     } else if (onAttackScreen) {
-        // === Initial load already on the place screen (quickbar re-ran after full reload) ===
+        // === Initial load already on the place screen ===
         injectAttackOverlay(pending);
-    } else {
-        // === Normal mode: full panel ===
+    } else if (panelOpen) {
+        // === Panel session active: show full panel ===
         mount.prepend(panel);
 
         if (pending && pending.arrivalMs) showCountdownWidget(pending);
@@ -1085,5 +1103,9 @@
                 }
             });
         }, 200);
+    } else if (pending && pending.arrivalMs) {
+        // === Silent mode: no panel, but keep the countdown widget for active pending attack ===
+        showCountdownWidget(pending);
     }
+    // else: nothing pending, nothing to show — permanent script exits silently
 })();
