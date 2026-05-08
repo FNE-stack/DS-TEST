@@ -2,7 +2,7 @@
     $("#launchpad-panel").remove();
 
     // === CONFIG ===
-    var VERSION = "v57";
+    var VERSION = "v58";
     var GITHUB_OWNER = "FNE-stack";
     var GITHUB_REPO = "DS-TEST";
     var GITHUB_BRANCH = "main";
@@ -648,7 +648,7 @@
                         $(_bSel).off("click.lp");
                         try { sessionStorage.setItem("lp_autosent", JSON.stringify({
                             id: p.id, originId: p.originId, targetId: p.targetId,
-                            arrivalMs: p.arrivalMs, type: bName
+                            arrivalMs: p.arrivalMs, type: bName, ts: Date.now()
                         })); } catch(e2) {}
                         $(_bSel).filter("[name='" + bName + "']").prop("disabled", false).first()[0].click();
                     }
@@ -690,18 +690,13 @@
                             function() {
                                 try { sessionStorage.setItem("lp_autosent", JSON.stringify({
                                     id: p.id, originId: p.originId, targetId: p.targetId,
-                                    arrivalMs: p.arrivalMs, type: p.type || "attack"
+                                    arrivalMs: p.arrivalMs, type: p.type || "attack", ts: Date.now()
                                 })); } catch(e2) {}
                                 $("<input type='hidden'>").attr({name: btnName, value: "1"}).appendTo($twForm);
                                 $twForm.submit();
                             }
                         );
                     }
-                    // lp_autosent backup — cleared by confirmBtn on success, used on AJAX failure
-                    try { sessionStorage.setItem("lp_autosent", JSON.stringify({
-                        id: p.id, originId: p.originId, targetId: p.targetId,
-                        arrivalMs: p.arrivalMs, type: p.type || "attack"
-                    })); } catch(e) {}
                 }
             } else {
                 $cd.text(fmtHms(d)).css({color:"", fontWeight:""});
@@ -1003,6 +998,7 @@
         try { sessionStorage.removeItem("lp_autosent"); } catch(e) {}
         var info;
         try { info = JSON.parse(raw); } catch(e) { return false; }
+        if (!info.ts || Date.now() - info.ts > 120000) return false;
         loadVillages(function() {
             githubGet(function(data) {
                 if (!data || !data.attacks) { clearPendingAttack(); return; }
@@ -1068,19 +1064,7 @@
     }
 
     // === Navigation detection ===
-    // Wrap TribalWars.redirect so our screen-check fires on every TW navigation.
-    // _lpHooked flag prevents double-wrapping if quickbar is tapped again.
-    if (typeof TribalWars !== "undefined" && TribalWars.redirect && !TribalWars._lpHooked) {
-        var _twRedir = TribalWars.redirect.bind(TribalWars);
-        TribalWars.redirect = function(url) {
-            var r = _twRedir(url);
-            scheduleScreenCheck();
-            return r;
-        };
-        TribalWars._lpHooked = true;
-    }
-
-    // MutationObserver on #contentContainer as primary trigger (also fires for non-redirect navigations).
+    // MutationObserver on #contentContainer as primary trigger.
     var _lpNavTimer = null;
     function scheduleScreenCheck() {
         clearTimeout(_lpNavTimer);
