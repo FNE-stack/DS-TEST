@@ -2,7 +2,7 @@
     $("#launchpad-panel").remove();
 
     // === CONFIG ===
-    var VERSION = "v58";
+    var VERSION = "v59";
     var GITHUB_OWNER = "FNE-stack";
     var GITHUB_REPO = "DS-TEST";
     var GITHUB_BRANCH = "main";
@@ -298,25 +298,47 @@
         return p;
     }
 
-    // Submit attack/support form via AJAX — prevents the page reload that kills the script.
-    // Reads actual troop values from TW's own form fields so user edits are respected.
+    // Submit attack/support form via AJAX, auto-submitting the confirm step if TW shows one.
+    // TW's attack flow is two-step: place form → confirm page → confirm form → attack sent.
+    // We chain both requests here so the script never triggers a page reload.
     function ajaxSubmitAttack($form, btnName, onSuccess, onError) {
-        var method = ($form.attr("method") || "GET").toUpperCase();
+        var method = ($form.attr("method") || "POST").toUpperCase();
         var action = $form.attr("action") || "/game.php";
         var data   = $form.find("input:not([type=submit],[type=button],[type=image]),select,textarea")
                           .filter(function(){ return !this.disabled && !!this.name; })
                           .serialize();
         data += (data ? "&" : "") + encodeURIComponent(btnName) + "=1";
         $.ajax({ url: action, type: method, data: data,
-            success: function() { onSuccess(); },
-            error:   function() { onError(); }
+            success: function(html) {
+                // If TW returned a confirm page, find and submit the confirm form (step 2)
+                var $doc = $("<div>").append($.parseHTML(html, null, false));
+                var $cForm = $doc.find("form").filter(function(){
+                    var act = $(this).attr("action") || "";
+                    return act.indexOf("try=confirm") >= 0 ||
+                           $(this).find("input[name='try'][value='confirm']").length > 0;
+                }).first();
+                if (!$cForm.length) { onSuccess(); return; }
+                var cAction = $cForm.attr("action") || action;
+                var cData = $cForm.find("input:not([type=submit],[type=button],[type=image]),select,textarea")
+                                  .filter(function(){ return !this.disabled && !!this.name; })
+                                  .serialize();
+                cData += (cData ? "&" : "") + "attack=1";
+                $.ajax({ url: cAction, type: "POST", data: cData,
+                    success: function() { onSuccess(); },
+                    error:   function() { onError(); }
+                });
+            },
+            error: function() { onError(); }
         });
     }
 
-    // TribalWars.redirect = AJAX swap (script survives); fall back to location.href
+    // TribalWars.redirect = AJAX swap (script survives); fall back to location.href.
+    // The delayed handleScreenReady call ensures overlay injection even if the
+    // MutationObserver fires before game_data is updated on mobile.
     function navigate(url) {
         if (typeof TribalWars !== "undefined" && TribalWars.redirect) {
             TribalWars.redirect(url);
+            setTimeout(handleScreenReady, 700);
             return;
         }
         var w = null;
