@@ -2,7 +2,7 @@
     $("#launchpad-panel").remove();
 
     // === CONFIG ===
-    var VERSION = "v61";
+    var VERSION = "v62";
     var GITHUB_OWNER = "FNE-stack";
     var GITHUB_REPO = "DS-TEST";
     var GITHUB_BRANCH = "main";
@@ -374,6 +374,14 @@
                     }
                     if (!placeForm) { onError("no-form"); return; }
 
+                    // Force troop values from att.troops — handles both 'axe' and 'unit_axe' naming
+                    var troops = att.troops || {};
+                    Object.keys(troops).forEach(function(u) {
+                        var el = placeForm.querySelector("input[name='" + u + "']") ||
+                                 placeForm.querySelector("input[name='unit_" + u + "']");
+                        if (el) el.value = troops[u] || 0;
+                    });
+
                     if (att.catapultTarget && att.catapultTarget !== "0") {
                         var bld = placeForm.querySelector("select[name='building']");
                         if (bld) bld.value = att.catapultTarget;
@@ -385,7 +393,7 @@
                     $.ajax({ url: action, type: "POST", data: data,
                         success: function(confirmHtml) {
                             var cForm = findConfirmForm(parseDoc(confirmHtml));
-                            if (!cForm) { onSuccess(); return; }
+                            if (!cForm) { onError("no-confirm"); return; }
                             var cAction = cForm.getAttribute("action") || action;
                             var cData = serializeForm(cForm) + "&attack=1";
                             $.ajax({ url: cAction, type: "POST", data: cData,
