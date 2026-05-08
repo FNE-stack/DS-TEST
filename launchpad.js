@@ -2,7 +2,7 @@
     $("#launchpad-panel").remove();
 
     // === CONFIG ===
-    var VERSION = "v53";
+    var VERSION = "v54";
     var GITHUB_OWNER = "FNE-stack";
     var GITHUB_REPO = "DS-TEST";
     var GITHUB_BRANCH = "main";
@@ -633,9 +633,9 @@
                             $form.submit();
                         }
                     }
-                    // Auto-confirm to GitHub — fires if overlay still exists (AJAX flow, no reload)
+                    // Auto-confirm to GitHub — fires regardless of overlay DOM state (works on mobile)
                     setTimeout(function() {
-                        if ($("#lp-overlay").length) confirmBtn.trigger("click");
+                        confirmBtn.trigger("click");
                     }, 1000);
                 }
             } else {
@@ -940,7 +940,7 @@
         var villageId = (typeof game_data !== "undefined" && game_data.village) ? String(game_data.village.id) : null;
         var onPlace = p && screen === "place" && villageId === String(p.originId);
 
-        if (onPlace && !$("#lp-overlay").length) {
+        if (onPlace && !$("#lp-overlay").length && !autoSendFired) {
             injectAttackOverlay(p);
         } else if (!onPlace && !$("#launchpad-panel").length) {
             mount.prepend(panel);
