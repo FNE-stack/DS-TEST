@@ -23,9 +23,9 @@
         "militia": 0
       },
       "raw": "1999&2180&ram&1778273743000&8&false&false&spear=/sword=/axe=NjIwMA==/archer=/spy=NTA=/light=MjYwMA==/marcher=/heavy=/ram=MjUw/catapult=/knight=/snob=/militia=MA==",
-      "sent": false,
-      "sentBy": null,
-      "sentAt": null
+      "sent": true,
+      "sentBy": "Donald John Trump",
+      "sentAt": 1778235696147
     }
   ]
 }
