@@ -2,7 +2,7 @@
     $("#launchpad-panel").remove();
 
     // === CONFIG ===
-    var VERSION = "v52";
+    var VERSION = "v53";
     var GITHUB_OWNER = "FNE-stack";
     var GITHUB_REPO = "DS-TEST";
     var GITHUB_BRANCH = "main";
@@ -464,11 +464,27 @@
     // === FarmGod-style in-page overlay for attack screen ===
     var autoSendArmed = false;
     var autoSendFired = false;
+    var autoNextEnabled = (function() {
+        try { return sessionStorage.getItem("lp_autonext") === "1"; } catch(e) { return false; }
+    })();
+
+    function findNextAttack(plan, current) {
+        var found = false;
+        for (var i = 0; i < plan.length; i++) {
+            if (found && !plan[i].sent) return plan[i];
+            if (plan[i].originId === current.originId &&
+                plan[i].targetId === current.targetId &&
+                String(plan[i].arrivalMs) === String(current.arrivalMs)) {
+                found = true;
+            }
+        }
+        return null;
+    }
 
     function injectAttackOverlay(p) {
         $("#lp-overlay").remove();
         if (window._lpInt) clearInterval(window._lpInt);
-        autoSendArmed = false;
+        autoSendArmed = autoNextEnabled; // auto-arm when auto-next is on
         autoSendFired = false;
 
         var sendMs   = p.sendMs   || null;
@@ -505,7 +521,8 @@
         overlay.append(timesDiv);
 
         // Auto-send toggle
-        var autoBtn = $("<button style='width:100%;min-height:38px;font-size:13px;font-weight:bold;background:#ddd;color:#555;border:1px solid #aaa;border-radius:4px;cursor:pointer;margin-bottom:6px;box-sizing:border-box;'>Auto-Senden: AUS</button>");
+        var autoBtn = $("<button style='width:100%;min-height:38px;font-size:13px;font-weight:bold;background:#ddd;color:#555;border:1px solid #aaa;border-radius:4px;cursor:pointer;margin-bottom:4px;box-sizing:border-box;'>Auto-Senden: AUS</button>");
+        if (autoSendArmed) autoBtn.text("Auto-Senden: AN").css({background:"#2a6000", color:"#fff", border:"1px solid #1a4000"});
         autoBtn.on("click", function() {
             autoSendArmed = !autoSendArmed;
             autoSendFired = false;
@@ -515,6 +532,22 @@
                        : {background:"#ddd",    color:"#555", border:"1px solid #aaa"});
         });
         overlay.append(autoBtn);
+
+        // Auto-next toggle
+        var autoNextBtn = $("<button style='width:100%;min-height:38px;font-size:13px;font-weight:bold;border:1px solid #aaa;border-radius:4px;cursor:pointer;margin-bottom:6px;box-sizing:border-box;'>Auto-Weiter: AUS</button>");
+        autoNextBtn.css(autoNextEnabled
+            ? {background:"#00468a", color:"#fff", border:"1px solid #00306a"}
+            : {background:"#ddd",    color:"#555", border:"1px solid #aaa"});
+        autoNextBtn.text(autoNextEnabled ? "Auto-Weiter: AN" : "Auto-Weiter: AUS");
+        autoNextBtn.on("click", function() {
+            autoNextEnabled = !autoNextEnabled;
+            try { sessionStorage.setItem("lp_autonext", autoNextEnabled ? "1" : "0"); } catch(e) {}
+            autoNextBtn.text(autoNextEnabled ? "Auto-Weiter: AN" : "Auto-Weiter: AUS")
+                       .css(autoNextEnabled
+                           ? {background:"#00468a", color:"#fff", border:"1px solid #00306a"}
+                           : {background:"#ddd",    color:"#555", border:"1px solid #aaa"});
+        });
+        overlay.append(autoNextBtn);
 
         var confirmBtn = $("<button style='width:100%;min-height:44px;padding:8px;font-size:14px;font-weight:bold;background:#afa;border:1px solid #080;border-radius:4px;cursor:pointer;box-sizing:border-box;margin-bottom:6px;'>✓ Gesendet</button>");
         confirmBtn.on("click", function() {
@@ -532,6 +565,22 @@
                     if (window._lpInt) clearInterval(window._lpInt);
                     overlay.html("<div style='color:#080;font-size:14px;font-weight:bold;padding:10px 0;text-align:center;'>✓ Als gesendet markiert.</div>");
                     setTimeout(function() {
+                        if (autoNextEnabled) {
+                            var nextAtt = findNextAttack(plan, p);
+                            if (nextAtt) {
+                                savePendingAttack({
+                                    id: nextAtt.id, originId: nextAtt.originId, targetId: nextAtt.targetId,
+                                    originLabel: villageLabel(nextAtt.originId),
+                                    targetLabel: villageLabel(nextAtt.targetId),
+                                    arrivalMs: nextAtt.arrivalMs, sendMs: getSendMs(nextAtt),
+                                    type: p.type || "attack",
+                                    catapultTarget: nextAtt.catapultTarget || null,
+                                    troops: nextAtt.troops || null
+                                });
+                                navigate(buildUrl(nextAtt));
+                                return;
+                            }
+                        }
                         navigate("/game.php?village=" + p.originId + "&screen=overview");
                     }, 600);
                 });
