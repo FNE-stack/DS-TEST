@@ -1,49 +1,85 @@
 {
   "attacks": [
     {
-      "id": "4885_4608_1778503575000",
+      "id": "4885_4608_1778504595000",
       "originId": "4885",
       "targetId": "4608",
       "slowest": "axe",
-      "arrivalMs": 1778503575000,
+      "arrivalMs": 1778504595000,
       "catapultTarget": "8",
       "troops": {
+        "spear": null,
+        "sword": null,
         "axe": 55,
+        "archer": null,
+        "spy": null,
+        "light": null,
+        "marcher": null,
+        "heavy": null,
+        "ram": null,
+        "catapult": null,
+        "knight": null,
+        "snob": null,
         "militia": 0
       },
-      "sent": true,
-      "sentBy": "attack-bot",
-      "sentAt": 1778502495555
+      "raw": "4885&4608&axe&1778504595000&8&false&false&spear=/sword=/axe=NTU=/archer=/spy=/light=/marcher=/heavy=/ram=/catapult=/knight=/snob=/militia=MA==",
+      "sent": false,
+      "sentBy": null,
+      "sentAt": null
     },
     {
-      "id": "4885_4608_1778503593000",
+      "id": "4885_4608_1778504655000",
       "originId": "4885",
       "targetId": "4608",
       "slowest": "axe",
-      "arrivalMs": 1778503593000,
+      "arrivalMs": 1778504655000,
       "catapultTarget": "8",
       "troops": {
+        "spear": null,
+        "sword": null,
         "axe": 55,
+        "archer": null,
+        "spy": null,
+        "light": null,
+        "marcher": null,
+        "heavy": null,
+        "ram": null,
+        "catapult": null,
+        "knight": null,
+        "snob": null,
         "militia": 0
       },
-      "sent": true,
-      "sentBy": "attack-bot",
-      "sentAt": 1778502513107
+      "raw": "4885&4608&axe&1778504655000&8&false&false&spear=/sword=/axe=NTU=/archer=/spy=/light=/marcher=/heavy=/ram=/catapult=/knight=/snob=/militia=MA==",
+      "sent": false,
+      "sentBy": null,
+      "sentAt": null
     },
     {
-      "id": "4885_4608_1778503653000",
+      "id": "4885_4608_1778504673000",
       "originId": "4885",
       "targetId": "4608",
       "slowest": "axe",
-      "arrivalMs": 1778503653000,
+      "arrivalMs": 1778504673000,
       "catapultTarget": "8",
       "troops": {
+        "spear": null,
+        "sword": null,
         "axe": 55,
+        "archer": null,
+        "spy": null,
+        "light": null,
+        "marcher": null,
+        "heavy": null,
+        "ram": null,
+        "catapult": null,
+        "knight": null,
+        "snob": null,
         "militia": 0
       },
-      "sent": true,
-      "sentBy": "attack-bot",
-      "sentAt": 1778502574015
+      "raw": "4885&4608&axe&1778504673000&8&false&false&spear=/sword=/axe=NTU=/archer=/spy=/light=/marcher=/heavy=/ram=/catapult=/knight=/snob=/militia=MA==",
+      "sent": false,
+      "sentBy": null,
+      "sentAt": null
     }
   ]
 }
