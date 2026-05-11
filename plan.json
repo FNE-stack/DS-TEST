@@ -11,9 +11,9 @@
         "axe": 55,
         "militia": 0
       },
-      "sent": true,
-      "sentBy": "attack-bot-skip",
-      "sentAt": 1778503425949
+      "sent": false,
+      "sentBy": null,
+      "sentAt": null
     },
     {
       "id": "4885_4608_1778504655000",
