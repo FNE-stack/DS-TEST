@@ -1,0 +1,64 @@
+{
+  "attacks": [
+    {
+      "id": "4885_4608_1778509444000",
+      "originId": "4885",
+      "targetId": "4608",
+      "slowest": "spy",
+      "arrivalMs": 1778509444000,
+      "catapultTarget": "8",
+      "troops": {
+        "spy": 10,
+        "militia": 0
+      },
+      "sent": true,
+      "sentBy": "attack-bot",
+      "sentAt": 1778508904649
+    },
+    {
+      "id": "4885_4608_1778509445000",
+      "originId": "4885",
+      "targetId": "4608",
+      "slowest": "spy",
+      "arrivalMs": 1778509445000,
+      "catapultTarget": "8",
+      "troops": {
+        "spy": 10,
+        "militia": 0
+      },
+      "sent": true,
+      "sentBy": "attack-bot-skip",
+      "sentAt": 1778509025210
+    },
+    {
+      "id": "4885_4608_1778509446000",
+      "originId": "4885",
+      "targetId": "4608",
+      "slowest": "spy",
+      "arrivalMs": 1778509446000,
+      "catapultTarget": "8",
+      "troops": {
+        "spy": 10,
+        "militia": 0
+      },
+      "sent": false,
+      "sentBy": null,
+      "sentAt": null
+    },
+    {
+      "id": "4885_4608_1778509503000",
+      "originId": "4885",
+      "targetId": "4608",
+      "slowest": "spy",
+      "arrivalMs": 1778509503000,
+      "catapultTarget": "8",
+      "troops": {
+        "spy": 10,
+        "militia": 0
+      },
+      "sent": false,
+      "sentBy": null,
+      "sentAt": null
+    }
+  ]
+}
