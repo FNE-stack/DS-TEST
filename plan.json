@@ -41,9 +41,9 @@
         "spy": 10,
         "militia": 0
       },
-      "sent": false,
-      "sentBy": null,
-      "sentAt": null
+      "sent": true,
+      "sentBy": "attack-bot-skip",
+      "sentAt": 1778508043515
     },
     {
       "id": "4885_4608_1778508703000",
