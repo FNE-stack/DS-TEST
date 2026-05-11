@@ -37,7 +37,7 @@
     var pushBtn    = $("<button style='" + btnStyle + "'>Plan hochladen</button>");
     var refreshBtn = $("<button style='" + btnStyle + "'>Aktualisieren</button>");
     var wipeBtn    = $("<button style='" + btnStyle + "background:#fcc;'>Plan löschen</button>");
-    var botToggleBtn = $("<button style='" + btnStyle + "background:#afa;'>Bot: AN</button>");
+    var botToggleBtn = $("<button style='" + btnStyle + "background:#afa;'>AN</button>");
     var btnRow     = $("<div style='display:flex;flex-wrap:wrap;'></div>").append(pushBtn).append(refreshBtn).append(wipeBtn).append(botToggleBtn);
 
     var status = $("<div style='margin-top:6px;font-size:12px;color:#555;'></div>");
@@ -1120,7 +1120,7 @@
                     var content = decodeURIComponent(escape(atob(data.content.replace(/\n/g, ""))));
                     botEnabled = JSON.parse(content).enabled !== false;
                 } catch(e) {}
-                botToggleBtn.text(botEnabled ? "Bot: AN" : "Bot: AUS")
+                botToggleBtn.text(botEnabled ? "AN" : "AUS")
                             .css("background", botEnabled ? "#afa" : "#fcc");
                 if (callback) callback();
             },
@@ -1146,7 +1146,7 @@
 
     botToggleBtn.on("click", function() {
         botEnabled = !botEnabled;
-        botToggleBtn.text(botEnabled ? "Bot: AN" : "Bot: AUS")
+        botToggleBtn.text(botEnabled ? "AN" : "AUS")
                     .css("background", botEnabled ? "#afa" : "#fcc");
         setStatus("Bot " + (botEnabled ? "wird aktiviert..." : "wird pausiert..."));
         writeBotState(botEnabled, function() {
