@@ -56,9 +56,9 @@
         "spy": 10,
         "militia": 0
       },
-      "sent": false,
-      "sentBy": null,
-      "sentAt": null
+      "sent": true,
+      "sentBy": "attack-bot-skip",
+      "sentAt": 1778508819570
     }
   ]
 }
