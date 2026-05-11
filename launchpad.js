@@ -7,8 +7,10 @@
     var GITHUB_REPO = "DS-TEST";
     var GITHUB_BRANCH = "main";
     var GITHUB_FILE = "plan.json";
+    var GITHUB_BOT_FILE = "bot_control.json";
     var GITHUB_TOKEN = window.LAUNCHPAD_TOKEN || "";
     var GITHUB_API = "https://api.github.com/repos/" + GITHUB_OWNER + "/" + GITHUB_REPO + "/contents/" + GITHUB_FILE;
+    var GITHUB_BOT_API = "https://api.github.com/repos/" + GITHUB_OWNER + "/" + GITHUB_REPO + "/contents/" + GITHUB_BOT_FILE;
     var AUTO_REFRESH_MS = 15000;
 
     var villageMap = {};
@@ -16,6 +18,7 @@
     var currentPlan = [];
     var isWriting = false;
     var botEnabled = true;
+    var botControlSha = null;
 
     // Panel session flag — set on every quickbar tap, survives page reloads via sessionStorage
     // so the panel re-appears automatically after each navigation while the script is alive.
@@ -462,9 +465,6 @@
                 try {
                     var content = decodeURIComponent(escape(atob(data.content.replace(/\n/g, ""))));
                     var parsed = JSON.parse(content);
-                    botEnabled = parsed.botEnabled !== false;
-                    botToggleBtn.text(botEnabled ? "Bot: AN" : "Bot: AUS")
-                                .css("background", botEnabled ? "#afa" : "#fcc");
                     callback(parsed);
                 } catch(e) { setStatus("Ungültiges JSON in plan.json: " + e.message, "red"); callback(null); }
             },
@@ -503,7 +503,7 @@
                     githubGet(function(latest){
                         if (latest && latest.attacks) currentPlan = mergeSent(latest.attacks, currentPlan);
                         renderPlan(currentPlan);
-                        githubPut({ botEnabled: botEnabled, attacks: currentPlan }, message, callback);
+                        githubPut({ attacks: currentPlan }, message, callback);
                     });
                 } else {
                     setStatus("GitHub PUT fehlgeschlagen: " + xhr.status, "red");
@@ -590,7 +590,7 @@
                         (a.originId === pending.originId && a.targetId === pending.targetId && a.arrivalMs === pending.arrivalMs);
                 });
                 if (att) { att.sent = true; att.sentBy = ME; att.sentAt = Date.now(); }
-                githubPut({ botEnabled: botEnabled, attacks: plan }, "gesendet: " + pending.originId + "->" + pending.targetId + " von " + ME, function(){
+                githubPut({ attacks: plan }, "gesendet: " + pending.originId + "->" + pending.targetId + " von " + ME, function(){
                     closeWidget();
                     if (currentPlan.length > 0) renderPlan(mergeSent(plan, currentPlan));
                 });
@@ -714,7 +714,7 @@
                         (a.originId === p.originId && a.targetId === p.targetId && String(a.arrivalMs) === String(p.arrivalMs));
                 });
                 if (att) { att.sent = true; att.sentBy = ME; att.sentAt = Date.now(); }
-                githubPut({ botEnabled: botEnabled, attacks: plan }, "gesendet: " + p.originId + "->" + p.targetId + " von " + ME, function(){
+                githubPut({ attacks: plan }, "gesendet: " + p.originId + "->" + p.targetId + " von " + ME, function(){
                     clearPendingAttack();
                     try { sessionStorage.removeItem("lp_autosent"); } catch(e) {}
                     if (window._lpInt) clearInterval(window._lpInt);
@@ -838,7 +838,7 @@
             setStatus("Sende...");
             submitAttackDirect(att, type, function() {
                 att.sent = true; att.sentBy = ME; att.sentAt = Date.now();
-                githubPut({ botEnabled: botEnabled, attacks: currentPlan }, "gesendet: " + att.originId + "->" + att.targetId + " von " + ME, function(){
+                githubPut({ attacks: currentPlan }, "gesendet: " + att.originId + "->" + att.targetId + " von " + ME, function(){
                     setStatus("Gesendet!", "green");
                     renderPlan(currentPlan);
                 });
@@ -864,7 +864,7 @@
             att.sentBy = null;
             att.sentAt = null;
             setStatus("Setze Status zurück...");
-            githubPut({ botEnabled: botEnabled, attacks: currentPlan }, "zurückgesetzt: " + att.originId + "->" + att.targetId + " (war " + prevSentBy + ")", function(){
+            githubPut({ attacks: currentPlan }, "zurückgesetzt: " + att.originId + "->" + att.targetId + " (war " + prevSentBy + ")", function(){
                 setStatus("Zurückgesetzt.", "green");
                 renderPlan(currentPlan);
             });
@@ -924,7 +924,7 @@
                     $b.text("...").prop("disabled", true);
                     submitAttackDirect(att, type, function() {
                         att.sent = true; att.sentBy = ME; att.sentAt = Date.now();
-                        githubPut({ botEnabled: botEnabled, attacks: currentPlan }, "gesendet: " + att.originId + "->" + att.targetId + " von " + ME, function(){
+                        githubPut({ attacks: currentPlan }, "gesendet: " + att.originId + "->" + att.targetId + " von " + ME, function(){
                             setStatus("Gesendet!", "green");
                             renderPlan(currentPlan);
                         });
@@ -1089,7 +1089,7 @@
         pushBtn.text("Plan hochladen");
         loadVillages(function(){
             githubGet(function(){
-                githubPut({ botEnabled: botEnabled, attacks: plan }, "neuer Plan (" + plan.length + " Angriffe)", function(){
+                githubPut({ attacks: plan }, "neuer Plan (" + plan.length + " Angriffe)", function(){
                     setStatus("Neuer Plan hochgeladen.", "green");
                     currentPlan = plan;
                     renderPlan(plan);
@@ -1110,17 +1110,47 @@
         });
     });
 
+    function syncBotState(callback) {
+        $.ajax({
+            url: GITHUB_BOT_API + "?ref=" + GITHUB_BRANCH + "&_=" + Date.now(),
+            headers: authHeaders(),
+            success: function(data) {
+                botControlSha = data.sha;
+                try {
+                    var content = decodeURIComponent(escape(atob(data.content.replace(/\n/g, ""))));
+                    botEnabled = JSON.parse(content).enabled !== false;
+                } catch(e) {}
+                botToggleBtn.text(botEnabled ? "Bot: AN" : "Bot: AUS")
+                            .css("background", botEnabled ? "#afa" : "#fcc");
+                if (callback) callback();
+            },
+            error: function() { if (callback) callback(); }
+        });
+    }
+
+    function writeBotState(enabled, callback) {
+        var body = { message: "bot " + (enabled ? "an" : "aus"),
+                     content: btoa(JSON.stringify({ enabled: enabled })),
+                     branch: GITHUB_BRANCH };
+        if (botControlSha) body.sha = botControlSha;
+        $.ajax({
+            url: GITHUB_BOT_API, method: "PUT", headers: authHeaders(),
+            contentType: "application/json", data: JSON.stringify(body),
+            success: function(resp) {
+                botControlSha = resp.content.sha;
+                if (callback) callback();
+            },
+            error: function(xhr) { setStatus("Bot-Toggle fehlgeschlagen: " + xhr.status, "red"); }
+        });
+    }
+
     botToggleBtn.on("click", function() {
         botEnabled = !botEnabled;
         botToggleBtn.text(botEnabled ? "Bot: AN" : "Bot: AUS")
                     .css("background", botEnabled ? "#afa" : "#fcc");
-        setStatus((botEnabled ? "Bot aktiviert" : "Bot pausiert") + " — speichere...");
-        githubGet(function(data) {
-            var plan = (data && data.attacks) ? data.attacks : currentPlan;
-            githubPut({ botEnabled: botEnabled, attacks: plan },
-                "bot " + (botEnabled ? "aktiviert" : "pausiert"),
-                function() { setStatus("Bot " + (botEnabled ? "AN" : "AUS") + ".", botEnabled ? "green" : "orange"); }
-            );
+        setStatus("Bot " + (botEnabled ? "wird aktiviert..." : "wird pausiert..."));
+        writeBotState(botEnabled, function() {
+            setStatus("Bot " + (botEnabled ? "AN" : "AUS") + ".", botEnabled ? "green" : "orange");
         });
     });
 
@@ -1160,7 +1190,7 @@
                            String(a.arrivalMs) === String(info.arrivalMs);
                 });
                 if (att) { att.sent = true; att.sentBy = ME; att.sentAt = Date.now(); }
-                githubPut({ botEnabled: botEnabled, attacks: plan }, "gesendet: " + info.originId + "->" + info.targetId + " von " + ME, function() {
+                githubPut({ attacks: plan }, "gesendet: " + info.originId + "->" + info.targetId + " von " + ME, function() {
                     clearPendingAttack();
                     if (autoNextEnabled) {
                         var nextAtt = findNextAttack(plan, info);
@@ -1257,6 +1287,8 @@
         mount.prepend(panel);
 
         if (pending && pending.arrivalMs) showCountdownWidget(pending);
+
+        syncBotState();
 
         loadVillages(function(){
             githubGet(function(data){
