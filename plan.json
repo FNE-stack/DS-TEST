@@ -699,8 +699,8 @@
         "militia": 0
       },
       "sent": true,
-      "sentBy": "Donald John Trump",
-      "sentAt": 1778619618501
+      "sentBy": "attack-bot-skip",
+      "sentAt": 1778619614901
     },
     {
       "id": "4628_13461_1778786440000",
@@ -725,8 +725,8 @@
         "militia": 0
       },
       "sent": true,
-      "sentBy": "Donald John Trump",
-      "sentAt": 1778619635889
+      "sentBy": "attack-bot-skip",
+      "sentAt": 1778619695545
     },
     {
       "id": "379_4773_1778785509000",
@@ -750,9 +750,9 @@
         "snob": 0,
         "militia": 0
       },
-      "sent": true,
-      "sentBy": "Donald John Trump",
-      "sentAt": 1778619653754
+      "sent": false,
+      "sentBy": null,
+      "sentAt": null
     },
     {
       "id": "4628_8444_1778785208000",
@@ -776,9 +776,9 @@
         "snob": 0,
         "militia": 0
       },
-      "sent": true,
-      "sentBy": "Donald John Trump",
-      "sentAt": 1778619681882
+      "sent": false,
+      "sentBy": null,
+      "sentAt": null
     },
     {
       "id": "3907_1261_1778785209000",
@@ -802,9 +802,9 @@
         "snob": 0,
         "militia": 0
       },
-      "sent": true,
-      "sentBy": "Donald John Trump",
-      "sentAt": 1778619693473
+      "sent": false,
+      "sentBy": null,
+      "sentAt": null
     },
     {
       "id": "4628_1985_1778792022000",
