@@ -569,8 +569,8 @@
         "militia": 0
       },
       "sent": true,
-      "sentBy": "attack-bot-skip",
-      "sentAt": 1778619519796
+      "sentBy": "Donald John Trump",
+      "sentAt": 1778619481097
     },
     {
       "id": "3907_9384_1778785223000",
@@ -594,9 +594,9 @@
         "snob": 0,
         "militia": 0
       },
-      "sent": false,
-      "sentBy": null,
-      "sentAt": null
+      "sent": true,
+      "sentBy": "Donald John Trump",
+      "sentAt": 1778619503591
     },
     {
       "id": "4628_12809_1778786443000",
