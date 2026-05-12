@@ -490,9 +490,9 @@
         "snob": 0,
         "militia": 0
       },
-      "sent": false,
-      "sentBy": null,
-      "sentAt": null
+      "sent": true,
+      "sentBy": "attack-bot-skip",
+      "sentAt": 1778619370170
     },
     {
       "id": "4628_5895_1778785264000",
