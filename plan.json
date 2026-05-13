@@ -1008,9 +1008,9 @@
         "snob": 0,
         "militia": 0
       },
-      "sent": false,
-      "sentBy": null,
-      "sentAt": null
+      "sent": true,
+      "sentBy": "Donald John Trump",
+      "sentAt": 1778680264699
     },
     {
       "id": "4885_7795_1778791347000",
