@@ -65,9 +65,9 @@
         "snob": 0,
         "militia": 0
       },
-      "sent": true,
-      "sentBy": "attack-bot",
-      "sentAt": 1778666728193
+      "sent": false,
+      "sentBy": null,
+      "sentAt": null
     },
     {
       "id": "3907_14356_1778792098000",
@@ -88,9 +88,9 @@
         "snob": 0,
         "militia": 0
       },
-      "sent": false,
-      "sentBy": null,
-      "sentAt": null
+      "sent": true,
+      "sentBy": "attack-bot",
+      "sentAt": 1778666742964
     },
     {
       "id": "3907_14259_1778791434000",
