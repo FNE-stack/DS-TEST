@@ -11,21 +11,17 @@
         "spear": 0,
         "sword": 0,
         "axe": 0,
-        "archer": null,
         "spy": 20,
         "light": 0,
-        "marcher": null,
         "heavy": 0,
         "ram": 0,
         "catapult": 1,
-        "knight": null,
         "snob": 0,
         "militia": 0
       },
-      "raw": "4628&1985&catapult&1778792022000&14&false&true&spear=MA==/sword=MA==/axe=MA==/archer=/spy=MjA=/light=MA==/marcher=/heavy=MA==/ram=MA==/catapult=MQ==/knight=/snob=MA==/militia=MA==",
-      "sent": false,
-      "sentBy": null,
-      "sentAt": null
+      "sent": true,
+      "sentBy": "attack-bot-skip",
+      "sentAt": 1778655950414
     },
     {
       "id": "3790_11823_1778791301000",
@@ -49,7 +45,6 @@
         "snob": 0,
         "militia": 0
       },
-      "raw": "3790&11823&catapult&1778791301000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=MA==/spy=MQ==/light=MA==/marcher=MA==/heavy=MA==/ram=MA==/catapult=OQ==/knight=MA==/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -65,18 +60,14 @@
         "spear": 0,
         "sword": 0,
         "axe": 0,
-        "archer": null,
         "spy": 10,
         "light": 0,
-        "marcher": null,
         "heavy": 0,
         "ram": 0,
         "catapult": 6,
-        "knight": null,
         "snob": 0,
         "militia": 0
       },
-      "raw": "3907&2563&catapult&1778792032000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=/spy=MTA=/light=MA==/marcher=/heavy=MA==/ram=MA==/catapult=Ng==/knight=/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -103,7 +94,6 @@
         "snob": 0,
         "militia": 0
       },
-      "raw": "3790&9781&catapult&1778792010000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=MA==/spy=MQ==/light=MA==/marcher=MA==/heavy=MA==/ram=MA==/catapult=OQ==/knight=MA==/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -119,18 +109,14 @@
         "spear": 0,
         "sword": 0,
         "axe": 0,
-        "archer": null,
         "spy": 10,
         "light": 0,
-        "marcher": null,
         "heavy": 0,
         "ram": 0,
         "catapult": 6,
-        "knight": null,
         "snob": 0,
         "militia": 0
       },
-      "raw": "3907&15525&catapult&1778788579000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=/spy=MTA=/light=MA==/marcher=/heavy=MA==/ram=MA==/catapult=Ng==/knight=/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -157,7 +143,6 @@
         "snob": 0,
         "militia": 0
       },
-      "raw": "4458&6057&catapult&1778785288000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=MA==/spy=MQ==/light=MA==/marcher=MA==/heavy=MA==/ram=MA==/catapult=Ng==/knight=MA==/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -184,7 +169,6 @@
         "snob": 0,
         "militia": 0
       },
-      "raw": "4458&3171&catapult&1778785581000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=MA==/spy=MQ==/light=MA==/marcher=MA==/heavy=MA==/ram=MA==/catapult=Ng==/knight=MA==/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -200,18 +184,14 @@
         "spear": 0,
         "sword": 0,
         "axe": 0,
-        "archer": null,
         "spy": 10,
         "light": 0,
-        "marcher": null,
         "heavy": 0,
         "ram": 0,
         "catapult": 6,
-        "knight": null,
         "snob": 0,
         "militia": 0
       },
-      "raw": "3907&18705&catapult&1778785715000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=/spy=MTA=/light=MA==/marcher=/heavy=MA==/ram=MA==/catapult=Ng==/knight=/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -227,18 +207,14 @@
         "spear": 0,
         "sword": 0,
         "axe": 0,
-        "archer": null,
         "spy": 10,
         "light": 0,
-        "marcher": null,
         "heavy": 0,
         "ram": 0,
         "catapult": 6,
-        "knight": null,
         "snob": 0,
         "militia": 0
       },
-      "raw": "3907&16749&catapult&1778792097000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=/spy=MTA=/light=MA==/marcher=/heavy=MA==/ram=MA==/catapult=Ng==/knight=/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -265,7 +241,6 @@
         "snob": 0,
         "militia": 0
       },
-      "raw": "4458&7034&catapult&1778791861000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=MA==/spy=MQ==/light=MA==/marcher=MA==/heavy=MA==/ram=MA==/catapult=Ng==/knight=MA==/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -292,7 +267,6 @@
         "snob": 0,
         "militia": 0
       },
-      "raw": "4458&6377&catapult&1778792070000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=MA==/spy=MQ==/light=MA==/marcher=MA==/heavy=MA==/ram=MA==/catapult=Ng==/knight=MA==/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -308,18 +282,14 @@
         "spear": 0,
         "sword": 0,
         "axe": 0,
-        "archer": null,
         "spy": 10,
         "light": 0,
-        "marcher": null,
         "heavy": 0,
         "ram": 0,
         "catapult": 6,
-        "knight": null,
         "snob": 0,
         "militia": 0
       },
-      "raw": "3907&14356&catapult&1778792098000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=/spy=MTA=/light=MA==/marcher=/heavy=MA==/ram=MA==/catapult=Ng==/knight=/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -335,18 +305,14 @@
         "spear": 0,
         "sword": 0,
         "axe": 0,
-        "archer": null,
         "spy": 10,
         "light": 0,
-        "marcher": null,
         "heavy": 0,
         "ram": 0,
         "catapult": 6,
-        "knight": null,
         "snob": 0,
         "militia": 0
       },
-      "raw": "3907&14259&catapult&1778791434000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=/spy=MTA=/light=MA==/marcher=/heavy=MA==/ram=MA==/catapult=Ng==/knight=/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -373,7 +339,6 @@
         "snob": 0,
         "militia": 0
       },
-      "raw": "5828&9224&catapult&1778789320000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=MA==/spy=MQ==/light=MA==/marcher=MA==/heavy=MA==/ram=MA==/catapult=OA==/knight=MA==/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -400,7 +365,6 @@
         "snob": 0,
         "militia": 0
       },
-      "raw": "5828&10991&catapult&1778785229000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=MA==/spy=MQ==/light=MA==/marcher=MA==/heavy=MA==/ram=MA==/catapult=OA==/knight=MA==/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -427,7 +391,6 @@
         "snob": 0,
         "militia": 0
       },
-      "raw": "5828&9322&catapult&1778785824000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=MA==/spy=MQ==/light=MA==/marcher=MA==/heavy=MA==/ram=MA==/catapult=OA==/knight=MA==/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -454,7 +417,6 @@
         "snob": 0,
         "militia": 0
       },
-      "raw": "5828&11024&catapult&1778790405000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=MA==/spy=MQ==/light=MA==/marcher=MA==/heavy=MA==/ram=MA==/catapult=OA==/knight=MA==/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -481,7 +443,6 @@
         "snob": 0,
         "militia": 0
       },
-      "raw": "5177&6350&catapult&1778785904000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=MA==/spy=MQ==/light=MA==/marcher=MA==/heavy=MA==/ram=MA==/catapult=NQ==/knight=MA==/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -508,7 +469,6 @@
         "snob": 0,
         "militia": 0
       },
-      "raw": "5177&6606&catapult&1778785397000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=MA==/spy=MQ==/light=MA==/marcher=MA==/heavy=MA==/ram=MA==/catapult=NQ==/knight=MA==/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -535,7 +495,6 @@
         "snob": 0,
         "militia": 0
       },
-      "raw": "5828&10134&catapult&1778789824000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=MA==/spy=MQ==/light=MA==/marcher=MA==/heavy=MA==/ram=MA==/catapult=OA==/knight=MA==/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -562,7 +521,6 @@
         "snob": 0,
         "militia": 0
       },
-      "raw": "5177&4694&catapult&1778785320000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=MA==/spy=MQ==/light=MA==/marcher=MA==/heavy=MA==/ram=MA==/catapult=NQ==/knight=MA==/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -589,7 +547,6 @@
         "snob": 0,
         "militia": 0
       },
-      "raw": "5177&5993&catapult&1778785317000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=MA==/spy=MQ==/light=MA==/marcher=MA==/heavy=MA==/ram=MA==/catapult=NQ==/knight=MA==/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -616,7 +573,6 @@
         "snob": 0,
         "militia": 0
       },
-      "raw": "5177&5188&catapult&1778791833000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=MA==/spy=MQ==/light=MA==/marcher=MA==/heavy=MA==/ram=MA==/catapult=NQ==/knight=MA==/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -643,7 +599,6 @@
         "snob": 0,
         "militia": 0
       },
-      "raw": "5177&4609&catapult&1778789790000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=MA==/spy=MQ==/light=MA==/marcher=MA==/heavy=MA==/ram=MA==/catapult=NQ==/knight=MA==/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -670,7 +625,6 @@
         "snob": 0,
         "militia": 0
       },
-      "raw": "8805&13192&catapult&1778788488000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=MA==/spy=MQ==/light=MA==/marcher=MA==/heavy=MA==/ram=MA==/catapult=NA==/knight=MA==/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -697,7 +651,6 @@
         "snob": 0,
         "militia": 0
       },
-      "raw": "8805&7822&catapult&1778791296000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=MA==/spy=MQ==/light=MA==/marcher=MA==/heavy=MA==/ram=MA==/catapult=NA==/knight=MA==/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -724,7 +677,6 @@
         "snob": 0,
         "militia": 0
       },
-      "raw": "4885&11056&catapult&1778785374000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=MA==/spy=MQ==/light=MA==/marcher=MA==/heavy=MA==/ram=MA==/catapult=MTM=/knight=MA==/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -751,7 +703,6 @@
         "snob": 0,
         "militia": 0
       },
-      "raw": "5177&3461&catapult&1778790228000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=MA==/spy=MQ==/light=MA==/marcher=MA==/heavy=MA==/ram=MA==/catapult=NQ==/knight=MA==/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -778,7 +729,6 @@
         "snob": 0,
         "militia": 0
       },
-      "raw": "4885&3987&catapult&1778785975000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=MA==/spy=MQ==/light=MA==/marcher=MA==/heavy=MA==/ram=MA==/catapult=MTM=/knight=MA==/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -805,7 +755,6 @@
         "snob": 0,
         "militia": 0
       },
-      "raw": "5177&794&catapult&1778791291000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=MA==/spy=MQ==/light=MA==/marcher=MA==/heavy=MA==/ram=MA==/catapult=NQ==/knight=MA==/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -832,7 +781,6 @@
         "snob": 0,
         "militia": 0
       },
-      "raw": "2618&9512&catapult&1778790071000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=MA==/spy=MQ==/light=MA==/marcher=MA==/heavy=MA==/ram=MA==/catapult=Nw==/knight=MA==/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -859,7 +807,6 @@
         "snob": 0,
         "militia": 0
       },
-      "raw": "2618&7649&catapult&1778786537000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=MA==/spy=MQ==/light=MA==/marcher=MA==/heavy=MA==/ram=MA==/catapult=Nw==/knight=MA==/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -886,7 +833,6 @@
         "snob": 0,
         "militia": 0
       },
-      "raw": "8805&8498&catapult&1778790811000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=MA==/spy=MQ==/light=MA==/marcher=MA==/heavy=MA==/ram=MA==/catapult=NA==/knight=MA==/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -913,7 +859,6 @@
         "snob": 0,
         "militia": 0
       },
-      "raw": "8805&13467&catapult&1778789495000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=MA==/spy=MQ==/light=MA==/marcher=MA==/heavy=MA==/ram=MA==/catapult=NA==/knight=MA==/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -940,7 +885,6 @@
         "snob": 0,
         "militia": 0
       },
-      "raw": "2618&11118&catapult&1778787703000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=MA==/spy=MQ==/light=MA==/marcher=MA==/heavy=MA==/ram=MA==/catapult=Nw==/knight=MA==/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -967,7 +911,6 @@
         "snob": 0,
         "militia": 0
       },
-      "raw": "4885&5933&catapult&1778785719000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=MA==/spy=MQ==/light=MA==/marcher=MA==/heavy=MA==/ram=MA==/catapult=MTM=/knight=MA==/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -994,7 +937,6 @@
         "snob": 0,
         "militia": 0
       },
-      "raw": "2618&8673&catapult&1778788108000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=MA==/spy=MQ==/light=MA==/marcher=MA==/heavy=MA==/ram=MA==/catapult=Nw==/knight=MA==/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -1021,7 +963,6 @@
         "snob": 0,
         "militia": 0
       },
-      "raw": "4765&7559&catapult&1778785812000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=MA==/spy=MQ==/light=MA==/marcher=MA==/heavy=MA==/ram=MA==/catapult=Nw==/knight=MA==/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -1048,7 +989,6 @@
         "snob": 0,
         "militia": 0
       },
-      "raw": "8805&13987&catapult&1778791433000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=MA==/spy=MQ==/light=MA==/marcher=MA==/heavy=MA==/ram=MA==/catapult=NA==/knight=MA==/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -1075,7 +1015,6 @@
         "snob": 0,
         "militia": 0
       },
-      "raw": "4765&3638&catapult&1778785670000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=MA==/spy=MQ==/light=MA==/marcher=MA==/heavy=MA==/ram=MA==/catapult=Nw==/knight=MA==/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -1102,7 +1041,6 @@
         "snob": 0,
         "militia": 0
       },
-      "raw": "4765&4331&catapult&1778786784000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=MA==/spy=MQ==/light=MA==/marcher=MA==/heavy=MA==/ram=MA==/catapult=Nw==/knight=MA==/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -1129,7 +1067,6 @@
         "snob": 0,
         "militia": 0
       },
-      "raw": "4885&8295&catapult&1778787392000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=MA==/spy=MQ==/light=MA==/marcher=MA==/heavy=MA==/ram=MA==/catapult=MTM=/knight=MA==/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -1145,18 +1082,14 @@
         "spear": 0,
         "sword": 0,
         "axe": 0,
-        "archer": null,
         "spy": 20,
         "light": 0,
-        "marcher": null,
         "heavy": 0,
         "ram": 0,
         "catapult": 1,
-        "knight": null,
         "snob": 0,
         "militia": 0
       },
-      "raw": "2618&12429&catapult&1778786757000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=/spy=MjA=/light=MA==/marcher=/heavy=MA==/ram=MA==/catapult=MQ==/knight=/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -1183,7 +1116,6 @@
         "snob": 0,
         "militia": 0
       },
-      "raw": "8805&11607&catapult&1778791829000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=MA==/spy=MQ==/light=MA==/marcher=MA==/heavy=MA==/ram=MA==/catapult=NA==/knight=MA==/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -1199,18 +1131,14 @@
         "spear": 0,
         "sword": 0,
         "axe": 0,
-        "archer": null,
         "spy": 20,
         "light": 0,
-        "marcher": null,
         "heavy": 0,
         "ram": 0,
         "catapult": 1,
-        "knight": null,
         "snob": 0,
         "militia": 0
       },
-      "raw": "2618&9666&catapult&1778785476000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=/spy=MjA=/light=MA==/marcher=/heavy=MA==/ram=MA==/catapult=MQ==/knight=/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -1237,7 +1165,6 @@
         "snob": 0,
         "militia": 0
       },
-      "raw": "4885&9484&catapult&1778788946000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=MA==/spy=MQ==/light=MA==/marcher=MA==/heavy=MA==/ram=MA==/catapult=MTM=/knight=MA==/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -1264,7 +1191,6 @@
         "snob": 0,
         "militia": 0
       },
-      "raw": "4885&10970&catapult&1778787971000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=MA==/spy=MQ==/light=MA==/marcher=MA==/heavy=MA==/ram=MA==/catapult=MTM=/knight=MA==/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -1291,7 +1217,6 @@
         "snob": 0,
         "militia": 0
       },
-      "raw": "4765&3832&catapult&1778785463000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=MA==/spy=MQ==/light=MA==/marcher=MA==/heavy=MA==/ram=MA==/catapult=Nw==/knight=MA==/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -1318,7 +1243,6 @@
         "snob": 0,
         "militia": 0
       },
-      "raw": "2507&6381&catapult&1778785206000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=MA==/spy=MQ==/light=MA==/marcher=MA==/heavy=MA==/ram=MA==/catapult=OA==/knight=MA==/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -1345,7 +1269,6 @@
         "snob": 0,
         "militia": 0
       },
-      "raw": "2507&6521&catapult&1778785298000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=MA==/spy=MQ==/light=MA==/marcher=MA==/heavy=MA==/ram=MA==/catapult=OA==/knight=MA==/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -1372,7 +1295,6 @@
         "snob": 0,
         "militia": 0
       },
-      "raw": "2507&6194&catapult&1778785208000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=MA==/spy=MQ==/light=MA==/marcher=MA==/heavy=MA==/ram=MA==/catapult=OA==/knight=MA==/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -1399,7 +1321,6 @@
         "snob": 0,
         "militia": 0
       },
-      "raw": "4885&7795&catapult&1778791347000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=MA==/spy=MQ==/light=MA==/marcher=MA==/heavy=MA==/ram=MA==/catapult=MTM=/knight=MA==/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -1426,7 +1347,6 @@
         "snob": 0,
         "militia": 0
       },
-      "raw": "2507&4095&catapult&1778789463000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=MA==/spy=MQ==/light=MA==/marcher=MA==/heavy=MA==/ram=MA==/catapult=OA==/knight=MA==/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -1453,7 +1373,6 @@
         "snob": 0,
         "militia": 0
       },
-      "raw": "2507&5093&catapult&1778792001000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=MA==/spy=MQ==/light=MA==/marcher=MA==/heavy=MA==/ram=MA==/catapult=OA==/knight=MA==/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -1469,18 +1388,14 @@
         "spear": 0,
         "sword": 0,
         "axe": 0,
-        "archer": null,
         "spy": 20,
         "light": 0,
-        "marcher": null,
         "heavy": 0,
         "ram": 0,
         "catapult": 1,
-        "knight": null,
         "snob": 0,
         "militia": 0
       },
-      "raw": "2618&13664&catapult&1778790501000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=/spy=MjA=/light=MA==/marcher=/heavy=MA==/ram=MA==/catapult=MQ==/knight=/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -1496,18 +1411,14 @@
         "spear": 0,
         "sword": 0,
         "axe": 0,
-        "archer": null,
         "spy": 20,
         "light": 0,
-        "marcher": null,
         "heavy": 0,
         "ram": 0,
         "catapult": 1,
-        "knight": null,
         "snob": 0,
         "militia": 0
       },
-      "raw": "2618&13508&catapult&1778792096000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=/spy=MjA=/light=MA==/marcher=/heavy=MA==/ram=MA==/catapult=MQ==/knight=/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -1534,7 +1445,6 @@
         "snob": 0,
         "militia": 0
       },
-      "raw": "12151&7148&catapult&1778789687000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=MA==/spy=MQ==/light=MA==/marcher=MA==/heavy=MA==/ram=MA==/catapult=Ng==/knight=MA==/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -1561,7 +1471,6 @@
         "snob": 0,
         "militia": 0
       },
-      "raw": "12151&9287&catapult&1778791179000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=MA==/spy=MQ==/light=MA==/marcher=MA==/heavy=MA==/ram=MA==/catapult=Ng==/knight=MA==/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -1588,7 +1497,6 @@
         "snob": 0,
         "militia": 0
       },
-      "raw": "4765&3508&catapult&1778791339000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=MA==/spy=MQ==/light=MA==/marcher=MA==/heavy=MA==/ram=MA==/catapult=Nw==/knight=MA==/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -1615,7 +1523,6 @@
         "snob": 0,
         "militia": 0
       },
-      "raw": "4765&11273&catapult&1778788232000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=MA==/spy=MQ==/light=MA==/marcher=MA==/heavy=MA==/ram=MA==/catapult=Nw==/knight=MA==/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -1642,7 +1549,6 @@
         "snob": 0,
         "militia": 0
       },
-      "raw": "4765&13514&catapult&1778792061000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=MA==/spy=MQ==/light=MA==/marcher=MA==/heavy=MA==/ram=MA==/catapult=Nw==/knight=MA==/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -1658,18 +1564,14 @@
         "spear": 0,
         "sword": 0,
         "axe": 0,
-        "archer": null,
         "spy": 31,
         "light": 0,
-        "marcher": null,
         "heavy": 0,
         "ram": 0,
         "catapult": 2,
-        "knight": null,
         "snob": 0,
         "militia": 0
       },
-      "raw": "3547&2718&catapult&1778788165000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=/spy=MzE=/light=MA==/marcher=/heavy=MA==/ram=MA==/catapult=Mg==/knight=/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -1696,7 +1598,6 @@
         "snob": 0,
         "militia": 0
       },
-      "raw": "4765&8323&catapult&1778791593000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=MA==/spy=MQ==/light=MA==/marcher=MA==/heavy=MA==/ram=MA==/catapult=Nw==/knight=MA==/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -1723,7 +1624,6 @@
         "snob": 0,
         "militia": 0
       },
-      "raw": "12151&11780&catapult&1778789018000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=MA==/spy=MQ==/light=MA==/marcher=MA==/heavy=MA==/ram=MA==/catapult=Ng==/knight=MA==/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -1739,18 +1639,14 @@
         "spear": 0,
         "sword": 0,
         "axe": 0,
-        "archer": null,
         "spy": 20,
         "light": 5,
-        "marcher": null,
         "heavy": 0,
         "ram": 0,
         "catapult": 2,
-        "knight": null,
         "snob": 0,
         "militia": 0
       },
-      "raw": "1999&6768&catapult&1778786083000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=/spy=MjA=/light=NQ==/marcher=/heavy=MA==/ram=MA==/catapult=Mg==/knight=/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -1777,7 +1673,6 @@
         "snob": 0,
         "militia": 0
       },
-      "raw": "12151&9178&catapult&1778790009000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=MA==/spy=MQ==/light=MA==/marcher=MA==/heavy=MA==/ram=MA==/catapult=Ng==/knight=MA==/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -1793,18 +1688,14 @@
         "spear": 0,
         "sword": 0,
         "axe": 0,
-        "archer": null,
         "spy": 20,
         "light": 5,
-        "marcher": null,
         "heavy": 0,
         "ram": 0,
         "catapult": 2,
-        "knight": null,
         "snob": 0,
         "militia": 0
       },
-      "raw": "1999&7200&catapult&1778786167000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=/spy=MjA=/light=NQ==/marcher=/heavy=MA==/ram=MA==/catapult=Mg==/knight=/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -1831,7 +1722,6 @@
         "snob": 0,
         "militia": 0
       },
-      "raw": "2507&8192&catapult&1778791496000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=MA==/spy=MQ==/light=MA==/marcher=MA==/heavy=MA==/ram=MA==/catapult=OA==/knight=MA==/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -1858,7 +1748,6 @@
         "snob": 0,
         "militia": 0
       },
-      "raw": "2507&7662&catapult&1778785354000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=MA==/spy=MQ==/light=MA==/marcher=MA==/heavy=MA==/ram=MA==/catapult=OA==/knight=MA==/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -1885,7 +1774,6 @@
         "snob": 0,
         "militia": 0
       },
-      "raw": "12151&7087&catapult&1778788804000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=MA==/spy=MQ==/light=MA==/marcher=MA==/heavy=MA==/ram=MA==/catapult=Ng==/knight=MA==/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -1901,18 +1789,14 @@
         "spear": 0,
         "sword": 0,
         "axe": 0,
-        "archer": null,
         "spy": 20,
         "light": 5,
-        "marcher": null,
         "heavy": 0,
         "ram": 0,
         "catapult": 2,
-        "knight": null,
         "snob": 0,
         "militia": 0
       },
-      "raw": "1999&3297&catapult&1778786698000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=/spy=MjA=/light=NQ==/marcher=/heavy=MA==/ram=MA==/catapult=Mg==/knight=/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -1939,7 +1823,6 @@
         "snob": 0,
         "militia": 0
       },
-      "raw": "12151&5900&catapult&1778791819000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=MA==/spy=MQ==/light=MA==/marcher=MA==/heavy=MA==/ram=MA==/catapult=Ng==/knight=MA==/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -1966,7 +1849,6 @@
         "snob": 0,
         "militia": 0
       },
-      "raw": "12151&8555&catapult&1778787565000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=MA==/spy=MQ==/light=MA==/marcher=MA==/heavy=MA==/ram=MA==/catapult=Ng==/knight=MA==/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -1982,18 +1864,14 @@
         "spear": 0,
         "sword": 0,
         "axe": 0,
-        "archer": null,
         "spy": 31,
         "light": 0,
-        "marcher": null,
         "heavy": 0,
         "ram": 0,
         "catapult": 2,
-        "knight": null,
         "snob": 0,
         "militia": 0
       },
-      "raw": "3547&5402&catapult&1778791202000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=/spy=MzE=/light=MA==/marcher=/heavy=MA==/ram=MA==/catapult=Mg==/knight=/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -2009,18 +1887,14 @@
         "spear": 0,
         "sword": 0,
         "axe": 0,
-        "archer": null,
         "spy": 31,
         "light": 0,
-        "marcher": null,
         "heavy": 0,
         "ram": 0,
         "catapult": 2,
-        "knight": null,
         "snob": 0,
         "militia": 0
       },
-      "raw": "3547&6533&catapult&1778790330000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=/spy=MzE=/light=MA==/marcher=/heavy=MA==/ram=MA==/catapult=Mg==/knight=/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -2036,18 +1910,14 @@
         "spear": 0,
         "sword": 0,
         "axe": 0,
-        "archer": null,
         "spy": 31,
         "light": 0,
-        "marcher": null,
         "heavy": 0,
         "ram": 0,
         "catapult": 2,
-        "knight": null,
         "snob": 0,
         "militia": 0
       },
-      "raw": "3547&5263&catapult&1778791259000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=/spy=MzE=/light=MA==/marcher=/heavy=MA==/ram=MA==/catapult=Mg==/knight=/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -2074,7 +1944,6 @@
         "snob": 0,
         "militia": 0
       },
-      "raw": "2507&5654&catapult&1778786067000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=MA==/spy=MQ==/light=MA==/marcher=MA==/heavy=MA==/ram=MA==/catapult=OA==/knight=MA==/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -2090,18 +1959,14 @@
         "spear": 0,
         "sword": 0,
         "axe": 0,
-        "archer": null,
         "spy": 20,
         "light": 5,
-        "marcher": null,
         "heavy": 0,
         "ram": 0,
         "catapult": 2,
-        "knight": null,
         "snob": 0,
         "militia": 0
       },
-      "raw": "1999&9176&catapult&1778787113000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=/spy=MjA=/light=NQ==/marcher=/heavy=MA==/ram=MA==/catapult=Mg==/knight=/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -2117,18 +1982,14 @@
         "spear": 0,
         "sword": 0,
         "axe": 0,
-        "archer": null,
         "spy": 31,
         "light": 0,
-        "marcher": null,
         "heavy": 0,
         "ram": 0,
         "catapult": 2,
-        "knight": null,
         "snob": 0,
         "militia": 0
       },
-      "raw": "3547&5359&catapult&1778790074000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=/spy=MzE=/light=MA==/marcher=/heavy=MA==/ram=MA==/catapult=Mg==/knight=/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -2144,18 +2005,14 @@
         "spear": 0,
         "sword": 0,
         "axe": 0,
-        "archer": null,
         "spy": 31,
         "light": 0,
-        "marcher": null,
         "heavy": 0,
         "ram": 0,
         "catapult": 2,
-        "knight": null,
         "snob": 0,
         "militia": 0
       },
-      "raw": "3547&10052&catapult&1778790955000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=/spy=MzE=/light=MA==/marcher=/heavy=MA==/ram=MA==/catapult=Mg==/knight=/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -2182,7 +2039,6 @@
         "snob": 0,
         "militia": 0
       },
-      "raw": "3547&7163&catapult&1778789715000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=MA==/spy=MQ==/light=MA==/marcher=MA==/heavy=MA==/ram=MA==/catapult=MTA=/knight=MA==/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -2198,18 +2054,14 @@
         "spear": 0,
         "sword": 0,
         "axe": 0,
-        "archer": null,
         "spy": 31,
         "light": 0,
-        "marcher": null,
         "heavy": 0,
         "ram": 0,
         "catapult": 2,
-        "knight": null,
         "snob": 0,
         "militia": 0
       },
-      "raw": "3547&8665&catapult&1778791766000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=/spy=MzE=/light=MA==/marcher=/heavy=MA==/ram=MA==/catapult=Mg==/knight=/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -2225,18 +2077,13 @@
         "spear": 0,
         "sword": 0,
         "axe": 0,
-        "archer": null,
         "spy": 20,
         "light": 5,
-        "marcher": null,
         "heavy": 0,
-        "ram": null,
         "catapult": 2,
-        "knight": null,
         "snob": 0,
         "militia": 0
       },
-      "raw": "1999&6856&catapult&1778785427000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=/spy=MjA=/light=NQ==/marcher=/heavy=MA==/ram=/catapult=Mg==/knight=/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -2251,19 +2098,14 @@
       "troops": {
         "spear": 0,
         "sword": 0,
-        "axe": null,
-        "archer": null,
         "spy": 20,
         "light": 5,
-        "marcher": null,
         "heavy": 0,
         "ram": 0,
         "catapult": 2,
-        "knight": null,
         "snob": 0,
         "militia": 0
       },
-      "raw": "1999&9119&catapult&1778787397000&14&false&false&spear=MA==/sword=MA==/axe=/archer=/spy=MjA=/light=NQ==/marcher=/heavy=MA==/ram=MA==/catapult=Mg==/knight=/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -2279,18 +2121,14 @@
         "spear": 0,
         "sword": 0,
         "axe": 0,
-        "archer": null,
         "spy": 20,
         "light": 5,
-        "marcher": null,
         "heavy": 0,
         "ram": 0,
         "catapult": 2,
-        "knight": null,
         "snob": 0,
         "militia": 0
       },
-      "raw": "1999&2229&catapult&1778786157000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=/spy=MjA=/light=NQ==/marcher=/heavy=MA==/ram=MA==/catapult=Mg==/knight=/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -2317,7 +2155,6 @@
         "snob": 0,
         "militia": 0
       },
-      "raw": "12151&10533&catapult&1778788397000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=MA==/spy=MQ==/light=MA==/marcher=MA==/heavy=MA==/ram=MA==/catapult=Ng==/knight=MA==/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
@@ -2333,18 +2170,13 @@
         "spear": 0,
         "sword": 0,
         "axe": 0,
-        "archer": null,
         "spy": 20,
         "light": 5,
-        "marcher": null,
         "heavy": 0,
-        "ram": null,
         "catapult": 2,
-        "knight": null,
         "snob": 0,
         "militia": 0
       },
-      "raw": "1999&5751&catapult&1778785202000&14&false&false&spear=MA==/sword=MA==/axe=MA==/archer=/spy=MjA=/light=NQ==/marcher=/heavy=MA==/ram=/catapult=Mg==/knight=/snob=MA==/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
