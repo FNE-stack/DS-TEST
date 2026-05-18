@@ -218,8 +218,8 @@
         var dist = Math.hypot((+fromV.x) - (+toV.x), (+fromV.y) - (+toV.y));
         if (!isFinite(dist) || dist === 0) return null;
 
-        var travelSecs = dist * slowestMpf * 60 / (worldSpeed * unitSpeed);
-        return Math.round(arrivalMs - travelSecs * 1000);
+        var travelSecs = Math.round(dist * slowestMpf * 60 / (worldSpeed * unitSpeed));
+        return arrivalMs - travelSecs * 1000;
     }
 
     function fmtHms(ms) {
