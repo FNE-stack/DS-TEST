@@ -72,7 +72,14 @@
     function queryVillage(x, y, cb) {
         var coord  = x + '|' + y;
         var cached = cacheGet(coord);
-        if (cached !== undefined) { cb(cached); return; }
+        if (cached !== undefined) {
+            if (!_debugLogged) {
+                _debugLogged = true;
+                console.log('[IncCheck] API-Antwort gecacht (' + coord + '):', JSON.stringify(cached, null, 2));
+            }
+            cb(cached);
+            return;
+        }
 
         var fd = new FormData();
         fd.append('Key', DB_KEY);
