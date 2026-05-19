@@ -1,7 +1,7 @@
 (function () {
 
     // === CONFIG ===
-    var VERSION  = 'v3';
+    var VERSION  = 'v4';
     var API_URL  = (window.serverConfig && window.serverConfig.sfAPI) || 'https://api.twmeta.net/intel/village';
     var DB_KEY   = window.INCCHECK_DB_KEY || localStorage.getItem('dbkey') || '';
     var CACHE_TTL = 10 * 60 * 1000; // 10 min
@@ -167,45 +167,61 @@
     }
 
     // ── Threat assessment ─────────────────────────────────────────────────
-    // API returns attack_report / defend_report with troop counts, no building data.
-    function assessThreat(data) {
-        if (data === null) {
-            return { label: '?', bg: '#888', title: 'Nicht in Datenbank' };
+    // Primary signal: unit type read from TW table (noble=35mpf > ram=30mpf, so
+    // "Ramme" in Befehl means this wave is physically incapable of being a noble).
+    // Secondary: DB attack_report for whether this village has used nobles before.
+    function assessThreat(data, unitType) {
+        var snobInDb = data && data.attack_report && +data.attack_report.snob > 0;
+
+        // ── Primary: TW tells us the slowest unit in this wave ──
+        if (unitType === 'snob') {
+            return { label: 'ADEL!', bg: '#b00000',
+                     title: 'Adelszug — noble Einheit in diesem Angriff!' };
+        }
+        if (unitType === 'ram' || unitType === 'catapult') {
+            if (snobInDb) {
+                return { label: 'RAM ⚠', bg: '#c84800',
+                         title: 'Ramme — kein Adel in dieser Welle, ABER Dorf hat Adel eingesetzt!' };
+            }
+            return { label: 'FAKE?', bg: '#2a8a2a',
+                     title: 'Ramme — kein Adel möglich in dieser Welle, kein Adel in DB' };
+        }
+        if (unitType && unitType !== 'snob') {
+            // Fast unit (axe/light/heavy/etc.) — faster than noble, no noble in wave
+            var unitNames = { axe: 'Axt', light: 'LA', heavy: 'SA', spy: 'Späher',
+                              spear: 'Speer', sword: 'Schwert' };
+            var lbl = (unitNames[unitType] || unitType).toUpperCase();
+            if (snobInDb) {
+                return { label: lbl + ' ⚠', bg: '#c84800',
+                         title: lbl + ' — kein Adel in dieser Welle, ABER Dorf hat Adel eingesetzt!' };
+            }
+            return { label: lbl, bg: '#888',
+                     title: lbl + ' — zu schnell für Adel, kein Adel in DB' };
         }
 
+        // ── Fallback: unit unknown, use DB ──
+        if (data === null) {
+            return { label: '?', bg: '#555', title: 'Einheitentyp unbekannt, nicht in DB' };
+        }
+        if (snobInDb) {
+            return { label: 'ADEL?', bg: '#b00000',
+                     title: 'Einheitentyp unbekannt — Dorf hat Adel eingesetzt!' };
+        }
         var ar = data.attack_report;
         var hasReport = ar && +ar.fighttime > 0;
-        var snob = hasReport ? +ar.snob || 0 : 0;
-        var axe  = hasReport ? +ar.axe   || 0 : 0;
-        var lc   = hasReport ? +ar.light  || 0 : 0;
-        var hc   = hasReport ? +ar.heavy  || 0 : 0;
-        var ram  = hasReport ? +ar.ram    || 0 : 0;
-        var cat  = hasReport ? +ar.catapult || 0 : 0;
-        var totalOff = axe + lc + hc + ram + cat;
-
-        if (snob > 0) {
-            return { label: 'ADEL!', bg: '#b00000',
-                     title: 'Hat ' + snob + ' Adel eingesetzt — Adelszug möglich!' };
-        }
-
         if (!hasReport) {
-            var t = +data.type;
-            return { label: t === 1 ? 'OFF' : t === 0 ? 'DEFF' : 'DB',
-                     bg:    t === 1 ? '#d06000' : '#4466aa',
-                     title: 'Kein Angriffsbericht in DB' };
+            return { label: '?', bg: '#666', title: 'Einheitentyp unbekannt, kein Bericht in DB' };
         }
-
+        var totalOff = (+ar.axe||0) + (+ar.light||0) + (+ar.heavy||0) + (+ar.ram||0) + (+ar.catapult||0);
         if (totalOff === 0) {
-            return { label: 'FAKE?', bg: '#2a8a2a',
-                     title: 'Nur Aufklärer im letzten Bericht — wahrscheinlich Fake' };
+            return { label: 'SCOUT', bg: '#2a8a2a', title: 'Nur Aufklärer in DB — wahrscheinlich Fake' };
         }
-
         var parts = [];
-        if (axe) parts.push(axe + ' Äxte');
-        if (lc)  parts.push(lc  + ' LA');
-        if (hc)  parts.push(hc  + ' SA');
-        if (ram) parts.push(ram + ' Rammen');
-        if (cat) parts.push(cat + ' Katas');
+        if (+ar.axe)      parts.push(ar.axe + ' Äxte');
+        if (+ar.light)    parts.push(ar.light + ' LA');
+        if (+ar.heavy)    parts.push(ar.heavy + ' SA');
+        if (+ar.ram)      parts.push(ar.ram + ' Rammen');
+        if (+ar.catapult) parts.push(ar.catapult + ' Katas');
         return { label: 'OFF', bg: '#d06000',
                  title: 'Letzter Angriff: ' + parts.join(', ') + ' — kein Adel gesehen' };
     }
@@ -227,10 +243,31 @@
             borderRadius: '2px', marginLeft: '5px', verticalAlign: 'middle' });
     }
 
+    // ── Read slowest unit from TW's own Befehl cell ───────────────────────
+    // TW shows the slowest unit icon/name in the first cell. Noble (35 mpf) is
+    // slower than ram (30 mpf), so "Ramme" in Befehl = this wave cannot be noble.
+    function getUnitFromRow($row) {
+        var $td  = $row.find('td').first();
+        var src  = ($td.find('img').attr('src') || '').toLowerCase();
+        var txt  = $td.text().toLowerCase();
+        if (/snob/.test(src)   || /snob|adel/.test(txt))       return 'snob';
+        if (/ram/.test(src)    || /ramme/.test(txt))            return 'ram';
+        if (/catapult/.test(src) || /katapult/.test(txt))       return 'catapult';
+        if (/heavy/.test(src)  || /schwere\s+kavallerie/.test(txt)) return 'heavy';
+        if (/light/.test(src)  || /leichte\s+kavallerie/.test(txt)) return 'light';
+        if (/axe/.test(src)    || /\baxt\b/.test(txt))          return 'axe';
+        if (/spy/.test(src)    || /sp[äa]her/.test(txt))        return 'spy';
+        if (/spear/.test(src)  || /speer/.test(txt))            return 'spear';
+        if (/sword/.test(src)  || /schwert/.test(txt))          return 'sword';
+        return null;
+    }
+
     // ── Process one row ───────────────────────────────────────────────────
     function processRow($row) {
         if ($row.data('ic-done')) return;
         $row.data('ic-done', true);
+
+        var unitType = getUnitFromRow($row);
 
         getAttackerXY($row, function (x, y) {
             var $cell = $row.find('td').filter(function () { return $(this).text().trim().length > 0; }).first();
@@ -240,7 +277,7 @@
             $cell.append($spinner);
 
             queryVillage(x, y, function (data) {
-                $spinner.replaceWith(makeBadge(assessThreat(data)));
+                $spinner.replaceWith(makeBadge(assessThreat(data, unitType)));
             });
         });
     }
