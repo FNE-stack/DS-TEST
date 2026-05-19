@@ -239,8 +239,11 @@
 
     // ── Scan ──────────────────────────────────────────────────────────────
     function scanRows() {
-        // Cast wide net — any tr with cmd id or command-row class, anywhere on page
-        var $rows = $('tr[id^="cmd"]').add($('tr.command-row'));
+        // Find rows that contain coordinate text (X|Y) and have actual data cells.
+        // Works regardless of class/id on different TW versions.
+        var $rows = $('tr').filter(function () {
+            return $(this).find('td').length >= 3 && /\d{1,3}\|\d{1,3}/.test($(this).text());
+        });
         console.log('[IncCheck] scanRows: ' + $rows.length + ' candidate rows');
         $rows.each(function () { processRow($(this)); });
     }
