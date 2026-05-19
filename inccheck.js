@@ -3,7 +3,7 @@
     // === CONFIG ===
     var VERSION  = 'v1';
     var API_URL  = (window.serverConfig && window.serverConfig.sfAPI) || 'https://api.twmeta.net/intel/village';
-    var DB_KEY   = window.INCCHECK_DB_KEY || localStorage.getItem('dbkey') || 'tw_CvfFtuK36y2fhj-F09gUxkzQwoUxIOgQoqkShBEd3QhFxidO';
+    var DB_KEY   = window.INCCHECK_DB_KEY || localStorage.getItem('dbkey') || '';
     var CACHE_TTL = 10 * 60 * 1000; // 10 min per coord
 
     if (!DB_KEY) {
