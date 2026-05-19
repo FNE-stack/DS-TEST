@@ -68,16 +68,11 @@
     }
 
     // ── API ───────────────────────────────────────────────────────────────
-    var _debugLogged = false;
-
     function queryVillage(x, y, cb) {
         var coord  = x + '|' + y;
         var cached = cacheGet(coord);
         if (cached !== undefined) {
-            if (!_debugLogged) {
-                _debugLogged = true;
-                console.log('[IncCheck] API-Antwort gecacht (' + coord + '):', JSON.stringify(cached, null, 2));
-            }
+            console.log('[IncCheck] gecacht (' + coord + '):', JSON.stringify(cached, null, 2));
             cb(cached);
             return;
         }
@@ -90,10 +85,7 @@
         fetch(API_URL, { method: 'POST', body: fd, credentials: 'include' })
             .then(function (r) { return r.json(); })
             .then(function (data) {
-                if (!_debugLogged) {
-                    _debugLogged = true;
-                    console.log('[IncCheck] API-Antwort (' + coord + '):', JSON.stringify(data, null, 2));
-                }
+                console.log('[IncCheck] API (' + coord + '):', JSON.stringify(data, null, 2));
                 cacheSet(coord, data);
                 cb(data);
             })
@@ -167,94 +159,147 @@
         console.warn('[IncCheck] Keine Angriffskoordinaten in Zeile gefunden:', $row.text().trim().substring(0, 80));
     }
 
-    // ── Threat assessment ─────────────────────────────────────────────────
-    // Primary signal: unit type read from TW table (noble=35mpf > ram=30mpf, so
-    // "Ramme" in Befehl means this wave is physically incapable of being a noble).
-    // Secondary: DB attack_report for whether this village has used nobles before.
-    function assessThreat(data, unitType) {
-        var snobInDb = data && data.attack_report && +data.attack_report.snob > 0;
+    // ── Building data extraction ──────────────────────────────────────────
+    var BUILDING_KEYS = {
+        main: 'Hauptgebäude', barracks: 'Kaserne', stable: 'Stall', garage: 'Werkstatt',
+        smith: 'Schmiede', snob: 'Adelshof', wall: 'Wall', storage: 'Speicher',
+        hide: 'Versteck', farm: 'Bauernhof', market: 'Markt', wood: 'Sägewerk',
+        stone: 'Lehmgrube', iron: 'Eisenmine', watchtower: 'Wachturm'
+    };
 
-        // ── Primary: TW tells us the slowest unit in this wave ──
-        if (unitType === 'snob') {
-            return { label: 'ADEL!', bg: '#b00000',
-                     title: 'Adelszug — noble Einheit in diesem Angriff!' };
+    function findBuildings(data) {
+        if (!data) return null;
+        var nested = data.buildings || data.gebaeude || data.gdb || data.gdbdata || data.b;
+        if (nested && typeof nested === 'object' && !Array.isArray(nested)) return nested;
+        var top = Object.keys(BUILDING_KEYS);
+        for (var i = 0; i < top.length; i++) {
+            if (data[top[i]] != null) return data;
         }
-        if (unitType === 'ram' || unitType === 'catapult') {
-            if (snobInDb) {
-                return { label: 'RAM ⚠', bg: '#c84800',
-                         title: 'Ramme — kein Adel in dieser Welle, ABER Dorf hat Adel eingesetzt!' };
-            }
-            return { label: 'FAKE?', bg: '#2a8a2a',
-                     title: 'Ramme — kein Adel möglich in dieser Welle, kein Adel in DB' };
-        }
-        if (unitType && unitType !== 'snob') {
-            // Fast unit (axe/light/heavy/etc.) — faster than noble, no noble in wave
-            var unitNames = { axe: 'Axt', light: 'LA', heavy: 'SA', spy: 'Späher',
-                              spear: 'Speer', sword: 'Schwert' };
-            var lbl = (unitNames[unitType] || unitType).toUpperCase();
-            if (snobInDb) {
-                return { label: lbl + ' ⚠', bg: '#c84800',
-                         title: lbl + ' — kein Adel in dieser Welle, ABER Dorf hat Adel eingesetzt!' };
-            }
-            return { label: lbl, bg: '#888',
-                     title: lbl + ' — zu schnell für Adel, kein Adel in DB' };
-        }
-
-        // ── Fallback: unit unknown, use DB ──
-        if (data === null) {
-            return { label: '?', bg: '#555', title: 'Einheitentyp unbekannt, nicht in DB' };
-        }
-        if (snobInDb) {
-            return { label: 'ADEL?', bg: '#b00000',
-                     title: 'Einheitentyp unbekannt — Dorf hat Adel eingesetzt!' };
-        }
-        var ar = data.attack_report;
-        var hasReport = ar && +ar.fighttime > 0;
-        if (!hasReport) {
-            return { label: '?', bg: '#666', title: 'Einheitentyp unbekannt, kein Bericht in DB' };
-        }
-        var totalOff = (+ar.axe||0) + (+ar.light||0) + (+ar.heavy||0) + (+ar.ram||0) + (+ar.catapult||0);
-        if (totalOff === 0) {
-            return { label: 'SCOUT', bg: '#2a8a2a', title: 'Nur Aufklärer in DB — wahrscheinlich Fake' };
-        }
-        var parts = [];
-        if (+ar.axe)      parts.push(ar.axe + ' Äxte');
-        if (+ar.light)    parts.push(ar.light + ' LA');
-        if (+ar.heavy)    parts.push(ar.heavy + ' SA');
-        if (+ar.ram)      parts.push(ar.ram + ' Rammen');
-        if (+ar.catapult) parts.push(ar.catapult + ' Katas');
-        return { label: 'OFF', bg: '#d06000',
-                 title: 'Letzter Angriff: ' + parts.join(', ') + ' — kein Adel gesehen' };
+        return null;
     }
 
-    // ── Report summary for tooltip ────────────────────────────────────────
-    function reportSuffix(data) {
-        if (!data || !data.attack_report) return '';
-        var ar = data.attack_report;
-        if (!+ar.fighttime) return '';
-        var parts = [];
-        if (+ar.spy)      parts.push(ar.spy      + ' Späher');
-        if (+ar.axe)      parts.push(ar.axe      + ' Äxte');
-        if (+ar.light)    parts.push(ar.light     + ' LA');
-        if (+ar.heavy)    parts.push(ar.heavy     + ' SA');
-        if (+ar.ram)      parts.push(ar.ram       + ' Rammen');
-        if (+ar.catapult) parts.push(ar.catapult  + ' Katas');
-        if (+ar.snob)     parts.push(ar.snob      + ' Adel');
-        if (!parts.length) return '';
-        var date = new Date(+ar.fighttime * 1000).toLocaleDateString('de-DE');
-        return '\nDB-Bericht (' + date + '): ' + parts.join(', ');
+    // ── Threat assessment ─────────────────────────────────────────────────
+    // Priority: 1) noble unit visible in TW table  2) building data from DB
+    // 3) noble seen in any report  4) unit type as fallback
+    function assessThreat(data, unitType) {
+        // Noble unit directly in this wave — certain
+        if (unitType === 'snob') {
+            return { label: 'ADEL!', bg: '#b00000', title: 'Adelszug in diesem Angriff!' };
+        }
+
+        // Building data — most reliable capability check
+        var buildings = findBuildings(data);
+        if (buildings) {
+            var smith = +(buildings.smith || buildings.schmiede || 0);
+            var snob  = +(buildings.snob  || buildings.adelshof  || 0);
+            if (smith >= 20 && snob > 0) {
+                return { label: 'ADEL!', bg: '#b00000', title: 'Schmiede 20 + Adelshof — adelsfähig!' };
+            }
+            if (smith >= 20) {
+                return { label: 'ADM?', bg: '#c84800', title: 'Schmiede 20, kein Adelshof (noch)' };
+            }
+            return { label: 'FAKE', bg: '#2a8a2a', title: 'Schmiede ' + smith + '/20 — Adel unmöglich' };
+        }
+
+        // No building data — fall back to report history
+        var snobSeen = (data && data.attack_report && +data.attack_report.snob > 0)
+                    || (data && data.defend_report  && +data.defend_report.snob  > 0);
+        if (snobSeen) {
+            return { label: 'ADEL!', bg: '#b00000', title: 'Adel in Berichten gesehen — keine Gebäudedaten' };
+        }
+
+        // Unit type from TW table as last signal
+        if (!data) return { label: '?', bg: '#555', title: 'Nicht in DB' };
+        if (unitType === 'ram' || unitType === 'catapult') {
+            return { label: 'RAM', bg: '#888', title: 'Ramme — keine Gebäudedaten in DB' };
+        }
+        return { label: '?', bg: '#666', title: 'Keine Gebäudedaten in DB' };
+    }
+
+    // ── Popup — buildings + report link only ──────────────────────────────
+    function showPopup($badge, data, coord) {
+        $('.icpopup').remove();
+        if ($badge.data('pop')) { $badge.data('pop', false); return; }
+        $badge.data('pop', true);
+
+        var reportUrl = (data && data.report_id)
+            ? REPORT_URL.replace('$$reportID$$', data.report_id) : null;
+
+        var $p = $('<div class="icpopup">').css({
+            position: 'fixed', zIndex: 99999, background: '#f4e4bc',
+            border: '2px solid #7d510f', borderRadius: '4px',
+            padding: '8px 10px', fontSize: '12px', minWidth: '200px', maxWidth: '300px',
+            boxShadow: '3px 3px 10px rgba(0,0,0,0.5)', cursor: 'auto',
+            top:  Math.min($badge.offset().top - $(window).scrollTop() + 24, $(window).height() - 180) + 'px',
+            left: Math.min($badge.offset().left, $(window).width() - 310) + 'px'
+        });
+
+        // Header
+        var $hdr = $('<div>').css({ fontWeight: 'bold', borderBottom: '1px solid #7d510f',
+            paddingBottom: '4px', marginBottom: '6px',
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center' });
+        $hdr.append($('<span>').text(coord));
+        $hdr.append($('<span>').text('✕').css({ cursor: 'pointer', opacity: 0.6 })
+            .on('click', function () { $p.remove(); $badge.data('pop', false); }));
+        $p.append($hdr);
+
+        // Buildings
+        var buildings = findBuildings(data);
+        if (buildings) {
+            var ts = data.gdb_ts || data.updated_at || data.ts || null;
+            if (ts) {
+                $p.append($('<div>').css({ fontSize: '10px', color: '#888', marginBottom: '5px' })
+                    .text('Stand: ' + new Date(+ts * (ts < 1e10 ? 1000 : 1)).toLocaleDateString('de-DE')));
+            }
+            var $bldgs = $('<div>').css({ display: 'flex', flexWrap: 'wrap', gap: '6px' });
+            Object.keys(BUILDING_KEYS).forEach(function (k) {
+                var lvl = buildings[k];
+                if (lvl == null) return;
+                var highlight = (k === 'smith' && +lvl >= 20) || (k === 'snob' && +lvl > 0);
+                $bldgs.append(
+                    $('<span>').attr('title', BUILDING_KEYS[k] + ' ' + lvl).css({
+                        display: 'inline-flex', flexDirection: 'column', alignItems: 'center',
+                        fontSize: '10px', background: highlight ? '#c84800' : '#e8d5a3',
+                        color: highlight ? '#fff' : '#333',
+                        borderRadius: '3px', padding: '2px 4px' })
+                        .append($('<img>').attr('src', '/graphic/buildings/' + k + '.png')
+                            .css({ width: '24px', height: '24px' }))
+                        .append($('<span>').text(lvl))
+                );
+            });
+            $p.append($bldgs);
+        } else {
+            $p.append($('<div>').css({ color: '#999', fontSize: '11px' })
+                .text('Keine Gebäudedaten in DB'));
+        }
+
+        // Report link
+        if (reportUrl) {
+            $p.append($('<a>').attr({ href: reportUrl, target: '_blank' })
+                .css({ display: 'block', color: '#004494', fontSize: '11px', marginTop: '8px' })
+                .text('Bericht öffnen →'));
+        }
+
+        $('body').append($p);
+        setTimeout(function () {
+            $(document).one('click.icpopup', function (e) {
+                if (!$(e.target).closest('.icpopup, .icbadge').length) {
+                    $p.remove(); $badge.data('pop', false);
+                }
+            });
+        }, 50);
     }
 
     // ── Badge ─────────────────────────────────────────────────────────────
-    function makeBadge(threat, reportUrl) {
-        var css = { display: 'inline-block', padding: '1px 5px', background: threat.bg,
-                    color: '#fff', fontWeight: 'bold', fontSize: '10px',
-                    borderRadius: '2px', marginLeft: '5px', verticalAlign: 'middle',
-                    cursor: reportUrl ? 'pointer' : 'default', textDecoration: 'none' };
-        var $el = reportUrl
-            ? $('<a class="icbadge" target="_blank">').attr('href', reportUrl)
-            : $('<span class="icbadge">');
-        return $el.text(threat.label).attr('title', threat.title).css(css);
+    function makeBadge(threat, data, coord) {
+        return $('<span class="icbadge">')
+            .text(threat.label)
+            .attr('title', threat.title)
+            .css({ display: 'inline-block', padding: '2px 6px', background: threat.bg,
+                   color: '#fff', fontWeight: 'bold', fontSize: '11px',
+                   borderRadius: '3px', marginLeft: '5px', cursor: 'pointer',
+                   verticalAlign: 'middle', userSelect: 'none' })
+            .on('click', function(e) { e.stopPropagation(); showPopup($(this), data, coord); });
     }
 
     function makeSpinner() {
@@ -298,11 +343,8 @@
             $cell.append($spinner);
 
             queryVillage(x, y, function (data) {
-                var threat     = assessThreat(data, unitType);
-                threat.title  += reportSuffix(data);
-                var reportUrl  = (data && data.report_id)
-                    ? REPORT_URL.replace('$$reportID$$', data.report_id) : null;
-                $spinner.replaceWith(makeBadge(threat, reportUrl));
+                var threat = assessThreat(data, unitType);
+                $spinner.replaceWith(makeBadge(threat, data, x + '|' + y));
             });
         });
     }
