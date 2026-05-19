@@ -1,10 +1,11 @@
 (function () {
 
     // === CONFIG ===
-    var VERSION  = 'v4';
-    var API_URL  = (window.serverConfig && window.serverConfig.sfAPI) || 'https://api.twmeta.net/intel/village';
-    var DB_KEY   = window.INCCHECK_DB_KEY || localStorage.getItem('dbkey') || '';
-    var CACHE_TTL = 10 * 60 * 1000; // 10 min
+    var VERSION    = 'v3';
+    var API_URL    = (window.serverConfig && window.serverConfig.sfAPI) || 'https://api.twmeta.net/intel/village';
+    var REPORT_URL = (window.serverConfig && window.serverConfig.reportPage) || 'https://twmeta.net/dashboard/reports?reportid=$$reportID$$';
+    var DB_KEY     = window.INCCHECK_DB_KEY || localStorage.getItem('dbkey') || '';
+    var CACHE_TTL  = 10 * 60 * 1000; // 10 min
 
     if (!DB_KEY) {
         alert('[IncCheck] Kein DB-Key gefunden.\nBitte "dbkey" in localStorage setzen oder window.INCCHECK_DB_KEY definieren.');
@@ -226,14 +227,34 @@
                  title: 'Letzter Angriff: ' + parts.join(', ') + ' — kein Adel gesehen' };
     }
 
+    // ── Report summary for tooltip ────────────────────────────────────────
+    function reportSuffix(data) {
+        if (!data || !data.attack_report) return '';
+        var ar = data.attack_report;
+        if (!+ar.fighttime) return '';
+        var parts = [];
+        if (+ar.spy)      parts.push(ar.spy      + ' Späher');
+        if (+ar.axe)      parts.push(ar.axe      + ' Äxte');
+        if (+ar.light)    parts.push(ar.light     + ' LA');
+        if (+ar.heavy)    parts.push(ar.heavy     + ' SA');
+        if (+ar.ram)      parts.push(ar.ram       + ' Rammen');
+        if (+ar.catapult) parts.push(ar.catapult  + ' Katas');
+        if (+ar.snob)     parts.push(ar.snob      + ' Adel');
+        if (!parts.length) return '';
+        var date = new Date(+ar.fighttime * 1000).toLocaleDateString('de-DE');
+        return '\nDB-Bericht (' + date + '): ' + parts.join(', ');
+    }
+
     // ── Badge ─────────────────────────────────────────────────────────────
-    function makeBadge(threat) {
-        return $('<span class="icbadge">')
-            .text(threat.label)
-            .attr('title', threat.title)
-            .css({ display: 'inline-block', padding: '1px 5px', background: threat.bg,
-                   color: '#fff', fontWeight: 'bold', fontSize: '10px',
-                   borderRadius: '2px', marginLeft: '5px', cursor: 'default', verticalAlign: 'middle' });
+    function makeBadge(threat, reportUrl) {
+        var css = { display: 'inline-block', padding: '1px 5px', background: threat.bg,
+                    color: '#fff', fontWeight: 'bold', fontSize: '10px',
+                    borderRadius: '2px', marginLeft: '5px', verticalAlign: 'middle',
+                    cursor: reportUrl ? 'pointer' : 'default', textDecoration: 'none' };
+        var $el = reportUrl
+            ? $('<a class="icbadge" target="_blank">').attr('href', reportUrl)
+            : $('<span class="icbadge">');
+        return $el.text(threat.label).attr('title', threat.title).css(css);
     }
 
     function makeSpinner() {
@@ -277,7 +298,11 @@
             $cell.append($spinner);
 
             queryVillage(x, y, function (data) {
-                $spinner.replaceWith(makeBadge(assessThreat(data, unitType)));
+                var threat     = assessThreat(data, unitType);
+                threat.title  += reportSuffix(data);
+                var reportUrl  = (data && data.report_id)
+                    ? REPORT_URL.replace('$$reportID$$', data.report_id) : null;
+                $spinner.replaceWith(makeBadge(threat, reportUrl));
             });
         });
     }
