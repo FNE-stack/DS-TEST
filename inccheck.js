@@ -167,46 +167,47 @@
     }
 
     // ── Threat assessment ─────────────────────────────────────────────────
-    // TODO: update field paths once we see the real API response in the console log.
+    // API returns attack_report / defend_report with troop counts, no building data.
     function assessThreat(data) {
         if (data === null) {
-            return { label: 'KEIN DB', bg: '#888', title: 'Kein Datenbankeintrag' };
+            return { label: '?', bg: '#888', title: 'Nicht in Datenbank' };
         }
 
-        var buildings  = data.buildings || data.gebaeude || data.b || null;
-        var smithLevel = null;
-        var nobleLevel = null;
+        var ar = data.attack_report;
+        var hasReport = ar && +ar.fighttime > 0;
+        var snob = hasReport ? +ar.snob || 0 : 0;
+        var axe  = hasReport ? +ar.axe   || 0 : 0;
+        var lc   = hasReport ? +ar.light  || 0 : 0;
+        var hc   = hasReport ? +ar.heavy  || 0 : 0;
+        var ram  = hasReport ? +ar.ram    || 0 : 0;
+        var cat  = hasReport ? +ar.catapult || 0 : 0;
+        var totalOff = axe + lc + hc + ram + cat;
 
-        if (buildings) {
-            smithLevel = buildings.smith    != null ? buildings.smith    :
-                         buildings.schmiede != null ? buildings.schmiede : null;
-            nobleLevel = buildings.snob     != null ? buildings.snob     :
-                         buildings.noble    != null ? buildings.noble    :
-                         buildings.adelshof != null ? buildings.adelshof : null;
+        if (snob > 0) {
+            return { label: 'ADEL!', bg: '#b00000',
+                     title: 'Hat ' + snob + ' Adel eingesetzt — Adelszug möglich!' };
         }
-        if (smithLevel === null) smithLevel = data.smith    != null ? data.smith    :
-                                              data.schmiede != null ? data.schmiede : null;
-        if (nobleLevel === null) nobleLevel = data.snob     != null ? data.snob     :
-                                              data.noble    != null ? data.noble    : null;
 
-        var hasSmith20 = smithLevel !== null ? +smithLevel >= 20 : null;
-        var hasNoble   = nobleLevel !== null ? +nobleLevel > 0   : null;
-        var isOff      = +data.type === 1;
+        if (!hasReport) {
+            var t = +data.type;
+            return { label: t === 1 ? 'OFF' : t === 0 ? 'DEFF' : 'DB',
+                     bg:    t === 1 ? '#d06000' : '#4466aa',
+                     title: 'Kein Angriffsbericht in DB' };
+        }
 
-        if (hasSmith20 === false) {
-            return { label: 'FAKE',     bg: '#2a8a2a', title: 'Schmiede ' + smithLevel + '/20 — Adel unmöglich' };
+        if (totalOff === 0) {
+            return { label: 'FAKE?', bg: '#2a8a2a',
+                     title: 'Nur Aufklärer im letzten Bericht — wahrscheinlich Fake' };
         }
-        if (hasNoble === true) {
-            return { label: 'ADEL!',    bg: '#b00000', title: 'Adelshof vorhanden — Adelszug möglich!' };
-        }
-        if (hasSmith20 === true) {
-            return { label: isOff ? 'OFF+ADM' : 'ADM?', bg: isOff ? '#c84800' : '#9a6000',
-                     title: 'Schmiede 20 — Adel möglich' + (isOff ? ', Off-Dorf' : '') };
-        }
-        if (isOff) {
-            return { label: 'OFF',  bg: '#d06000', title: 'Off-Dorf laut DB (keine Gebäudedaten)' };
-        }
-        return     { label: 'DEFF', bg: '#4466aa', title: 'Deff-Dorf laut DB (keine Gebäudedaten)' };
+
+        var parts = [];
+        if (axe) parts.push(axe + ' Äxte');
+        if (lc)  parts.push(lc  + ' LA');
+        if (hc)  parts.push(hc  + ' SA');
+        if (ram) parts.push(ram + ' Rammen');
+        if (cat) parts.push(cat + ' Katas');
+        return { label: 'OFF', bg: '#d06000',
+                 title: 'Letzter Angriff: ' + parts.join(', ') + ' — kein Adel gesehen' };
     }
 
     // ── Badge ─────────────────────────────────────────────────────────────
@@ -246,11 +247,28 @@
 
     // ── Scan ──────────────────────────────────────────────────────────────
     function scanRows() {
-        // Find rows that contain coordinate text (X|Y) and have actual data cells.
-        // Works regardless of class/id on different TW versions.
-        var $rows = $('tr').filter(function () {
-            return $(this).find('td').length >= 3 && /\d{1,3}\|\d{1,3}/.test($(this).text());
-        });
+        var $rows;
+        if (isIncomings) {
+            // Find the incomings table by its column headers, not by class/id
+            var $table = $();
+            $('th').each(function () {
+                var t = $(this).text().trim();
+                if (t === 'Befehl' || t === 'Herkunft') {
+                    $table = $(this).closest('table');
+                    return false;
+                }
+            });
+            if ($table.length) {
+                $rows = $table.find('tr').filter(function () { return $(this).find('td').length >= 3; });
+            } else {
+                // Fallback: coordinate-based scan
+                $rows = $('tr').filter(function () {
+                    return $(this).find('td').length >= 3 && /\d{1,3}\|\d{1,3}/.test($(this).text());
+                });
+            }
+        } else {
+            $rows = $('#commands_incomings tr').filter(function () { return $(this).find('td').length >= 2; });
+        }
         console.log('[IncCheck] scanRows: ' + $rows.length + ' candidate rows');
         $rows.each(function () { processRow($(this)); });
     }
