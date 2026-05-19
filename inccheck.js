@@ -1,7 +1,7 @@
 (function () {
 
     // === CONFIG ===
-    var VERSION  = 'v2';
+    var VERSION  = 'v3';
     var API_URL  = (window.serverConfig && window.serverConfig.sfAPI) || 'https://api.twmeta.net/intel/village';
     var DB_KEY   = window.INCCHECK_DB_KEY || localStorage.getItem('dbkey') || '';
     var CACHE_TTL = 10 * 60 * 1000; // 10 min
@@ -41,6 +41,7 @@
                     villageMap[p[0]] = { x: p[2], y: p[3], name: decodeURIComponent(p[1].replace(/\+/g, '%20')) };
                 }
             });
+            console.log('[IncCheck] Village map loaded, entries: ' + Object.keys(villageMap).length);
         }).always(function () {
             villageMapReady = true;
             vmQueue.forEach(function (fn) { fn(); });
@@ -96,40 +97,66 @@
     }
 
     // ── Find attacker coords from a row ───────────────────────────────────
-    // Strategy A: info_village link with id= param → village map lookup
-    // Strategy B: coordinate text regex → exclude current village coord
+    // On incomings overview: row is [defender link] [attacker link] → use LAST link
+    // On info_village: row has only attacker link → use first non-own link
     function getAttackerXY($row, callback) {
-        // Current village coord for exclusion
-        var currentCoord = null;
-        if (currentVid && villageMap[currentVid]) {
-            var cv = villageMap[currentVid];
-            currentCoord = cv.x + '|' + cv.y;
-        }
-
-        // Strategy A — find enemy info_village link
-        var $links = $row.find('a[href*="info_village"]');
-        var found = null;
-        $links.each(function () {
-            var href = $(this).attr('href') || '';
-            var m    = href.match(/[?&]id=(\d+)/);
-            if (!m) return;
-            if (m[1] === currentVid) return; // skip link to own village
-            var v = villageMap[m[1]];
-            if (v) { found = { x: v.x, y: v.y }; return false; }
+        var $links = $row.find('a[href*="info_village"]').filter(function () {
+            return /[?&]id=\d+/.test($(this).attr('href') || '');
         });
-        if (found) { callback(found.x, found.y); return; }
 
-        // Strategy B — coordinate regex on row text (works on incomings overview)
-        var rowText = $row.text();
-        var re = /\b(\d{1,3})\|(\d{1,3})\b/g;
-        var match;
-        while ((match = re.exec(rowText)) !== null) {
-            var coord = match[1] + '|' + match[2];
-            if (coord !== currentCoord) {
-                callback(match[1], match[2]);
+        if (isIncomings) {
+            // Attacker is always the LAST info_village link in the row
+            // (layout: defender | attacker)
+            var found = null;
+            $links.each(function () {
+                var m = ($(this).attr('href') || '').match(/[?&]id=(\d+)/);
+                if (m && villageMap[m[1]]) {
+                    found = { x: villageMap[m[1]].x, y: villageMap[m[1]].y };
+                    // don't break — we want the LAST one
+                }
+            });
+            if (found) { callback(found.x, found.y); return; }
+
+            // Fallback: last coordinate pair in row text
+            var coords = [];
+            var re = /\b(\d{1,3})\|(\d{1,3})\b/g;
+            var rowText = $row.text();
+            var m2;
+            while ((m2 = re.exec(rowText)) !== null) { coords.push([m2[1], m2[2]]); }
+            if (coords.length) {
+                var last = coords[coords.length - 1];
+                callback(last[0], last[1]);
                 return;
             }
+
+        } else {
+            // info_village: skip own village, pick first attacker link
+            var currentCoord = (currentVid && villageMap[currentVid])
+                ? villageMap[currentVid].x + '|' + villageMap[currentVid].y : null;
+
+            var found2 = null;
+            $links.each(function () {
+                var href = $(this).attr('href') || '';
+                var m = href.match(/[?&]id=(\d+)/);
+                if (!m || m[1] === currentVid) return;
+                var v = villageMap[m[1]];
+                if (v) { found2 = { x: v.x, y: v.y }; return false; }
+            });
+            if (found2) { callback(found2.x, found2.y); return; }
+
+            // Fallback: first coordinate that isn't own village
+            var re2 = /\b(\d{1,3})\|(\d{1,3})\b/g;
+            var rowText2 = $row.text();
+            var m3;
+            while ((m3 = re2.exec(rowText2)) !== null) {
+                if ((m3[1] + '|' + m3[2]) !== currentCoord) {
+                    callback(m3[1], m3[2]);
+                    return;
+                }
+            }
         }
+
+        console.warn('[IncCheck] Keine Angriffskoordinaten in Zeile gefunden:', $row.text().trim().substring(0, 80));
     }
 
     // ── Threat assessment ─────────────────────────────────────────────────
@@ -198,7 +225,6 @@
         $row.data('ic-done', true);
 
         getAttackerXY($row, function (x, y) {
-            // Attach spinner to first non-empty cell that has visible text
             var $cell = $row.find('td').filter(function () { return $(this).text().trim().length > 0; }).first();
             if (!$cell.length) $cell = $row.find('td').first();
 
@@ -213,18 +239,15 @@
 
     // ── Scan ──────────────────────────────────────────────────────────────
     function scanRows() {
-        // info_village incoming commands
-        $('#commands_incomings').find('tr.command-row, tr[id^="cmd"]').each(function () { processRow($(this)); });
-        // incomings overview table (multiple possible selectors across TW versions)
-        $('table.overview_table tr, table#in_table tr, .commands-table tr').filter('.command-row, [id^="cmd"]').each(function () { processRow($(this)); });
-        // broad fallback: any command-row on the page
-        $('tr.command-row').not('[data-ic-done]').each(function () { processRow($(this)); });
+        // Cast wide net — any tr with cmd id or command-row class, anywhere on page
+        var $rows = $('tr[id^="cmd"]').add($('tr.command-row'));
+        console.log('[IncCheck] scanRows: ' + $rows.length + ' candidate rows');
+        $rows.each(function () { processRow($(this)); });
     }
 
     // ── Init ──────────────────────────────────────────────────────────────
     withVillageMap(function () {
         scanRows();
-        // Re-scan when TW updates the DOM (AJAX table refresh)
         var _t = null;
         new MutationObserver(function () {
             clearTimeout(_t);
