@@ -179,15 +179,25 @@
     }
 
     // ── Threat assessment ─────────────────────────────────────────────────
-    // Priority: 1) noble unit visible in TW table  2) building data from DB
-    // 3) noble seen in any report  4) unit type as fallback
+    // Priority: 1) noble unit in TW table  2) noble seen in ANY report
+    // 3) building data  4) unit type fallback
+    // Report history beats stale building data — if nobles were ever seen,
+    // the village had smithy 20 at some point regardless of what buildings say now.
     function assessThreat(data, unitType) {
         // Noble unit directly in this wave — certain
         if (unitType === 'snob') {
             return { label: 'ADEL!', bg: '#b00000', title: 'Adelszug in diesem Angriff!' };
         }
 
-        // Building data — most reliable capability check
+        // Noble seen in any report — overrides everything including building data,
+        // because building data can be months old while report proves capability existed.
+        var snobSeen = (data && data.attack_report && +data.attack_report.snob > 0)
+                    || (data && data.defend_report  && +data.defend_report.snob  > 0);
+        if (snobSeen) {
+            return { label: 'ADEL!', bg: '#b00000', title: 'Adel in Berichten gesehen!' };
+        }
+
+        // Building data — reliable when fresh
         var buildings = findBuildings(data);
         if (buildings) {
             var smith = +(buildings.smith || buildings.schmiede || 0);
@@ -196,19 +206,12 @@
                 return { label: 'ADEL!', bg: '#b00000', title: 'Schmiede 20 + Adelshof — adelsfähig!' };
             }
             if (smith >= 20) {
-                return { label: 'ADM?', bg: '#c84800', title: 'Schmiede 20, kein Adelshof (noch)' };
+                return { label: 'ADM?', bg: '#c84800', title: 'Schmiede 20, kein Adelshof' };
             }
-            return { label: 'FAKE', bg: '#2a8a2a', title: 'Schmiede ' + smith + '/20 — Adel unmöglich' };
+            return { label: 'FAKE', bg: '#2a8a2a', title: 'Schmiede ' + smith + '/20 laut DB' };
         }
 
-        // No building data — fall back to report history
-        var snobSeen = (data && data.attack_report && +data.attack_report.snob > 0)
-                    || (data && data.defend_report  && +data.defend_report.snob  > 0);
-        if (snobSeen) {
-            return { label: 'ADEL!', bg: '#b00000', title: 'Adel in Berichten gesehen — keine Gebäudedaten' };
-        }
-
-        // Unit type from TW table as last signal
+        // Nothing useful in DB
         if (!data) return { label: '?', bg: '#555', title: 'Nicht in DB' };
         if (unitType === 'ram' || unitType === 'catapult') {
             return { label: 'RAM', bg: '#888', title: 'Ramme — keine Gebäudedaten in DB' };
@@ -242,6 +245,14 @@
         $hdr.append($('<span>').text('✕').css({ cursor: 'pointer', opacity: 0.6 })
             .on('click', function () { $p.remove(); $badge.data('pop', false); }));
         $p.append($hdr);
+
+        // Off troops warning
+        var off = offSummary(data);
+        if (off) {
+            $p.append($('<div>').css({ background: '#d06000', color: '#fff', borderRadius: '3px',
+                padding: '3px 6px', marginBottom: '6px', fontWeight: 'bold', fontSize: '11px' })
+                .text('⚔ OFF: ' + off.parts.join(', ')));
+        }
 
         // Buildings
         var buildings = findBuildings(data);
@@ -290,16 +301,49 @@
         }, 50);
     }
 
+    // ── Off troop detection ───────────────────────────────────────────────
+    function offSummary(data) {
+        var ar = data && data.attack_report;
+        if (!ar || !+ar.fighttime) return null;
+        var axe   = +ar.axe   || 0;
+        var light = +ar.light || 0;
+        var heavy = +ar.heavy || 0;
+        var ram   = +ar.ram   || 0;
+        var total = axe + light + heavy + ram;
+        if (!total) return null;
+        var parts = [];
+        if (axe)   parts.push(axe   + ' Äxte');
+        if (light) parts.push(light + ' LA');
+        if (heavy) parts.push(heavy + ' SA');
+        if (ram)   parts.push(ram   + ' Rammen');
+        return { total: total, parts: parts };
+    }
+
     // ── Badge ─────────────────────────────────────────────────────────────
     function makeBadge(threat, data, coord) {
-        return $('<span class="icbadge">')
+        var $b = $('<span class="icbadge">')
             .text(threat.label)
             .attr('title', threat.title)
             .css({ display: 'inline-block', padding: '2px 6px', background: threat.bg,
                    color: '#fff', fontWeight: 'bold', fontSize: '11px',
                    borderRadius: '3px', marginLeft: '5px', cursor: 'pointer',
                    verticalAlign: 'middle', userSelect: 'none' })
-            .on('click', function(e) { e.stopPropagation(); showPopup($(this), data, coord); });
+            .on('click', function (e) { e.stopPropagation(); showPopup($(this), data, coord); });
+
+        var off = offSummary(data);
+        if (off) {
+            var $off = $('<span class="icbadge">')
+                .text('OFF')
+                .attr('title', 'Bekannte Off-Truppen: ' + off.parts.join(', '))
+                .css({ display: 'inline-block', padding: '2px 6px', background: '#d06000',
+                       color: '#fff', fontWeight: 'bold', fontSize: '11px',
+                       borderRadius: '3px', marginLeft: '3px', cursor: 'pointer',
+                       verticalAlign: 'middle', userSelect: 'none' })
+                .on('click', function (e) { e.stopPropagation(); showPopup($b, data, coord); });
+            return $('<span>').append($b).append($off);
+        }
+
+        return $b;
     }
 
     function makeSpinner() {
