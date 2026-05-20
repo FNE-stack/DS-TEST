@@ -39,7 +39,9 @@
             txt.split('\n').forEach(function (line) {
                 var p = line.split(',');
                 if (p.length >= 4) {
-                    villageMap[p[0]] = { x: p[2], y: p[3], name: decodeURIComponent(p[1].replace(/\+/g, '%20')) };
+                    villageMap[p[0]] = { x: p[2], y: p[3],
+                        name: decodeURIComponent(p[1].replace(/\+/g, '%20')),
+                        pid: (p[4] || '').trim() };
                 }
             });
             console.log('[IncCheck] Village map loaded, entries: ' + Object.keys(villageMap).length);
@@ -47,6 +49,33 @@
             villageMapReady = true;
             vmQueue.forEach(function (fn) { fn(); });
             vmQueue = [];
+        });
+    }
+
+    // ── Conquer map ───────────────────────────────────────────────────────
+    // /map/conquer.txt: village_id,unix_ts,new_player_id,old_player_id
+    var conquerMap      = {};
+    var conquerMapReady = false;
+    var cmQueue         = [];
+
+    function withConquerMap(cb) {
+        if (conquerMapReady) { cb(); return; }
+        cmQueue.push(cb);
+        if (cmQueue.length > 1) return;
+        $.get('/map/conquer.txt', function (txt) {
+            txt.split('\n').forEach(function (line) {
+                var p = line.trim().split(',');
+                if (p.length < 3) return;
+                var vid = p[0], ts = +p[1], newPid = p[2], oldPid = (p[3] || '').trim();
+                if (!conquerMap[vid] || ts > conquerMap[vid].ts) {
+                    conquerMap[vid] = { ts: ts, newPid: newPid, oldPid: oldPid };
+                }
+            });
+            console.log('[IncCheck] Conquer map loaded, entries: ' + Object.keys(conquerMap).length);
+        }).always(function () {
+            conquerMapReady = true;
+            cmQueue.forEach(function (fn) { fn(); });
+            cmQueue = [];
         });
     }
 
@@ -111,13 +140,13 @@
             $links.each(function () {
                 var m = ($(this).attr('href') || '').match(/[?&]id=(\d+)/);
                 if (m && villageMap[m[1]]) {
-                    found = { x: villageMap[m[1]].x, y: villageMap[m[1]].y };
+                    found = { x: villageMap[m[1]].x, y: villageMap[m[1]].y, id: m[1] };
                     // don't break — we want the LAST one
                 }
             });
-            if (found) { callback(found.x, found.y); return; }
+            if (found) { callback(found.x, found.y, found.id); return; }
 
-            // Fallback: last coordinate pair in row text
+            // Fallback: last coordinate pair in row text (no village ID available)
             var coords = [];
             var re = /\b(\d{1,3})\|(\d{1,3})\b/g;
             var rowText = $row.text();
@@ -125,7 +154,7 @@
             while ((m2 = re.exec(rowText)) !== null) { coords.push([m2[1], m2[2]]); }
             if (coords.length) {
                 var last = coords[coords.length - 1];
-                callback(last[0], last[1]);
+                callback(last[0], last[1], null);
                 return;
             }
 
@@ -140,9 +169,9 @@
                 var m = href.match(/[?&]id=(\d+)/);
                 if (!m || m[1] === currentVid) return;
                 var v = villageMap[m[1]];
-                if (v) { found2 = { x: v.x, y: v.y }; return false; }
+                if (v) { found2 = { x: v.x, y: v.y, id: m[1] }; return false; }
             });
-            if (found2) { callback(found2.x, found2.y); return; }
+            if (found2) { callback(found2.x, found2.y, found2.id); return; }
 
             // Fallback: first coordinate that isn't own village
             var re2 = /\b(\d{1,3})\|(\d{1,3})\b/g;
@@ -150,7 +179,7 @@
             var m3;
             while ((m3 = re2.exec(rowText2)) !== null) {
                 if ((m3[1] + '|' + m3[2]) !== currentCoord) {
-                    callback(m3[1], m3[2]);
+                    callback(m3[1], m3[2], null);
                     return;
                 }
             }
@@ -379,7 +408,7 @@
 
         var unitType = getUnitFromRow($row);
 
-        getAttackerXY($row, function (x, y) {
+        getAttackerXY($row, function (x, y, vid) {
             var $cell = $row.find('td').filter(function () { return $(this).text().trim().length > 0; }).first();
             if (!$cell.length) $cell = $row.find('td').first();
 
@@ -388,7 +417,49 @@
 
             queryVillage(x, y, function (data) {
                 var threat = assessThreat(data, unitType);
-                $spinner.replaceWith(makeBadge(threat, data, x + '|' + y));
+
+                withConquerMap(function () {
+                    var recentlyConquered = false;
+                    var daysAgo = 0;
+                    if (vid && conquerMap[vid]) {
+                        var c      = conquerMap[vid];
+                        var curPid = villageMap[vid] && villageMap[vid].pid;
+                        daysAgo = Math.floor((Date.now() / 1000 - c.ts) / 86400);
+                        if (curPid && c.newPid === curPid && daysAgo <= 21) {
+                            recentlyConquered = true;
+                        }
+                    }
+
+                    var $badge;
+                    if (recentlyConquered) {
+                        // All DB data (reports, buildings, troops) belongs to old owner.
+                        // Suppress threat and OFF badges — only live TW unit column is trustworthy.
+                        var $adelt = $('<span class="icbadge">')
+                            .text('ADELT ' + daysAgo + 'd')
+                            .attr('title', 'Dorf vor ' + daysAgo + 'd übernommen — Berichte/Gebäude vom Vorbesitzer, ignorieren!')
+                            .css({ display: 'inline-block', padding: '2px 6px', background: '#c84800',
+                                   color: '#fff', fontWeight: 'bold', fontSize: '11px',
+                                   borderRadius: '3px', marginLeft: '5px', cursor: 'default',
+                                   verticalAlign: 'middle', userSelect: 'none' });
+                        if (unitType === 'snob') {
+                            // TW Befehl column says noble — live data, always trust it
+                            var $adel = $('<span class="icbadge">')
+                                .text('ADEL!')
+                                .attr('title', 'Adelszug laut Befehlsspalte!')
+                                .css({ display: 'inline-block', padding: '2px 6px', background: '#b00000',
+                                       color: '#fff', fontWeight: 'bold', fontSize: '11px',
+                                       borderRadius: '3px', marginLeft: '5px', cursor: 'pointer',
+                                       verticalAlign: 'middle', userSelect: 'none' })
+                                .on('click', function (e) { e.stopPropagation(); showPopup($(this), data, x + '|' + y); });
+                            $badge = $('<span>').append($adel).append($adelt);
+                        } else {
+                            $badge = $adelt;
+                        }
+                    } else {
+                        $badge = makeBadge(threat, data, x + '|' + y);
+                    }
+                    $spinner.replaceWith($badge);
+                });
             });
         });
     }
@@ -423,12 +494,14 @@
 
     // ── Init ──────────────────────────────────────────────────────────────
     withVillageMap(function () {
-        scanRows();
-        var _t = null;
-        new MutationObserver(function () {
-            clearTimeout(_t);
-            _t = setTimeout(scanRows, 300);
-        }).observe(document.getElementById('contentContainer') || document.body, { childList: true, subtree: true });
+        withConquerMap(function () {
+            scanRows();
+            var _t = null;
+            new MutationObserver(function () {
+                clearTimeout(_t);
+                _t = setTimeout(scanRows, 300);
+            }).observe(document.getElementById('contentContainer') || document.body, { childList: true, subtree: true });
+        });
     });
 
     console.log('[IncCheck] ' + VERSION + ' geladen — ' + twScreen + (twMode ? '/' + twMode : ''));
