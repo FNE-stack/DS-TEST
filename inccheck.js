@@ -200,10 +200,14 @@
     function findBuildings(data) {
         if (!data) return null;
         var nested = data.buildings || data.gebaeude || data.gdb || data.gdbdata || data.b;
-        if (nested && typeof nested === 'object' && !Array.isArray(nested)) return nested;
+        if (nested && typeof nested === 'object' && !Array.isArray(nested)) {
+            // Only valid if at least one building has a recorded level > 0
+            var ok = Object.keys(nested).some(function (k) { return +nested[k] > 0; });
+            return ok ? nested : null;
+        }
         var top = Object.keys(BUILDING_KEYS);
         for (var i = 0; i < top.length; i++) {
-            if (data[top[i]] != null) return data;
+            if (+data[top[i]] > 0) return data;
         }
         return null;
     }
