@@ -104,9 +104,9 @@
         "militia": 0
       },
       "raw": "3907&1999&catapult&1779306960000&0&false&false&spear=MjAw/sword=MjAw/axe=/archer=/spy=/light=/marcher=/heavy=/ram=/catapult=MQ==/knight=/snob=/militia=MA==",
-      "sent": false,
-      "sentBy": null,
-      "sentAt": null
+      "sent": true,
+      "sentBy": "Donald John Trump",
+      "sentAt": 1779270557743
     },
     {
       "id": "3907_3665_1779310013000",
