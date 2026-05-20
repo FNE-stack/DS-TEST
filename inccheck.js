@@ -421,8 +421,9 @@
                 withConquerMap(function () {
                     var recentlyConquered = false;
                     var daysAgo = 0;
+                    var c = null;
                     if (vid && conquerMap[vid]) {
-                        var c      = conquerMap[vid];
+                        c = conquerMap[vid];
                         var curPid = villageMap[vid] && villageMap[vid].pid;
                         daysAgo = Math.floor((Date.now() / 1000 - c.ts) / 86400);
                         if (curPid && c.newPid === curPid && daysAgo <= 21) {
@@ -432,17 +433,32 @@
 
                     var $badge;
                     if (recentlyConquered) {
-                        // All DB data (reports, buildings, troops) belongs to old owner.
-                        // Suppress threat and OFF badges — only live TW unit column is trustworthy.
+                        // Find the newest report timestamp we have — if it's after the conquest,
+                        // the data belongs to the new owner and is valid.
+                        var ar = data && data.attack_report;
+                        var dr = data && data.defend_report;
+                        var latestReportTs = 0;
+                        var arFt = ar && +ar.fighttime;
+                        var drFt = dr && +dr.fighttime;
+                        // fighttime is a unix timestamp when > 1e9 (post-2001)
+                        if (arFt > 1e9) latestReportTs = Math.max(latestReportTs, arFt);
+                        if (drFt > 1e9) latestReportTs = Math.max(latestReportTs, drFt);
+                        if (!latestReportTs) {
+                            var dataTs = +(data && (data.gdb_ts || data.updated_at || data.ts) || 0);
+                            if (dataTs > 1e9) latestReportTs = dataTs;
+                        }
+                        var hasNewOwnerData = latestReportTs > 0 && latestReportTs > c.ts;
+
                         var $adelt = $('<span class="icbadge">')
                             .text('ADELT ' + daysAgo + 'd')
-                            .attr('title', 'Dorf vor ' + daysAgo + 'd übernommen — Berichte/Gebäude vom Vorbesitzer, ignorieren!')
+                            .attr('title', 'Dorf vor ' + daysAgo + 'd übernommen — DB-Daten ggf. vom Vorbesitzer')
                             .css({ display: 'inline-block', padding: '2px 6px', background: '#c84800',
                                    color: '#fff', fontWeight: 'bold', fontSize: '11px',
-                                   borderRadius: '3px', marginLeft: '5px', cursor: 'default',
+                                   borderRadius: '3px', marginLeft: '3px', cursor: 'default',
                                    verticalAlign: 'middle', userSelect: 'none' });
+
                         if (unitType === 'snob') {
-                            // TW Befehl column says noble — live data, always trust it
+                            // TW Befehl column shows noble — live game data, always trust it
                             var $adel = $('<span class="icbadge">')
                                 .text('ADEL!')
                                 .attr('title', 'Adelszug laut Befehlsspalte!')
@@ -452,7 +468,21 @@
                                        verticalAlign: 'middle', userSelect: 'none' })
                                 .on('click', function (e) { e.stopPropagation(); showPopup($(this), data, x + '|' + y); });
                             $badge = $('<span>').append($adel).append($adelt);
+                        } else if (hasNewOwnerData) {
+                            // Report is from after the conquest — new owner's data, use it normally
+                            $badge = $('<span>').append(makeBadge(threat, data, x + '|' + y)).append($adelt);
+                        } else if (daysAgo <= 5) {
+                            // No post-conquest data + only X days since adelung — can't have built anything
+                            var $fake = $('<span class="icbadge">')
+                                .text('FAKE')
+                                .attr('title', 'Vor ' + daysAgo + 'd adelt — in ' + daysAgo + 'T kein Off oder Adel aufbaubar')
+                                .css({ display: 'inline-block', padding: '2px 6px', background: '#2a8a2a',
+                                       color: '#fff', fontWeight: 'bold', fontSize: '11px',
+                                       borderRadius: '3px', marginLeft: '5px', cursor: 'default',
+                                       verticalAlign: 'middle', userSelect: 'none' });
+                            $badge = $('<span>').append($fake).append($adelt);
                         } else {
+                            // 6–21 days, no fresh data — uncertain, just flag the conquest
                             $badge = $adelt;
                         }
                     } else {
