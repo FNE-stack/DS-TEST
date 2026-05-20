@@ -3,7 +3,8 @@
     // === CONFIG ===
     var VERSION    = 'v3';
     var API_URL    = (window.serverConfig && window.serverConfig.sfAPI) || 'https://api.twmeta.net/intel/village';
-    var REPORT_URL = (window.serverConfig && window.serverConfig.reportPage) || 'https://twmeta.net/dashboard/reports?reportid=$$reportID$$';
+    var REPORT_URL  = (window.serverConfig && window.serverConfig.reportPage)   || 'https://twmeta.net/dashboard/reports?reportid=$$reportID$$';
+    var VILLAGE_URL = (window.serverConfig && window.serverConfig.villageDetail) || 'https://twmeta.net/dashboard/villages/$$village$$';
     var DB_KEY     = window.INCCHECK_DB_KEY || localStorage.getItem('dbkey') || '';
     var CACHE_TTL  = 10 * 60 * 1000; // 10 min
 
@@ -254,8 +255,16 @@
         if ($badge.data('pop')) { $badge.data('pop', false); return; }
         $badge.data('pop', true);
 
-        var reportUrl = (data && data.report_id)
+        // Fight report link — only valid when there's an actual recorded fight
+        var hasFightReport = data && (
+            (data.attack_report && +data.attack_report.fighttime) ||
+            (data.defend_report  && +data.defend_report.fighttime)
+        );
+        var reportUrl  = (hasFightReport && data.report_id)
             ? REPORT_URL.replace('$$reportID$$', data.report_id) : null;
+        // Village detail link — shows building scans and all report history
+        var villageUrl = (data && data.village_id)
+            ? VILLAGE_URL.replace('$$village$$', data.village_id) : null;
 
         var $p = $('<div class="icpopup">').css({
             position: 'fixed', zIndex: 99999, background: '#f4e4bc',
@@ -313,11 +322,20 @@
                 .text('Keine Gebäudedaten in DB'));
         }
 
-        // Report link
-        if (reportUrl) {
-            $p.append($('<a>').attr({ href: reportUrl, target: '_blank' })
-                .css({ display: 'block', color: '#004494', fontSize: '11px', marginTop: '8px' })
-                .text('Bericht öffnen →'));
+        // Links
+        if (reportUrl || villageUrl) {
+            var $links = $('<div>').css({ marginTop: '8px', display: 'flex', gap: '10px' });
+            if (reportUrl) {
+                $links.append($('<a>').attr({ href: reportUrl, target: '_blank' })
+                    .css({ color: '#004494', fontSize: '11px' })
+                    .text('Kampfbericht →'));
+            }
+            if (villageUrl) {
+                $links.append($('<a>').attr({ href: villageUrl, target: '_blank' })
+                    .css({ color: '#004494', fontSize: '11px' })
+                    .text('Dorf-Detail →'));
+            }
+            $p.append($links);
         }
 
         $('body').append($p);
@@ -471,18 +489,8 @@
                         } else if (hasNewOwnerData) {
                             // Report is from after the conquest — new owner's data, use it normally
                             $badge = $('<span>').append(makeBadge(threat, data, x + '|' + y)).append($adelt);
-                        } else if (daysAgo <= 5) {
-                            // No post-conquest data + only X days since adelung — can't have built anything
-                            var $fake = $('<span class="icbadge">')
-                                .text('FAKE')
-                                .attr('title', 'Vor ' + daysAgo + 'd adelt — in ' + daysAgo + 'T kein Off oder Adel aufbaubar')
-                                .css({ display: 'inline-block', padding: '2px 6px', background: '#2a8a2a',
-                                       color: '#fff', fontWeight: 'bold', fontSize: '11px',
-                                       borderRadius: '3px', marginLeft: '5px', cursor: 'default',
-                                       verticalAlign: 'middle', userSelect: 'none' });
-                            $badge = $('<span>').append($fake).append($adelt);
                         } else {
-                            // 6–21 days, no fresh data — uncertain, just flag the conquest
+                            // No post-conquest data — can't assess threat, just flag the conquest
                             $badge = $adelt;
                         }
                     } else {
