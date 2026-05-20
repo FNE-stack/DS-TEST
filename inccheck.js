@@ -349,21 +349,30 @@
     }
 
     // ── Off troop detection ───────────────────────────────────────────────
+    // Checks both attack_report (we scouted/attacked them) and defend_report
+    // (they attacked us) — takes whichever recorded more off troops.
     function offSummary(data) {
-        var ar = data && data.attack_report;
-        if (!ar || !+ar.fighttime) return null;
-        var axe   = +ar.axe   || 0;
-        var light = +ar.light || 0;
-        var heavy = +ar.heavy || 0;
-        var ram   = +ar.ram   || 0;
-        var total = axe + light + heavy + ram;
-        if (!total) return null;
+        var best = null;
+        var bestTotal = 0;
+        [data && data.attack_report, data && data.defend_report].forEach(function (r) {
+            if (!r || !+r.fighttime) return;
+            var axe   = +r.axe   || 0;
+            var light = +r.light || 0;
+            var heavy = +r.heavy || 0;
+            var ram   = +r.ram   || 0;
+            var total = axe + light + heavy + ram;
+            if (total > bestTotal) {
+                bestTotal = total;
+                best = { axe: axe, light: light, heavy: heavy, ram: ram };
+            }
+        });
+        if (!best) return null;
         var parts = [];
-        if (axe)   parts.push(axe   + ' Äxte');
-        if (light) parts.push(light + ' LA');
-        if (heavy) parts.push(heavy + ' SA');
-        if (ram)   parts.push(ram   + ' Rammen');
-        return { total: total, parts: parts };
+        if (best.axe)   parts.push(best.axe   + ' Äxte');
+        if (best.light) parts.push(best.light + ' LA');
+        if (best.heavy) parts.push(best.heavy + ' SA');
+        if (best.ram)   parts.push(best.ram   + ' Rammen');
+        return { total: bestTotal, parts: parts };
     }
 
     // ── Badge ─────────────────────────────────────────────────────────────
