@@ -2,7 +2,7 @@
     $("#launchpad-panel").remove();
 
     // === CONFIG ===
-    var VERSION = "v75";
+    var VERSION = "v76";
     var GITHUB_OWNER = "FNE-stack";
     var GITHUB_REPO = "DS-TEST";
     var GITHUB_BRANCH = "main";
@@ -738,6 +738,8 @@
                         nextBtn.on("click", function() {
                             savePendingAttack(armAtt);
                             if (nextSendMs && (nextSendMs - serverNow()) <= 300000) {
+                                // Flag tells the next overlay to auto-POST place form + swap in confirm HTML
+                                try { sessionStorage.setItem("lp_jump_confirm", "1"); } catch(e) {}
                                 navigate(buildUrl(nextAtt));
                             } else {
                                 navigate("/game.php?village=" + nextAtt.originId + "&screen=overview");
@@ -808,6 +810,96 @@
         if (p.catapultTarget && p.catapultTarget !== "0") {
             setTimeout(function(){ $("select[name='building']").val(p.catapultTarget); }, 150);
         }
+
+        // Hook the confirm form (post-jump) to AJAX-submit instead of native form POST.
+        // Native POST = page reload = script dies; AJAX keeps script alive.
+        function hookConfirmFormSubmit() {
+            var $cForm = $("form").filter(function(){
+                var act = $(this).attr("action") || "";
+                return act.indexOf("try=confirm") >= 0 ||
+                       $(this).find("input[name='try'][value='confirm']").length > 0;
+            }).first();
+            if (!$cForm.length) return;
+
+            function submitConfirmAjax() {
+                var action = $cForm.attr("action") || "/game.php";
+                var data = $cForm.find("input:not([type=submit],[type=button],[type=image]),select,textarea")
+                                 .filter(function(){ return !this.disabled && !!this.name; })
+                                 .serialize();
+                data += (data ? "&" : "") + "attack=1";
+                $.ajax({ url: action, type: "POST", data: data,
+                    success: function() { confirmBtn.trigger("click"); },
+                    error: function() {
+                        // Fall back to native submit + page reload + lp_autosent marker
+                        try { sessionStorage.setItem("lp_autosent", JSON.stringify({
+                            id: p.id, originId: p.originId, targetId: p.targetId,
+                            arrivalMs: p.arrivalMs, type: p.type || "attack", ts: Date.now()
+                        })); } catch(e) {}
+                        $cForm.off("submit.lp")[0].submit();
+                    }
+                });
+            }
+
+            $cForm.off("submit.lp").on("submit.lp", function(e) {
+                e.preventDefault(); e.stopImmediatePropagation();
+                submitConfirmAjax();
+            });
+            // Some browsers/forms submit via button click rather than form-submit event
+            $cForm.find("input[type='submit'],button[type='submit'],button:not([type])")
+                  .off("click.lp").on("click.lp", function(e) {
+                e.preventDefault(); e.stopImmediatePropagation();
+                submitConfirmAjax();
+            });
+        }
+
+        // POST the live place form to TW, then swap the confirm HTML into #contentContainer
+        // (while preserving #lp-overlay). Lands the user on the confirm screen with no reload.
+        function jumpToConfirmScreen() {
+            if (!$("#lp-overlay").length) return; // user dismissed before we fired
+            var $form = $("form").filter(function(){
+                return $(this).find("input[name='x'],input[name='y']").length > 0;
+            }).first();
+            if (!$form.length) return;
+
+            var btnName = (p.type === "support") ? "support" : "attack";
+            var action  = $form.attr("action") || "/game.php";
+            var data    = $form.find("input:not([type=submit],[type=button],[type=image]),select,textarea")
+                               .filter(function(){ return !this.disabled && !!this.name; })
+                               .serialize();
+            data += (data ? "&" : "") + encodeURIComponent(btnName) + "=1";
+
+            $.ajax({ url: action, type: "POST", data: data,
+                success: function(html) {
+                    if (!$("#lp-overlay").length) return;
+                    var $newDoc = $("<div>").append($.parseHTML(html, null, false));
+                    var $confirmContent = $newDoc.find("#contentContainer").first();
+                    if (!$confirmContent.length) $confirmContent = $newDoc;
+                    var $cForm = $confirmContent.find("form").filter(function(){
+                        var act = $(this).attr("action") || "";
+                        return act.indexOf("try=confirm") >= 0 ||
+                               $(this).find("input[name='try'][value='confirm']").length > 0;
+                    }).first();
+                    if (!$cForm.length) return; // TW returned an error page or place screen — bail
+
+                    var $cc = $("#contentContainer");
+                    if (!$cc.length) return;
+                    var $overlay = $("#lp-overlay").detach();
+                    $cc.html($confirmContent.html());
+                    $cc.prepend($overlay);
+
+                    hookConfirmFormSubmit();
+                },
+                error: function() { /* leave place screen as-is; user can click Angreifen */ }
+            });
+        }
+
+        // Auto-jump if the previous "→ Nächster Angriff" click set the flag
+        try {
+            if (sessionStorage.getItem("lp_jump_confirm") === "1") {
+                sessionStorage.removeItem("lp_jump_confirm");
+                setTimeout(jumpToConfirmScreen, 300);
+            }
+        } catch(e) {}
 
         // Timer — 100ms for precision near T=0
         window._lpOverlayInt = setInterval(function() {
