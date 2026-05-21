@@ -2,7 +2,7 @@
     $("#launchpad-panel").remove();
 
     // === CONFIG ===
-    var VERSION = "v76";
+    var VERSION = "v77";
     var GITHUB_OWNER = "FNE-stack";
     var GITHUB_REPO = "DS-TEST";
     var GITHUB_BRANCH = "main";
@@ -654,6 +654,9 @@
         autoSendArmed = false;
         autoSendFired = false;
 
+        // Load villages in the background so getSendMs() works for the next attack
+        loadVillages(function(){});
+
         var sendMs   = p.sendMs   || null;
         var cdTarget = sendMs || p.arrivalMs;
         var fromLabel = p.originLabel || ("Dorf " + p.originId);
@@ -727,23 +730,41 @@
                         };
                         var nFromLabel = armAtt.originLabel || ("Dorf " + armAtt.originId);
                         var nToLabel   = armAtt.targetLabel || ("Dorf " + armAtt.targetId);
+                        var cdNextTarget = nextSendMs || nextAtt.arrivalMs;
+                        var cdNextLabel  = nextSendMs ? "Losschicken in" : "Ankunft in";
                         overlay.html(
-                            "<div style='color:#080;font-size:13px;font-weight:bold;padding:6px 0 10px;text-align:center;'>✓ Als gesendet markiert.</div>" +
-                            "<div style='font-size:11px;color:#555;margin-bottom:10px;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'>" +
-                                nFromLabel + " → " + nToLabel +
-                                (nextSendMs ? "<br><span style='color:#804000;'>Senden: " + fmtTime(nextSendMs) + "</span>" : "") +
-                            "</div>"
+                            "<div style='color:#080;font-size:13px;font-weight:bold;padding:6px 0 8px;text-align:center;'>✓ Als gesendet markiert.</div>" +
+                            "<div style='font-size:10px;color:#804000;letter-spacing:1px;text-transform:uppercase;margin-bottom:4px;text-align:center;'>Nächster Angriff</div>" +
+                            "<div style='font-size:12px;margin-bottom:8px;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;' title='" + nFromLabel + " → " + nToLabel + "'>" +
+                                nFromLabel + " <span style='color:#804000;'>→</span> " + nToLabel +
+                            "</div>" +
+                            "<div style='background:#5a1f00;color:#ffe8c0;border-radius:4px;padding:8px 12px;margin-bottom:8px;text-align:center;'>" +
+                                "<div style='font-size:10px;letter-spacing:1px;text-transform:uppercase;opacity:0.75;margin-bottom:3px;'>" + cdNextLabel + "</div>" +
+                                "<div id='lp-cd-next' style='font-size:24px;font-weight:bold;'>--</div>" +
+                            "</div>" +
+                            (nextSendMs ? "<div style='font-size:11px;color:#555;margin-bottom:8px;line-height:1.9;'><div>⚑ <b>Senden:</b> " + fmtTime(nextSendMs) + "</div><div>⚐ <b>Ankunft:</b> " + fmtTime(nextAtt.arrivalMs) + "</div></div>" : "<div style='font-size:11px;color:#555;margin-bottom:8px;'>⚐ <b>Ankunft:</b> " + fmtTime(nextAtt.arrivalMs) + "</div>")
                         );
+                        // Restart timer against the next attack's target
+                        if (window._lpOverlayInt) clearInterval(window._lpOverlayInt);
+                        window._lpOverlayInt = setInterval(function() {
+                            var $el = $("#lp-cd-next");
+                            if (!$el.length) { clearInterval(window._lpOverlayInt); return; }
+                            var d = cdNextTarget - serverNow();
+                            if (d <= 0) {
+                                $el.text(Math.abs(d) < 120000 ? "JETZT!" : "zu spät").css({color:"#ff0", fontWeight:"bold"});
+                            } else {
+                                $el.text(fmtHms(d)).css({color:"", fontWeight:"bold"});
+                            }
+                        }, 250);
                         var nextBtn = $("<button style='width:100%;min-height:44px;padding:8px;font-size:14px;font-weight:bold;background:#00468a;color:#fff;border:1px solid #00306a;border-radius:4px;cursor:pointer;box-sizing:border-box;margin-bottom:6px;'>→ Nächster Angriff</button>");
                         nextBtn.on("click", function() {
                             savePendingAttack(armAtt);
+                            // Always land on the next attack's place screen. Only auto-jump to
+                            // confirm if we're inside the send window (else just show countdown).
                             if (nextSendMs && (nextSendMs - serverNow()) <= 300000) {
-                                // Flag tells the next overlay to auto-POST place form + swap in confirm HTML
                                 try { sessionStorage.setItem("lp_jump_confirm", "1"); } catch(e) {}
-                                navigate(buildUrl(nextAtt));
-                            } else {
-                                navigate("/game.php?village=" + nextAtt.originId + "&screen=overview");
                             }
+                            navigate(buildUrl(nextAtt));
                         });
                         var closeBtn2 = $("<button style='width:100%;min-height:36px;font-size:12px;background:transparent;border:1px solid #a07030;border-radius:3px;cursor:pointer;color:#804000;'>✕ Schließen</button>");
                         closeBtn2.on("click", function() {
