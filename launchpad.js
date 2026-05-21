@@ -2,7 +2,7 @@
     $("#launchpad-panel").remove();
 
     // === CONFIG ===
-    var VERSION = "v64";
+    var VERSION = "v66";
     var GITHUB_OWNER = "FNE-stack";
     var GITHUB_REPO = "DS-TEST";
     var GITHUB_BRANCH = "main";
@@ -130,6 +130,13 @@
 
     var serverOffset = (typeof Timing !== "undefined" && Timing.offset_server) ? Timing.offset_server : 0;
     function serverNow() { return Date.now() + serverOffset; }
+    var halfRTT = 0;
+    (function(){
+        var _t0 = Date.now();
+        fetch("/game.php", { method: "HEAD", credentials: "include", cache: "no-store" })
+            .then(function(){ halfRTT = Math.round((Date.now() - _t0) / 2); })
+            .catch(function(){});
+    })();
     var worldSpeed = (typeof game_data !== "undefined" && game_data.world && game_data.world.speed) ? (+game_data.world.speed || 1) : 1;
     var unitSpeed = (typeof game_data !== "undefined" && game_data.world && game_data.world.unit_speed) ? (+game_data.world.unit_speed || 1) : 1;
     var UNIT_SPEEDS = {
@@ -422,12 +429,12 @@
                         body: cData
                     })
                     .then(function(finalHtml) {
-                        // If confirm form still present, TW rejected the submission
-                        if (findConfirmForm(parseDoc(finalHtml))) {
-                            onError("confirm-rejected");
-                        } else {
-                            onSuccess();
-                        }
+                        var finalDoc = parseDoc(finalHtml);
+                        if (findConfirmForm(finalDoc)) { onError("confirm-rejected"); return; }
+                        // Catch TW error pages that have no confirm form but also didn't send
+                        var errEl = finalDoc.querySelector(".error_box, #error_message, .system_error");
+                        if (errEl && errEl.textContent.trim()) { onError("tw-error"); return; }
+                        onSuccess();
                     })
                     .catch(function() { onError("step3"); });
                 })
@@ -722,25 +729,32 @@
                     if (window._lpInt) clearInterval(window._lpInt);
                     overlay.html("<div style='color:#080;font-size:14px;font-weight:bold;padding:10px 0;text-align:center;'>✓ Als gesendet markiert.</div>");
                     setTimeout(function() {
+                        if (window._lpInt) clearInterval(window._lpInt);
                         if (autoNextEnabled) {
                             var nextAtt = findNextAttack(plan, p);
                             if (nextAtt) {
-                                // Re-inject overlay for next attack — no navigation, script stays alive
-                                injectAttackOverlay({
+                                var nextSendMs = getSendMs(nextAtt);
+                                var armAtt = {
                                     id: nextAtt.id, originId: nextAtt.originId, targetId: nextAtt.targetId,
                                     originLabel: villageLabel(nextAtt.originId),
                                     targetLabel: villageLabel(nextAtt.targetId),
-                                    arrivalMs: nextAtt.arrivalMs, sendMs: getSendMs(nextAtt),
+                                    arrivalMs: nextAtt.arrivalMs, sendMs: nextSendMs,
                                     type: p.type || "attack",
                                     catapultTarget: nextAtt.catapultTarget || null,
                                     troops: nextAtt.troops || null
-                                });
+                                };
+                                savePendingAttack(armAtt);
+                                // Navigate to place screen now if ≤5 min, else overview (panel timer will auto-navigate)
+                                if (nextSendMs && (nextSendMs - serverNow()) <= 300000) {
+                                    navigate(buildUrl(nextAtt));
+                                } else {
+                                    navigate("/game.php?village=" + nextAtt.originId + "&screen=overview");
+                                }
                                 return;
                             }
                         }
-                        // All done — show completion, no redirect
-                        overlay.html("<div style='color:#080;font-size:14px;font-weight:bold;padding:16px;text-align:center;'>✓ Alle Angriffe gesendet.</div>");
-                        setTimeout(function() { overlay.remove(); }, 3000);
+                        overlay.remove();
+                        navigate("/game.php?village=" + p.originId + "&screen=overview");
                     }, 600);
                 });
             });
@@ -797,22 +811,19 @@
             var $cd = $("#lp-cd");
             if (d <= 0) {
                 $cd.text(Math.abs(d) < 120000 ? "JETZT!" : "zu spät").css({color:"#ff0", fontWeight:"bold"});
-                if (autoSendArmed && !autoSendFired && d > -4000) {
+                if (autoSendArmed && !autoSendFired && d <= halfRTT && d > -4000) {
                     autoSendFired = true;
                     autoBtn.text("Auto-Senden: ausgelöst").css({background:"#a04000", color:"#fff", border:"1px solid #703000"});
                     var btnName = (p.type === "support") ? "support" : "attack";
                     // Always use submitAttackDirect — works from any page, no navigation needed.
-                    // Falls back to navigating to the place screen only if all AJAX steps fail.
+                    // On failure: disarm and show error. No navigate, no pending save → no loop.
                     submitAttackDirect(p, btnName,
                         function() { confirmBtn.trigger("click"); },
-                        function() {
-                            savePendingAttack({
-                                id: p.id, originId: p.originId, targetId: p.targetId,
-                                originLabel: villageLabel(p.originId), targetLabel: villageLabel(p.targetId),
-                                arrivalMs: p.arrivalMs, sendMs: p.sendMs || null, type: btnName,
-                                catapultTarget: p.catapultTarget || null, troops: p.troops || null
-                            });
-                            navigate(buildUrl(p));
+                        function(err) {
+                            autoSendArmed = false;
+                            autoSendFired = false;
+                            autoBtn.text("Fehler — manuell senden! (" + (err || "?") + ")")
+                                   .css({background:"#fcc", color:"#a00", border:"1px solid #c00"});
                         }
                     );
                 }
@@ -1301,6 +1312,31 @@
         if (window._lpInt) clearInterval(window._lpInt);
         window._lpInt = setInterval(function() {
             var now = serverNow();
+
+            // Auto-navigate to the place screen when an attack is within 5 min of its send time
+            if (!$("#lp-overlay").length && !loadPendingAttack()) {
+                for (var _i = 0; _i < currentPlan.length; _i++) {
+                    var _a = currentPlan[_i];
+                    if (_a.sent) continue;
+                    var _sMs = getSendMs(_a);
+                    if (!_sMs) continue;
+                    var _d = _sMs - now;
+                    if (_d > 0 && _d <= 300000) {
+                        savePendingAttack({
+                            id: _a.id, originId: _a.originId, targetId: _a.targetId,
+                            originLabel: villageLabel(_a.originId),
+                            targetLabel: villageLabel(_a.targetId),
+                            arrivalMs: _a.arrivalMs, sendMs: _sMs,
+                            type: "attack",
+                            catapultTarget: _a.catapultTarget || null,
+                            troops: _a.troops || null
+                        });
+                        navigate(buildUrl(_a));
+                        break;
+                    }
+                }
+            }
+
             $("#launchpad-panel .cd").each(function(){
                 var t = parseInt($(this).data("target"));
                 var d = t - now;
