@@ -2,7 +2,7 @@
     $("#launchpad-panel").remove();
 
     // === CONFIG ===
-    var VERSION = "v77";
+    var VERSION = "v78";
     var GITHUB_OWNER = "FNE-stack";
     var GITHUB_REPO = "DS-TEST";
     var GITHUB_BRANCH = "main";
@@ -26,6 +26,10 @@
     // so the panel re-appears automatically after each navigation while the script is alive.
     try { sessionStorage.setItem("lp_panel_open", "1"); } catch(e) {}
     var panelOpen = true;
+
+    // Reset Auto-Senden + jump flags at every quickbar tap — fresh start each session
+    try { sessionStorage.removeItem("lp_autosend"); } catch(e) {}
+    try { sessionStorage.removeItem("lp_jump_confirm"); } catch(e) {}
 
     function isMobile() { return window.innerWidth < 700; }
 
@@ -129,16 +133,21 @@
         };
     }
 
-    var serverOffset = (typeof Timing !== "undefined" && Timing.offset_server) ? Timing.offset_server : 0;
-    function serverNow() { return Date.now() + serverOffset; }
+    // Re-read Timing.offset_server each call — it can load after our script does, and a stale
+    // 0 offset has caused attacks to fire ~1s early when the client clock differs from server.
+    function serverNow() {
+        var off = (typeof Timing !== "undefined" && Timing.offset_server) ? Timing.offset_server : 0;
+        return Date.now() + off;
+    }
 
     // Half-RTT to TW server — used to pre-fire auto-send by this many ms for ping compensation.
-    // Re-measured every 60s so a degrading connection doesn't blow our timing.
+    // Capped at 150ms so a slow first measurement (TLS/DNS setup ~1s) can't fire attacks too early.
     var halfRTT = 0;
+    var HALF_RTT_CAP = 150;
     function measureHalfRTT() {
         var _t0 = Date.now();
         fetch("/game.php", { method: "HEAD", credentials: "include", cache: "no-store" })
-            .then(function(){ halfRTT = Math.round((Date.now() - _t0) / 2); })
+            .then(function(){ halfRTT = Math.min(HALF_RTT_CAP, Math.round((Date.now() - _t0) / 2)); })
             .catch(function(){});
     }
     measureHalfRTT();
@@ -465,6 +474,34 @@
         if (!w) location.href = url;
     }
 
+    // Pure-AJAX nav: GET the target URL, swap #contentContainer's inner HTML, preserve our overlay,
+    // update the URL bar via History API. Used for script-triggered nav (e.g. Nächster Angriff) so
+    // the quickbar IIFE survives — TribalWars.redirect has been observed to fall through to a full
+    // reload after we've already manually replaced contentContainer, killing the script.
+    function ajaxNav(url, onDone) {
+        $.ajax({ url: url, type: "GET",
+            success: function(html) {
+                var doc;
+                try { doc = new DOMParser().parseFromString(html, "text/html"); }
+                catch(e) { location.href = url; return; }
+                var newContent = doc.querySelector("#contentContainer");
+                var cc = document.getElementById("contentContainer");
+                if (!newContent || !cc) { location.href = url; return; }
+
+                var $overlay = $("#lp-overlay").detach();
+                var $widget  = $("#lp-widget").detach();
+                cc.innerHTML = newContent.innerHTML;
+                if ($overlay.length) $(cc).prepend($overlay);
+                if ($widget.length)  $("body").prepend($widget);
+
+                try { history.pushState({}, "", url); } catch(e) {}
+
+                if (onDone) onDone();
+            },
+            error: function() { location.href = url; }
+        });
+    }
+
     var ME = (typeof game_data !== "undefined" && game_data.player && game_data.player.name) ? game_data.player.name : "?";
 
     // === GitHub ===
@@ -651,7 +688,8 @@
     function injectAttackOverlay(p) {
         $("#lp-overlay").remove();
         if (window._lpOverlayInt) clearInterval(window._lpOverlayInt);
-        autoSendArmed = false;
+        // Inherit Auto-Senden from the previous attack in this chain (sessionStorage)
+        try { autoSendArmed = sessionStorage.getItem("lp_autosend") === "1"; } catch(e) { autoSendArmed = false; }
         autoSendFired = false;
 
         // Load villages in the background so getSendMs() works for the next attack
@@ -690,14 +728,19 @@
         timesDiv += "</div>";
         overlay.append(timesDiv);
 
-        var autoBtn = $("<button style='width:100%;min-height:38px;font-size:13px;font-weight:bold;background:#ddd;color:#555;border:1px solid #aaa;border-radius:4px;cursor:pointer;margin-bottom:4px;box-sizing:border-box;'>Auto-Senden: AUS</button>");
-        autoBtn.on("click", function() {
-            autoSendArmed = !autoSendArmed;
-            autoSendFired = false;
+        var autoBtn = $("<button style='width:100%;min-height:38px;font-size:13px;font-weight:bold;border-radius:4px;cursor:pointer;margin-bottom:4px;box-sizing:border-box;'></button>");
+        function paintAutoBtn() {
             autoBtn.text(autoSendArmed ? "Auto-Senden: AN" : "Auto-Senden: AUS")
                    .css(autoSendArmed
                        ? {background:"#2a6000", color:"#fff", border:"1px solid #1a4000"}
                        : {background:"#ddd",    color:"#555", border:"1px solid #aaa"});
+        }
+        paintAutoBtn();
+        autoBtn.on("click", function() {
+            autoSendArmed = !autoSendArmed;
+            autoSendFired = false;
+            try { sessionStorage.setItem("lp_autosend", autoSendArmed ? "1" : "0"); } catch(e) {}
+            paintAutoBtn();
         });
         overlay.append(autoBtn);
 
@@ -758,18 +801,31 @@
                         }, 250);
                         var nextBtn = $("<button style='width:100%;min-height:44px;padding:8px;font-size:14px;font-weight:bold;background:#00468a;color:#fff;border:1px solid #00306a;border-radius:4px;cursor:pointer;box-sizing:border-box;margin-bottom:6px;'>→ Nächster Angriff</button>");
                         nextBtn.on("click", function() {
+                            nextBtn.text("...").prop("disabled", true);
                             savePendingAttack(armAtt);
-                            // Always land on the next attack's place screen. Only auto-jump to
-                            // confirm if we're inside the send window (else just show countdown).
-                            if (nextSendMs && (nextSendMs - serverNow()) <= 300000) {
-                                try { sessionStorage.setItem("lp_jump_confirm", "1"); } catch(e) {}
-                            }
-                            navigate(buildUrl(nextAtt));
+                            // Always land on confirm screen for the next attack. Use our own
+                            // AJAX nav (not TribalWars.redirect) so the quickbar script stays alive.
+                            try { sessionStorage.setItem("lp_jump_confirm", "1"); } catch(e) {}
+                            if (window._lpOverlayInt) clearInterval(window._lpOverlayInt);
+                            overlay.remove();
+                            ajaxNav(buildUrl(nextAtt), function() {
+                                // Update game_data so handleScreenReady sees the new village/screen.
+                                try {
+                                    if (typeof game_data !== "undefined") {
+                                        game_data.village = game_data.village || {};
+                                        game_data.village.id = String(nextAtt.originId);
+                                        game_data.screen = "place";
+                                    }
+                                } catch(e) {}
+                                injectAttackOverlay(armAtt);
+                            });
                         });
                         var closeBtn2 = $("<button style='width:100%;min-height:36px;font-size:12px;background:transparent;border:1px solid #a07030;border-radius:3px;cursor:pointer;color:#804000;'>✕ Schließen</button>");
                         closeBtn2.on("click", function() {
+                            try { sessionStorage.removeItem("lp_autosend"); } catch(e) {}
+                            try { sessionStorage.removeItem("lp_jump_confirm"); } catch(e) {}
                             overlay.remove();
-                            navigate("/game.php?village=" + p.originId + "&screen=overview");
+                            ajaxNav("/game.php?village=" + p.originId + "&screen=overview");
                         });
                         overlay.append(nextBtn).append(closeBtn2);
                     } else {
@@ -778,8 +834,10 @@
                         );
                         var doneClose = $("<button style='width:100%;min-height:36px;font-size:12px;background:transparent;border:1px solid #a07030;border-radius:3px;cursor:pointer;color:#804000;'>✕ Schließen</button>");
                         doneClose.on("click", function() {
+                            try { sessionStorage.removeItem("lp_autosend"); } catch(e) {}
+                            try { sessionStorage.removeItem("lp_jump_confirm"); } catch(e) {}
                             overlay.remove();
-                            navigate("/game.php?village=" + p.originId + "&screen=overview");
+                            ajaxNav("/game.php?village=" + p.originId + "&screen=overview");
                         });
                         overlay.append(doneClose);
                     }
@@ -792,6 +850,8 @@
         dismissBtn.on("click", function() {
             clearPendingAttack();
             try { sessionStorage.removeItem("lp_autosent"); } catch(e) {}
+            try { sessionStorage.removeItem("lp_autosend"); } catch(e) {}
+            try { sessionStorage.removeItem("lp_jump_confirm"); } catch(e) {}
             overlay.remove();
             if (window._lpOverlayInt) clearInterval(window._lpOverlayInt);
         });
