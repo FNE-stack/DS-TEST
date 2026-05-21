@@ -2,15 +2,17 @@
     $("#launchpad-panel").remove();
 
     // === CONFIG ===
-    var VERSION = "v63";
+    var VERSION = "v64";
     var GITHUB_OWNER = "FNE-stack";
     var GITHUB_REPO = "DS-TEST";
     var GITHUB_BRANCH = "main";
-    var GITHUB_FILE = "plan.json";
-    var GITHUB_BOT_FILE = "bot_control.json";
     var GITHUB_TOKEN = window.LAUNCHPAD_TOKEN || "";
-    var GITHUB_API = "https://api.github.com/repos/" + GITHUB_OWNER + "/" + GITHUB_REPO + "/contents/" + GITHUB_FILE;
-    var GITHUB_BOT_API = "https://api.github.com/repos/" + GITHUB_OWNER + "/" + GITHUB_REPO + "/contents/" + GITHUB_BOT_FILE;
+    var _playerName = (typeof game_data !== "undefined" && game_data.player && game_data.player.name)
+                      ? game_data.player.name : "unknown";
+    var GITHUB_FILE     = _playerName + ".json";
+    var GITHUB_BOT_FILE = _playerName + "_bot.json";
+    var GITHUB_API     = "https://api.github.com/repos/" + GITHUB_OWNER + "/" + GITHUB_REPO + "/contents/" + encodeURIComponent(GITHUB_FILE);
+    var GITHUB_BOT_API = "https://api.github.com/repos/" + GITHUB_OWNER + "/" + GITHUB_REPO + "/contents/" + encodeURIComponent(GITHUB_BOT_FILE);
     var AUTO_REFRESH_MS = 15000;
 
     var villageMap = {};
@@ -723,8 +725,8 @@
                         if (autoNextEnabled) {
                             var nextAtt = findNextAttack(plan, p);
                             if (nextAtt) {
-                                autoSendFired = false;
-                                savePendingAttack({
+                                // Re-inject overlay for next attack — no navigation, script stays alive
+                                injectAttackOverlay({
                                     id: nextAtt.id, originId: nextAtt.originId, targetId: nextAtt.targetId,
                                     originLabel: villageLabel(nextAtt.originId),
                                     targetLabel: villageLabel(nextAtt.targetId),
@@ -733,11 +735,12 @@
                                     catapultTarget: nextAtt.catapultTarget || null,
                                     troops: nextAtt.troops || null
                                 });
-                                navigate(buildUrl(nextAtt));
                                 return;
                             }
                         }
-                        navigate("/game.php?village=" + p.originId + "&screen=overview");
+                        // All done — show completion, no redirect
+                        overlay.html("<div style='color:#080;font-size:14px;font-weight:bold;padding:16px;text-align:center;'>✓ Alle Angriffe gesendet.</div>");
+                        setTimeout(function() { overlay.remove(); }, 3000);
                     }, 600);
                 });
             });
@@ -798,31 +801,20 @@
                     autoSendFired = true;
                     autoBtn.text("Auto-Senden: ausgelöst").css({background:"#a04000", color:"#fff", border:"1px solid #703000"});
                     var btnName = (p.type === "support") ? "support" : "attack";
-                    var needle  = (p.type === "support") ? "Unterstützen" : "Angreifen";
-                    var $tw = $("input[type='submit'][name='" + btnName + "'], button[name='" + btnName + "']");
-                    if (!$tw.length) {
-                        $tw = $("input[type='submit'], button").filter(function(){
-                            return (($(this).val() || "") + $(this).text()).indexOf(needle) >= 0;
-                        });
-                    }
-                    if ($tw.length) {
-                        // Clicking TW's button triggers the .lp AJAX hook above if form was found,
-                        // otherwise falls through to native click → page reload.
-                        $tw.first()[0].click();
-                    } else if ($twForm.length) {
-                        // No button visible — submit via AJAX directly
-                        ajaxSubmitAttack($twForm, btnName,
-                            function() { confirmBtn.trigger("click"); },
-                            function() {
-                                try { sessionStorage.setItem("lp_autosent", JSON.stringify({
-                                    id: p.id, originId: p.originId, targetId: p.targetId,
-                                    arrivalMs: p.arrivalMs, type: p.type || "attack", ts: Date.now()
-                                })); } catch(e2) {}
-                                $("<input type='hidden'>").attr({name: btnName, value: "1"}).appendTo($twForm);
-                                $twForm.submit();
-                            }
-                        );
-                    }
+                    // Always use submitAttackDirect — works from any page, no navigation needed.
+                    // Falls back to navigating to the place screen only if all AJAX steps fail.
+                    submitAttackDirect(p, btnName,
+                        function() { confirmBtn.trigger("click"); },
+                        function() {
+                            savePendingAttack({
+                                id: p.id, originId: p.originId, targetId: p.targetId,
+                                originLabel: villageLabel(p.originId), targetLabel: villageLabel(p.targetId),
+                                arrivalMs: p.arrivalMs, sendMs: p.sendMs || null, type: btnName,
+                                catapultTarget: p.catapultTarget || null, troops: p.troops || null
+                            });
+                            navigate(buildUrl(p));
+                        }
+                    );
                 }
             } else {
                 $cd.text(fmtHms(d)).css({color:"", fontWeight:""});
