@@ -2,7 +2,7 @@
     $("#launchpad-panel").remove();
 
     // === CONFIG ===
-    var VERSION = "v66";
+    var VERSION = "v68";
     var GITHUB_OWNER = "FNE-stack";
     var GITHUB_REPO = "DS-TEST";
     var GITHUB_BRANCH = "main";
@@ -809,24 +809,33 @@
             if (!$("#lp-overlay").length) { clearInterval(window._lpInt); return; }
             var d = cdTarget - serverNow();
             var $cd = $("#lp-cd");
+
+            // Pre-fire by halfRTT ms for ping compensation (fires before d reaches 0 when RTT is known)
+            if (autoSendArmed && !autoSendFired && d <= halfRTT && d > -4000) {
+                autoSendFired = true;
+                autoBtn.text("Auto-Senden: ausgelöst").css({background:"#a04000", color:"#fff", border:"1px solid #703000"});
+                var btnName = (p.type === "support") ? "support" : "attack";
+                // Prefer the live DOM form — it has all JS-populated fields TW adds at runtime.
+                // Fall back to submitAttackDirect only if we're not on the place screen.
+                var $liveForm = $("form").filter(function(){
+                    return $(this).find("input[name='x'], input[name='y']").length > 0;
+                }).first();
+                var doSend = $liveForm.length
+                    ? function(ok, fail) { ajaxSubmitAttack($liveForm, btnName, ok, fail); }
+                    : function(ok, fail) { submitAttackDirect(p, btnName, ok, fail); };
+                doSend(
+                    function() { confirmBtn.trigger("click"); },
+                    function(err) {
+                        autoSendArmed = false;
+                        autoSendFired = false;
+                        autoBtn.text("Fehler — manuell senden! (" + (err || "?") + ")")
+                               .css({background:"#fcc", color:"#a00", border:"1px solid #c00"});
+                    }
+                );
+            }
+
             if (d <= 0) {
                 $cd.text(Math.abs(d) < 120000 ? "JETZT!" : "zu spät").css({color:"#ff0", fontWeight:"bold"});
-                if (autoSendArmed && !autoSendFired && d <= halfRTT && d > -4000) {
-                    autoSendFired = true;
-                    autoBtn.text("Auto-Senden: ausgelöst").css({background:"#a04000", color:"#fff", border:"1px solid #703000"});
-                    var btnName = (p.type === "support") ? "support" : "attack";
-                    // Always use submitAttackDirect — works from any page, no navigation needed.
-                    // On failure: disarm and show error. No navigate, no pending save → no loop.
-                    submitAttackDirect(p, btnName,
-                        function() { confirmBtn.trigger("click"); },
-                        function(err) {
-                            autoSendArmed = false;
-                            autoSendFired = false;
-                            autoBtn.text("Fehler — manuell senden! (" + (err || "?") + ")")
-                                   .css({background:"#fcc", color:"#a00", border:"1px solid #c00"});
-                        }
-                    );
-                }
             } else {
                 $cd.text(fmtHms(d)).css({color:"", fontWeight:""});
             }
@@ -1312,31 +1321,6 @@
         if (window._lpInt) clearInterval(window._lpInt);
         window._lpInt = setInterval(function() {
             var now = serverNow();
-
-            // Auto-navigate to the place screen when an attack is within 5 min of its send time
-            if (!$("#lp-overlay").length && !loadPendingAttack()) {
-                for (var _i = 0; _i < currentPlan.length; _i++) {
-                    var _a = currentPlan[_i];
-                    if (_a.sent) continue;
-                    var _sMs = getSendMs(_a);
-                    if (!_sMs) continue;
-                    var _d = _sMs - now;
-                    if (_d > 0 && _d <= 300000) {
-                        savePendingAttack({
-                            id: _a.id, originId: _a.originId, targetId: _a.targetId,
-                            originLabel: villageLabel(_a.originId),
-                            targetLabel: villageLabel(_a.targetId),
-                            arrivalMs: _a.arrivalMs, sendMs: _sMs,
-                            type: "attack",
-                            catapultTarget: _a.catapultTarget || null,
-                            troops: _a.troops || null
-                        });
-                        navigate(buildUrl(_a));
-                        break;
-                    }
-                }
-            }
-
             $("#launchpad-panel .cd").each(function(){
                 var t = parseInt($(this).data("target"));
                 var d = t - now;
