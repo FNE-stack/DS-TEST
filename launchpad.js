@@ -2,7 +2,7 @@
     $("#launchpad-panel").remove();
 
     // === CONFIG ===
-    var VERSION = "v78";
+    var VERSION = "v79";
     var GITHUB_OWNER = "FNE-stack";
     var GITHUB_REPO = "DS-TEST";
     var GITHUB_BRANCH = "main";
@@ -342,6 +342,14 @@
             success: function(html) {
                 // If TW returned a confirm page, find and submit the confirm form (step 2)
                 var $doc = $("<div>").append($.parseHTML(html, null, false));
+
+                // Detect TW error pages — without this, we mark attacks "sent" that never went.
+                var $err = $doc.find(".error_box, #error_message, .system_error");
+                if ($err.length && $err.text().trim()) {
+                    onError("tw: " + $err.text().trim().substring(0, 80));
+                    return;
+                }
+
                 var $cForm = $doc.find("form").filter(function(){
                     var act = $(this).attr("action") || "";
                     return act.indexOf("try=confirm") >= 0 ||
@@ -354,11 +362,19 @@
                                   .serialize();
                 cData += (cData ? "&" : "") + "attack=1";
                 $.ajax({ url: cAction, type: "POST", data: cData,
-                    success: function() { onSuccess(); },
-                    error:   function() { onError(); }
+                    success: function(cHtml) {
+                        var $cDoc = $("<div>").append($.parseHTML(cHtml, null, false));
+                        var $cErr = $cDoc.find(".error_box, #error_message, .system_error");
+                        if ($cErr.length && $cErr.text().trim()) {
+                            onError("tw: " + $cErr.text().trim().substring(0, 80));
+                            return;
+                        }
+                        onSuccess();
+                    },
+                    error:   function() { onError("step2-ajax"); }
                 });
             },
-            error: function() { onError(); }
+            error: function() { onError("step1-ajax"); }
         });
     }
 
@@ -475,12 +491,13 @@
     }
 
     // Pure-AJAX nav: GET the target URL, swap #contentContainer's inner HTML, preserve our overlay,
-    // update the URL bar via History API. Used for script-triggered nav (e.g. Nächster Angriff) so
-    // the quickbar IIFE survives — TribalWars.redirect has been observed to fall through to a full
-    // reload after we've already manually replaced contentContainer, killing the script.
+    // update the URL bar via History API. Uses fetch (no X-Requested-With header) — $.ajax sends
+    // XHR header which makes TW return a partial response missing form fields, breaking subsequent
+    // POSTs ("Es muss ein gültiges Ziel angegeben werden"). Same trick as submitAttackDirect.
     function ajaxNav(url, onDone) {
-        $.ajax({ url: url, type: "GET",
-            success: function(html) {
+        fetch(url, { credentials: "include", cache: "no-store" })
+            .then(function(r){ return r.text(); })
+            .then(function(html) {
                 var doc;
                 try { doc = new DOMParser().parseFromString(html, "text/html"); }
                 catch(e) { location.href = url; return; }
@@ -497,9 +514,8 @@
                 try { history.pushState({}, "", url); } catch(e) {}
 
                 if (onDone) onDone();
-            },
-            error: function() { location.href = url; }
-        });
+            })
+            .catch(function() { location.href = url; });
     }
 
     var ME = (typeof game_data !== "undefined" && game_data.player && game_data.player.name) ? game_data.player.name : "?";
@@ -942,36 +958,64 @@
             }).first();
             if (!$form.length) return;
 
+            // If the live form is ALREADY the confirm form (e.g., we landed straight on confirm),
+            // there's nothing to jump — just hook it for AJAX submit.
+            var formAction = $form.attr("action") || "";
+            if (formAction.indexOf("try=confirm") >= 0 ||
+                $form.find("input[name='try'][value='confirm']").length > 0) {
+                hookConfirmFormSubmit();
+                return;
+            }
+
             var btnName = (p.type === "support") ? "support" : "attack";
-            var action  = $form.attr("action") || "/game.php";
             var data    = $form.find("input:not([type=submit],[type=button],[type=image]),select,textarea")
                                .filter(function(){ return !this.disabled && !!this.name; })
                                .serialize();
             data += (data ? "&" : "") + encodeURIComponent(btnName) + "=1";
 
-            $.ajax({ url: action, type: "POST", data: data,
-                success: function(html) {
-                    if (!$("#lp-overlay").length) return;
-                    var $newDoc = $("<div>").append($.parseHTML(html, null, false));
-                    var $confirmContent = $newDoc.find("#contentContainer").first();
-                    if (!$confirmContent.length) $confirmContent = $newDoc;
-                    var $cForm = $confirmContent.find("form").filter(function(){
-                        var act = $(this).attr("action") || "";
-                        return act.indexOf("try=confirm") >= 0 ||
-                               $(this).find("input[name='try'][value='confirm']").length > 0;
-                    }).first();
-                    if (!$cForm.length) return; // TW returned an error page or place screen — bail
+            // Use fetch (no X-Requested-With) so TW returns full HTML, same as submitAttackDirect.
+            fetch(formAction || "/game.php", {
+                method: "POST",
+                credentials: "include",
+                headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                body: data
+            })
+            .then(function(r){ return r.text(); })
+            .then(function(html) {
+                if (!$("#lp-overlay").length) return;
+                var $newDoc = $("<div>").append($.parseHTML(html, null, false));
 
-                    var $cc = $("#contentContainer");
-                    if (!$cc.length) return;
-                    var $overlay = $("#lp-overlay").detach();
-                    $cc.html($confirmContent.html());
-                    $cc.prepend($overlay);
+                // Surface TW errors so the user sees what's wrong instead of silently bailing
+                var $err = $newDoc.find(".error_box, #error_message, .system_error");
+                if ($err.length && $err.text().trim()) {
+                    var msg = $err.text().trim().substring(0, 80);
+                    confirmBtn.text("Fehler: " + msg)
+                              .css({background:"#fcc", color:"#a00", border:"1px solid #a00"});
+                    return;
+                }
 
-                    hookConfirmFormSubmit();
-                },
-                error: function() { /* leave place screen as-is; user can click Angreifen */ }
-            });
+                var $confirmContent = $newDoc.find("#contentContainer").first();
+                if (!$confirmContent.length) $confirmContent = $newDoc;
+                var $cForm = $confirmContent.find("form").filter(function(){
+                    var act = $(this).attr("action") || "";
+                    return act.indexOf("try=confirm") >= 0 ||
+                           $(this).find("input[name='try'][value='confirm']").length > 0;
+                }).first();
+                if (!$cForm.length) return;
+
+                var $cc = $("#contentContainer");
+                if (!$cc.length) return;
+                var $overlay = $("#lp-overlay").detach();
+                $cc.html($confirmContent.html());
+                $cc.prepend($overlay);
+
+                // Update URL bar so a refresh/share lands the user back on confirm
+                var cAction = $cForm.attr("action") || formAction;
+                try { history.pushState({}, "", cAction); } catch(e) {}
+
+                hookConfirmFormSubmit();
+            })
+            .catch(function() { /* leave place screen as-is; user can click Angreifen */ });
         }
 
         // Auto-jump if the previous "→ Nächster Angriff" click set the flag
@@ -994,6 +1038,7 @@
                 var _ok  = function() { confirmBtn.trigger("click"); };
                 var _fail = function(err) {
                     autoSendArmed = false; autoSendFired = false;
+                    try { sessionStorage.setItem("lp_autosend", "0"); } catch(e) {}
                     autoBtn.text("Fehler — manuell senden! (" + (err || "?") + ")")
                            .css({background:"#fcc", color:"#a00", border:"1px solid #c00"});
                 };
