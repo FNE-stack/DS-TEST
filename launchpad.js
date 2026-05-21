@@ -2,7 +2,7 @@
     $("#launchpad-panel").remove();
 
     // === CONFIG ===
-    var VERSION = "v68";
+    var VERSION = "v70";
     var GITHUB_OWNER = "FNE-stack";
     var GITHUB_REPO = "DS-TEST";
     var GITHUB_BRANCH = "main";
@@ -649,6 +649,7 @@
         if (window._lpInt) clearInterval(window._lpInt);
         autoSendArmed = autoNextEnabled; // auto-arm when auto-next is on
         autoSendFired = false;
+        var preArmed = false, preArmedForm = null;
 
         var sendMs   = p.sendMs   || null;
         var cdTarget = sendMs || p.arrivalMs;
@@ -808,32 +809,88 @@
         window._lpInt = setInterval(function() {
             if (!$("#lp-overlay").length) { clearInterval(window._lpInt); return; }
             var d = cdTarget - serverNow();
-            var $cd = $("#lp-cd");
 
-            // Pre-fire by halfRTT ms for ping compensation (fires before d reaches 0 when RTT is known)
+            // Pre-arm at T-5s: POST the place form via AJAX to load TW's confirm screen in-place.
+            // The confirm HTML is injected into #contentContainer (overlay detached/re-prepended),
+            // so the user sees the real confirm screen while the script stays alive.
+            if (autoSendArmed && !autoSendFired && !preArmed && d > 0 && d <= 5000) {
+                preArmed = true;
+                var _btn = (p.type === "support") ? "support" : "attack";
+                var _pf = $("form").filter(function(){
+                    return $(this).find("input[name='x'],input[name='y']").length > 0;
+                }).first();
+                if (_pf.length) {
+                    autoBtn.text("Lade Bestätigung...").css({background:"#004000", color:"#fff", border:"1px solid #002000"});
+                    var _act = _pf.attr("action") || "/game.php";
+                    var _dat = _pf.find("input:not([type=submit],[type=button],[type=image]),select,textarea")
+                                  .filter(function(){ return !this.disabled && !!this.name; }).serialize()
+                               + "&" + encodeURIComponent(_btn) + "=1";
+                    $.ajax({ url: _act, type: "POST", data: _dat,
+                        success: function(html) {
+                            var $doc = $("<div>").append($.parseHTML(html, null, false));
+                            // Confirm form is the one whose action contains try=confirm
+                            var $cf = $doc.find("form").filter(function(){
+                                var a = $(this).attr("action") || "";
+                                return a.indexOf("try=confirm") >= 0 ||
+                                       $(this).find("input[name='try'][value='confirm']").length > 0;
+                            }).first();
+                            if (!$cf.length) { preArmed = false; return; }
+                            // Swap contentContainer to show the confirm screen
+                            var $inner = $doc.find("#content_value").first();
+                            var $ov = $("#lp-overlay").detach();
+                            mount.html($inner.length ? $inner.html() : $cf.prop("outerHTML"));
+                            mount.prepend($ov);
+                            // Grab the live confirm form from the DOM after injection
+                            preArmedForm = mount.find("form").filter(function(){
+                                var a = $(this).attr("action") || "";
+                                return a.indexOf("try=confirm") >= 0 ||
+                                       $(this).find("input[name='try'][value='confirm']").length > 0;
+                            }).first();
+                            if (!preArmedForm || !preArmedForm.length) preArmedForm = $cf;
+                            // Hook manual clicks on the confirm button so they stay AJAX
+                            preArmedForm.find("input[type='submit'],button[type='submit'],button:not([type='button']):not([type='reset'])")
+                                .off("click.lp").on("click.lp", function(e) {
+                                    e.preventDefault(); e.stopImmediatePropagation();
+                                    var $b = $(this).prop("disabled", true);
+                                    ajaxSubmitAttack(preArmedForm, $b.attr("name") || "attack",
+                                        function() { confirmBtn.trigger("click"); },
+                                        function(err) { $b.prop("disabled", false); autoBtn.text("Fehler (" + (err || "?") + ")").css({background:"#fcc", color:"#a00"}); }
+                                    );
+                                });
+                            autoBtn.text("Bestätigung bereit — feuert T=0").css({background:"#004000", color:"#fff", border:"1px solid #002000"});
+                        },
+                        error: function() { preArmed = false; }
+                    });
+                }
+            }
+
+            // Fire at T=halfRTT (pre-fire by halfRTT for ping compensation)
             if (autoSendArmed && !autoSendFired && d <= halfRTT && d > -4000) {
                 autoSendFired = true;
                 autoBtn.text("Auto-Senden: ausgelöst").css({background:"#a04000", color:"#fff", border:"1px solid #703000"});
-                var btnName = (p.type === "support") ? "support" : "attack";
-                // Prefer the live DOM form — it has all JS-populated fields TW adds at runtime.
-                // Fall back to submitAttackDirect only if we're not on the place screen.
-                var $liveForm = $("form").filter(function(){
-                    return $(this).find("input[name='x'], input[name='y']").length > 0;
-                }).first();
-                var doSend = $liveForm.length
-                    ? function(ok, fail) { ajaxSubmitAttack($liveForm, btnName, ok, fail); }
-                    : function(ok, fail) { submitAttackDirect(p, btnName, ok, fail); };
-                doSend(
-                    function() { confirmBtn.trigger("click"); },
-                    function(err) {
-                        autoSendArmed = false;
-                        autoSendFired = false;
-                        autoBtn.text("Fehler — manuell senden! (" + (err || "?") + ")")
-                               .css({background:"#fcc", color:"#a00", border:"1px solid #c00"});
-                    }
-                );
+                var _btnN = (p.type === "support") ? "support" : "attack";
+                var _ok  = function() { confirmBtn.trigger("click"); };
+                var _fail = function(err) {
+                    autoSendArmed = false; autoSendFired = false; preArmed = false; preArmedForm = null;
+                    autoBtn.text("Fehler — manuell senden! (" + (err || "?") + ")")
+                           .css({background:"#fcc", color:"#a00", border:"1px solid #c00"});
+                };
+                if (preArmedForm && preArmedForm.length) {
+                    // 1-step: confirm form is already loaded — one POST fires the attack
+                    ajaxSubmitAttack(preArmedForm, _btnN, _ok, _fail);
+                } else {
+                    // Fallback: 2-step via live place form (or submitAttackDirect if not on place screen)
+                    var _lf = $("form").filter(function(){
+                        return $(this).find("input[name='x'],input[name='y']").length > 0;
+                    }).first();
+                    (_lf.length
+                        ? function(ok, fail) { ajaxSubmitAttack(_lf, _btnN, ok, fail); }
+                        : function(ok, fail) { submitAttackDirect(p, _btnN, ok, fail); }
+                    )(_ok, _fail);
+                }
             }
 
+            var $cd = $("#lp-cd");
             if (d <= 0) {
                 $cd.text(Math.abs(d) < 120000 ? "JETZT!" : "zu spät").css({color:"#ff0", fontWeight:"bold"});
             } else {
@@ -1240,7 +1297,7 @@
         var villageId = (typeof game_data !== "undefined" && game_data.village) ? String(game_data.village.id) : null;
         var onPlace = p && screen === "place" && villageId === String(p.originId);
 
-        if (onPlace && !$("#lp-overlay").length && !autoSendFired) {
+        if (onPlace && !$("#lp-overlay").length) {
             injectAttackOverlay(p);
         } else if (!onPlace) {
             if (panelOpen && !$("#launchpad-panel").length) {
