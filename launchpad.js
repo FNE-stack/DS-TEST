@@ -2,7 +2,7 @@
     $("#launchpad-panel").remove();
 
     // === CONFIG ===
-    var VERSION = "v70";
+    var VERSION = "v75";
     var GITHUB_OWNER = "FNE-stack";
     var GITHUB_REPO = "DS-TEST";
     var GITHUB_BRANCH = "main";
@@ -56,8 +56,9 @@
         try { sessionStorage.removeItem("lp_panel_open"); } catch(e) {}
         panelOpen = false;
         panel.remove();
-        if (window._lpAuto) { clearInterval(window._lpAuto); window._lpAuto = null; }
-        if (window._lpInt)  { clearInterval(window._lpInt);  window._lpInt  = null; }
+        if (window._lpAuto)       { clearInterval(window._lpAuto);       window._lpAuto       = null; }
+        if (window._lpInt)        { clearInterval(window._lpInt);        window._lpInt        = null; }
+        if (window._lpOverlayInt) { clearInterval(window._lpOverlayInt); window._lpOverlayInt = null; }
     });
     panel.find("h3").append(toggleBody).append(closePanel);
     toggleBody.on("click", function() {
@@ -130,13 +131,19 @@
 
     var serverOffset = (typeof Timing !== "undefined" && Timing.offset_server) ? Timing.offset_server : 0;
     function serverNow() { return Date.now() + serverOffset; }
+
+    // Half-RTT to TW server — used to pre-fire auto-send by this many ms for ping compensation.
+    // Re-measured every 60s so a degrading connection doesn't blow our timing.
     var halfRTT = 0;
-    (function(){
+    function measureHalfRTT() {
         var _t0 = Date.now();
         fetch("/game.php", { method: "HEAD", credentials: "include", cache: "no-store" })
             .then(function(){ halfRTT = Math.round((Date.now() - _t0) / 2); })
             .catch(function(){});
-    })();
+    }
+    measureHalfRTT();
+    setInterval(measureHalfRTT, 60000);
+
     var worldSpeed = (typeof game_data !== "undefined" && game_data.world && game_data.world.speed) ? (+game_data.world.speed || 1) : 1;
     var unitSpeed = (typeof game_data !== "undefined" && game_data.world && game_data.world.unit_speed) ? (+game_data.world.unit_speed || 1) : 1;
     var UNIT_SPEEDS = {
@@ -627,9 +634,6 @@
     // === FarmGod-style in-page overlay for attack screen ===
     var autoSendArmed = false;
     var autoSendFired = false;
-    var autoNextEnabled = (function() {
-        try { return sessionStorage.getItem("lp_autonext") === "1"; } catch(e) { return false; }
-    })();
 
     function findNextAttack(plan, current) {
         var found = false;
@@ -646,10 +650,9 @@
 
     function injectAttackOverlay(p) {
         $("#lp-overlay").remove();
-        if (window._lpInt) clearInterval(window._lpInt);
-        autoSendArmed = autoNextEnabled; // auto-arm when auto-next is on
+        if (window._lpOverlayInt) clearInterval(window._lpOverlayInt);
+        autoSendArmed = false;
         autoSendFired = false;
-        var preArmed = false, preArmedForm = null;
 
         var sendMs   = p.sendMs   || null;
         var cdTarget = sendMs || p.arrivalMs;
@@ -684,9 +687,7 @@
         timesDiv += "</div>";
         overlay.append(timesDiv);
 
-        // Auto-send toggle
         var autoBtn = $("<button style='width:100%;min-height:38px;font-size:13px;font-weight:bold;background:#ddd;color:#555;border:1px solid #aaa;border-radius:4px;cursor:pointer;margin-bottom:4px;box-sizing:border-box;'>Auto-Senden: AUS</button>");
-        if (autoSendArmed) autoBtn.text("Auto-Senden: AN").css({background:"#2a6000", color:"#fff", border:"1px solid #1a4000"});
         autoBtn.on("click", function() {
             autoSendArmed = !autoSendArmed;
             autoSendFired = false;
@@ -696,22 +697,6 @@
                        : {background:"#ddd",    color:"#555", border:"1px solid #aaa"});
         });
         overlay.append(autoBtn);
-
-        // Auto-next toggle
-        var autoNextBtn = $("<button style='width:100%;min-height:38px;font-size:13px;font-weight:bold;border:1px solid #aaa;border-radius:4px;cursor:pointer;margin-bottom:6px;box-sizing:border-box;'>Auto-Weiter: AUS</button>");
-        autoNextBtn.css(autoNextEnabled
-            ? {background:"#00468a", color:"#fff", border:"1px solid #00306a"}
-            : {background:"#ddd",    color:"#555", border:"1px solid #aaa"});
-        autoNextBtn.text(autoNextEnabled ? "Auto-Weiter: AN" : "Auto-Weiter: AUS");
-        autoNextBtn.on("click", function() {
-            autoNextEnabled = !autoNextEnabled;
-            try { sessionStorage.setItem("lp_autonext", autoNextEnabled ? "1" : "0"); } catch(e) {}
-            autoNextBtn.text(autoNextEnabled ? "Auto-Weiter: AN" : "Auto-Weiter: AUS")
-                       .css(autoNextEnabled
-                           ? {background:"#00468a", color:"#fff", border:"1px solid #00306a"}
-                           : {background:"#ddd",    color:"#555", border:"1px solid #aaa"});
-        });
-        overlay.append(autoNextBtn);
 
         var confirmBtn = $("<button style='width:100%;min-height:44px;padding:8px;font-size:14px;font-weight:bold;background:#afa;border:1px solid #080;border-radius:4px;cursor:pointer;box-sizing:border-box;margin-bottom:6px;'>✓ Gesendet</button>");
         confirmBtn.on("click", function() {
@@ -727,36 +712,54 @@
                 githubPut({ attacks: plan }, "gesendet: " + p.originId + "->" + p.targetId + " von " + ME, function(){
                     clearPendingAttack();
                     try { sessionStorage.removeItem("lp_autosent"); } catch(e) {}
-                    if (window._lpInt) clearInterval(window._lpInt);
-                    overlay.html("<div style='color:#080;font-size:14px;font-weight:bold;padding:10px 0;text-align:center;'>✓ Als gesendet markiert.</div>");
-                    setTimeout(function() {
-                        if (window._lpInt) clearInterval(window._lpInt);
-                        if (autoNextEnabled) {
-                            var nextAtt = findNextAttack(plan, p);
-                            if (nextAtt) {
-                                var nextSendMs = getSendMs(nextAtt);
-                                var armAtt = {
-                                    id: nextAtt.id, originId: nextAtt.originId, targetId: nextAtt.targetId,
-                                    originLabel: villageLabel(nextAtt.originId),
-                                    targetLabel: villageLabel(nextAtt.targetId),
-                                    arrivalMs: nextAtt.arrivalMs, sendMs: nextSendMs,
-                                    type: p.type || "attack",
-                                    catapultTarget: nextAtt.catapultTarget || null,
-                                    troops: nextAtt.troops || null
-                                };
-                                savePendingAttack(armAtt);
-                                // Navigate to place screen now if ≤5 min, else overview (panel timer will auto-navigate)
-                                if (nextSendMs && (nextSendMs - serverNow()) <= 300000) {
-                                    navigate(buildUrl(nextAtt));
-                                } else {
-                                    navigate("/game.php?village=" + nextAtt.originId + "&screen=overview");
-                                }
-                                return;
+                    if (window._lpOverlayInt) clearInterval(window._lpOverlayInt);
+                    var nextAtt = findNextAttack(plan, p);
+                    if (nextAtt) {
+                        var nextSendMs = getSendMs(nextAtt);
+                        var armAtt = {
+                            id: nextAtt.id, originId: nextAtt.originId, targetId: nextAtt.targetId,
+                            originLabel: villageLabel(nextAtt.originId),
+                            targetLabel: villageLabel(nextAtt.targetId),
+                            arrivalMs: nextAtt.arrivalMs, sendMs: nextSendMs,
+                            type: p.type || "attack",
+                            catapultTarget: nextAtt.catapultTarget || null,
+                            troops: nextAtt.troops || null
+                        };
+                        var nFromLabel = armAtt.originLabel || ("Dorf " + armAtt.originId);
+                        var nToLabel   = armAtt.targetLabel || ("Dorf " + armAtt.targetId);
+                        overlay.html(
+                            "<div style='color:#080;font-size:13px;font-weight:bold;padding:6px 0 10px;text-align:center;'>✓ Als gesendet markiert.</div>" +
+                            "<div style='font-size:11px;color:#555;margin-bottom:10px;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'>" +
+                                nFromLabel + " → " + nToLabel +
+                                (nextSendMs ? "<br><span style='color:#804000;'>Senden: " + fmtTime(nextSendMs) + "</span>" : "") +
+                            "</div>"
+                        );
+                        var nextBtn = $("<button style='width:100%;min-height:44px;padding:8px;font-size:14px;font-weight:bold;background:#00468a;color:#fff;border:1px solid #00306a;border-radius:4px;cursor:pointer;box-sizing:border-box;margin-bottom:6px;'>→ Nächster Angriff</button>");
+                        nextBtn.on("click", function() {
+                            savePendingAttack(armAtt);
+                            if (nextSendMs && (nextSendMs - serverNow()) <= 300000) {
+                                navigate(buildUrl(nextAtt));
+                            } else {
+                                navigate("/game.php?village=" + nextAtt.originId + "&screen=overview");
                             }
-                        }
-                        overlay.remove();
-                        navigate("/game.php?village=" + p.originId + "&screen=overview");
-                    }, 600);
+                        });
+                        var closeBtn2 = $("<button style='width:100%;min-height:36px;font-size:12px;background:transparent;border:1px solid #a07030;border-radius:3px;cursor:pointer;color:#804000;'>✕ Schließen</button>");
+                        closeBtn2.on("click", function() {
+                            overlay.remove();
+                            navigate("/game.php?village=" + p.originId + "&screen=overview");
+                        });
+                        overlay.append(nextBtn).append(closeBtn2);
+                    } else {
+                        overlay.html(
+                            "<div style='color:#080;font-size:14px;font-weight:bold;padding:10px 0 8px;text-align:center;'>✓ Alle Angriffe gesendet.</div>"
+                        );
+                        var doneClose = $("<button style='width:100%;min-height:36px;font-size:12px;background:transparent;border:1px solid #a07030;border-radius:3px;cursor:pointer;color:#804000;'>✕ Schließen</button>");
+                        doneClose.on("click", function() {
+                            overlay.remove();
+                            navigate("/game.php?village=" + p.originId + "&screen=overview");
+                        });
+                        overlay.append(doneClose);
+                    }
                 });
             });
         });
@@ -765,8 +768,9 @@
         var dismissBtn = $("<button style='width:100%;min-height:36px;font-size:12px;background:transparent;border:1px solid #a07030;border-radius:3px;cursor:pointer;color:#804000;'>✕ Schließen</button>");
         dismissBtn.on("click", function() {
             clearPendingAttack();
+            try { sessionStorage.removeItem("lp_autosent"); } catch(e) {}
             overlay.remove();
-            if (window._lpInt) clearInterval(window._lpInt);
+            if (window._lpOverlayInt) clearInterval(window._lpOverlayInt);
         });
         overlay.append(dismissBtn);
 
@@ -806,88 +810,27 @@
         }
 
         // Timer — 100ms for precision near T=0
-        window._lpInt = setInterval(function() {
-            if (!$("#lp-overlay").length) { clearInterval(window._lpInt); return; }
+        window._lpOverlayInt = setInterval(function() {
+            if (!$("#lp-overlay").length) { clearInterval(window._lpOverlayInt); return; }
             var d = cdTarget - serverNow();
 
-            // Pre-arm at T-5s: POST the place form via AJAX to load TW's confirm screen in-place.
-            // The confirm HTML is injected into #contentContainer (overlay detached/re-prepended),
-            // so the user sees the real confirm screen while the script stays alive.
-            if (autoSendArmed && !autoSendFired && !preArmed && d > 0 && d <= 5000) {
-                preArmed = true;
-                var _btn = (p.type === "support") ? "support" : "attack";
-                var _pf = $("form").filter(function(){
-                    return $(this).find("input[name='x'],input[name='y']").length > 0;
-                }).first();
-                if (_pf.length) {
-                    autoBtn.text("Lade Bestätigung...").css({background:"#004000", color:"#fff", border:"1px solid #002000"});
-                    var _act = _pf.attr("action") || "/game.php";
-                    var _dat = _pf.find("input:not([type=submit],[type=button],[type=image]),select,textarea")
-                                  .filter(function(){ return !this.disabled && !!this.name; }).serialize()
-                               + "&" + encodeURIComponent(_btn) + "=1";
-                    $.ajax({ url: _act, type: "POST", data: _dat,
-                        success: function(html) {
-                            var $doc = $("<div>").append($.parseHTML(html, null, false));
-                            // Confirm form is the one whose action contains try=confirm
-                            var $cf = $doc.find("form").filter(function(){
-                                var a = $(this).attr("action") || "";
-                                return a.indexOf("try=confirm") >= 0 ||
-                                       $(this).find("input[name='try'][value='confirm']").length > 0;
-                            }).first();
-                            if (!$cf.length) { preArmed = false; return; }
-                            // Swap contentContainer to show the confirm screen
-                            var $inner = $doc.find("#content_value").first();
-                            var $ov = $("#lp-overlay").detach();
-                            mount.html($inner.length ? $inner.html() : $cf.prop("outerHTML"));
-                            mount.prepend($ov);
-                            // Grab the live confirm form from the DOM after injection
-                            preArmedForm = mount.find("form").filter(function(){
-                                var a = $(this).attr("action") || "";
-                                return a.indexOf("try=confirm") >= 0 ||
-                                       $(this).find("input[name='try'][value='confirm']").length > 0;
-                            }).first();
-                            if (!preArmedForm || !preArmedForm.length) preArmedForm = $cf;
-                            // Hook manual clicks on the confirm button so they stay AJAX
-                            preArmedForm.find("input[type='submit'],button[type='submit'],button:not([type='button']):not([type='reset'])")
-                                .off("click.lp").on("click.lp", function(e) {
-                                    e.preventDefault(); e.stopImmediatePropagation();
-                                    var $b = $(this).prop("disabled", true);
-                                    ajaxSubmitAttack(preArmedForm, $b.attr("name") || "attack",
-                                        function() { confirmBtn.trigger("click"); },
-                                        function(err) { $b.prop("disabled", false); autoBtn.text("Fehler (" + (err || "?") + ")").css({background:"#fcc", color:"#a00"}); }
-                                    );
-                                });
-                            autoBtn.text("Bestätigung bereit — feuert T=0").css({background:"#004000", color:"#fff", border:"1px solid #002000"});
-                        },
-                        error: function() { preArmed = false; }
-                    });
-                }
-            }
-
-            // Fire at T=halfRTT (pre-fire by halfRTT for ping compensation)
             if (autoSendArmed && !autoSendFired && d <= halfRTT && d > -4000) {
                 autoSendFired = true;
                 autoBtn.text("Auto-Senden: ausgelöst").css({background:"#a04000", color:"#fff", border:"1px solid #703000"});
-                var _btnN = (p.type === "support") ? "support" : "attack";
+                var btnName = (p.type === "support") ? "support" : "attack";
                 var _ok  = function() { confirmBtn.trigger("click"); };
                 var _fail = function(err) {
-                    autoSendArmed = false; autoSendFired = false; preArmed = false; preArmedForm = null;
+                    autoSendArmed = false; autoSendFired = false;
                     autoBtn.text("Fehler — manuell senden! (" + (err || "?") + ")")
                            .css({background:"#fcc", color:"#a00", border:"1px solid #c00"});
                 };
-                if (preArmedForm && preArmedForm.length) {
-                    // 1-step: confirm form is already loaded — one POST fires the attack
-                    ajaxSubmitAttack(preArmedForm, _btnN, _ok, _fail);
-                } else {
-                    // Fallback: 2-step via live place form (or submitAttackDirect if not on place screen)
-                    var _lf = $("form").filter(function(){
-                        return $(this).find("input[name='x'],input[name='y']").length > 0;
-                    }).first();
-                    (_lf.length
-                        ? function(ok, fail) { ajaxSubmitAttack(_lf, _btnN, ok, fail); }
-                        : function(ok, fail) { submitAttackDirect(p, _btnN, ok, fail); }
-                    )(_ok, _fail);
-                }
+                var $lf = $("form").filter(function(){
+                    return $(this).find("input[name='x'],input[name='y']").length > 0;
+                }).first();
+                ($lf.length
+                    ? function(ok, fail) { ajaxSubmitAttack($lf, btnName, ok, fail); }
+                    : function(ok, fail) { submitAttackDirect(p, btnName, ok, fail); }
+                )(_ok, _fail);
             }
 
             var $cd = $("#lp-cd");
@@ -1261,24 +1204,21 @@
                 if (att) { att.sent = true; att.sentBy = ME; att.sentAt = Date.now(); }
                 githubPut({ attacks: plan }, "gesendet: " + info.originId + "->" + info.targetId + " von " + ME, function() {
                     clearPendingAttack();
-                    if (autoNextEnabled) {
-                        var nextAtt = findNextAttack(plan, info);
-                        if (nextAtt) {
-                            autoSendFired = false;
-                            savePendingAttack({
-                                id: nextAtt.id, originId: nextAtt.originId, targetId: nextAtt.targetId,
-                                originLabel: villageLabel(nextAtt.originId),
-                                targetLabel: villageLabel(nextAtt.targetId),
-                                arrivalMs: nextAtt.arrivalMs, sendMs: getSendMs(nextAtt),
-                                type: info.type || "attack",
-                                catapultTarget: nextAtt.catapultTarget || null,
-                                troops: nextAtt.troops || null
-                            });
-                            navigate(buildUrl(nextAtt));
-                            return;
-                        }
+                    var nextAtt = findNextAttack(plan, info);
+                    if (nextAtt) {
+                        savePendingAttack({
+                            id: nextAtt.id, originId: nextAtt.originId, targetId: nextAtt.targetId,
+                            originLabel: villageLabel(nextAtt.originId),
+                            targetLabel: villageLabel(nextAtt.targetId),
+                            arrivalMs: nextAtt.arrivalMs, sendMs: getSendMs(nextAtt),
+                            type: info.type || "attack",
+                            catapultTarget: nextAtt.catapultTarget || null,
+                            troops: nextAtt.troops || null
+                        });
+                        navigate(buildUrl(nextAtt));
+                    } else {
+                        navigate("/game.php?village=" + info.originId + "&screen=overview");
                     }
-                    navigate("/game.php?village=" + info.originId + "&screen=overview");
                 });
             });
         });
