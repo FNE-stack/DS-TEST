@@ -1,11 +1,11 @@
 {
   "attacks": [
     {
-      "id": "3907_4633_1779368040000",
+      "id": "3907_4633_1779369000000",
       "originId": "3907",
       "targetId": "4633",
       "slowest": "spy",
-      "arrivalMs": 1779368040000,
+      "arrivalMs": 1779369000000,
       "catapultTarget": "8",
       "troops": {
         "spear": null,
@@ -22,44 +22,17 @@
         "snob": null,
         "militia": 0
       },
-      "raw": "3907&4633&spy&1779368040000&8&false&false&spear=/sword=/axe=/archer=/spy=MjU=/light=/marcher=/heavy=/ram=/catapult=/knight=/snob=/militia=MA==",
-      "sent": true,
-      "sentBy": "Donald John Trump",
-      "sentAt": 1779364625762
-    },
-    {
-      "id": "3907_4633_1779368064000",
-      "originId": "3907",
-      "targetId": "4633",
-      "slowest": "spy",
-      "arrivalMs": 1779368064000,
-      "catapultTarget": "8",
-      "troops": {
-        "spear": null,
-        "sword": null,
-        "axe": null,
-        "archer": null,
-        "spy": 25,
-        "light": null,
-        "marcher": null,
-        "heavy": null,
-        "ram": null,
-        "catapult": null,
-        "knight": null,
-        "snob": null,
-        "militia": 0
-      },
-      "raw": "3907&4633&spy&1779368064000&8&false&false&spear=/sword=/axe=/archer=/spy=MjU=/light=/marcher=/heavy=/ram=/catapult=/knight=/snob=/militia=MA==",
+      "raw": "3907&4633&spy&1779369000000&8&false&false&spear=/sword=/axe=/archer=/spy=MjU=/light=/marcher=/heavy=/ram=/catapult=/knight=/snob=/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
     },
     {
-      "id": "3907_4633_1779368095000",
+      "id": "3907_4633_1779369024000",
       "originId": "3907",
       "targetId": "4633",
       "slowest": "spy",
-      "arrivalMs": 1779368095000,
+      "arrivalMs": 1779369024000,
       "catapultTarget": "8",
       "troops": {
         "spear": null,
@@ -76,7 +49,34 @@
         "snob": null,
         "militia": 0
       },
-      "raw": "3907&4633&spy&1779368095000&8&false&false&spear=/sword=/axe=/archer=/spy=MjU=/light=/marcher=/heavy=/ram=/catapult=/knight=/snob=/militia=MA==",
+      "raw": "3907&4633&spy&1779369024000&8&false&false&spear=/sword=/axe=/archer=/spy=MjU=/light=/marcher=/heavy=/ram=/catapult=/knight=/snob=/militia=MA==",
+      "sent": false,
+      "sentBy": null,
+      "sentAt": null
+    },
+    {
+      "id": "3907_4633_1779369055000",
+      "originId": "3907",
+      "targetId": "4633",
+      "slowest": "spy",
+      "arrivalMs": 1779369055000,
+      "catapultTarget": "8",
+      "troops": {
+        "spear": null,
+        "sword": null,
+        "axe": null,
+        "archer": null,
+        "spy": 25,
+        "light": null,
+        "marcher": null,
+        "heavy": null,
+        "ram": null,
+        "catapult": null,
+        "knight": null,
+        "snob": null,
+        "militia": 0
+      },
+      "raw": "3907&4633&spy&1779369055000&8&false&false&spear=/sword=/axe=/archer=/spy=MjU=/light=/marcher=/heavy=/ram=/catapult=/knight=/snob=/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
