@@ -2,7 +2,7 @@
     $("#launchpad-panel").remove();
 
     // === CONFIG ===
-    var VERSION = "v79";
+    var VERSION = "v80";
     var GITHUB_OWNER = "FNE-stack";
     var GITHUB_REPO = "DS-TEST";
     var GITHUB_BRANCH = "main";
@@ -331,16 +331,22 @@
     // Submit attack/support form via AJAX, auto-submitting the confirm step if TW shows one.
     // TW's attack flow is two-step: place form → confirm page → confirm form → attack sent.
     // We chain both requests here so the script never triggers a page reload.
+    //
+    // If $form is ALREADY the confirm form, we do a single POST. Without this, the response
+    // (the attack-sent page) may include another try=confirm form ("send another attack") which
+    // we'd POST as step-2 with no x/y → TW errors "Es muss ein gültiges Ziel angegeben werden"
+    // even though the actual attack went through. The user then thinks it failed when it didn't.
     function ajaxSubmitAttack($form, btnName, onSuccess, onError) {
         var method = ($form.attr("method") || "POST").toUpperCase();
         var action = $form.attr("action") || "/game.php";
+        var isAlreadyConfirm = action.indexOf("try=confirm") >= 0 ||
+                               $form.find("input[name='try'][value='confirm']").length > 0;
         var data   = $form.find("input:not([type=submit],[type=button],[type=image]),select,textarea")
                           .filter(function(){ return !this.disabled && !!this.name; })
                           .serialize();
         data += (data ? "&" : "") + encodeURIComponent(btnName) + "=1";
         $.ajax({ url: action, type: method, data: data,
             success: function(html) {
-                // If TW returned a confirm page, find and submit the confirm form (step 2)
                 var $doc = $("<div>").append($.parseHTML(html, null, false));
 
                 // Detect TW error pages — without this, we mark attacks "sent" that never went.
@@ -349,6 +355,9 @@
                     onError("tw: " + $err.text().trim().substring(0, 80));
                     return;
                 }
+
+                // We just POSTed the confirm form — attack is sent, don't go looking for step 2.
+                if (isAlreadyConfirm) { onSuccess(); return; }
 
                 var $cForm = $doc.find("form").filter(function(){
                     var act = $(this).attr("action") || "";
