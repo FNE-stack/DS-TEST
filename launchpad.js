@@ -2,7 +2,7 @@
     $("#launchpad-panel").remove();
 
     // === CONFIG ===
-    var VERSION = "v89";
+    var VERSION = "v90";
     var GITHUB_OWNER = "FNE-stack";
     var GITHUB_REPO = "DS-TEST";
     var GITHUB_BRANCH = "main";
@@ -594,9 +594,15 @@
                 if ($overlay.length) $(cc).prepend($overlay);
                 if ($widget.length)  $("body").prepend($widget);
 
-                try { history.pushState({}, "", url); } catch(e) {}
-
                 if (onDone) onDone();
+
+                // Push state AFTER onDone so TW's code runs first, then lock in the correct URL
+                try { 
+                    history.pushState({}, "", url);
+                    console.log("[lp v87] ajaxNav: pushed URL to address bar: " + url);
+                } catch(e) {
+                    console.warn("[lp v87] ajaxNav: history.pushState failed: " + e.message);
+                }
 
                 // If att provided, auto-populate place screen x/y fields with target coords
                 // (TW's own autofill doesn't run after DOM swap). Always overwrite with correct target.
@@ -637,6 +643,12 @@
                         } else {
                             console.log("[lp v87] ajaxNav: confirmed coords (" + targetX + "|" + targetY + ")");
                         }
+                        
+                        // Lock in the URL again after setting coordinates (in case TW tried to change it)
+                        try {
+                            history.pushState({}, "", url);
+                            console.log("[lp v87] ajaxNav: re-locked URL after setting coords: " + url);
+                        } catch(e) {}
                     };
                     doPopulate();
                     setTimeout(doPopulate, 100);
@@ -1028,6 +1040,7 @@
         console.log("[lp v86] current x/y values:", 
                     $twForm.find("input[name='x']").val(), 
                     $twForm.find("input[name='y']").val());
+        console.log("[lp v87] address bar URL:", window.location.href);
 
         // Ensure place screen x/y fields are populated (TW's autofill may not run after AJAX nav)
         // Even if showing confirm form, x/y may have stale values — ALWAYS overwrite with correct target
