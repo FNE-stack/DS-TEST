@@ -2,7 +2,7 @@
     $("#launchpad-panel").remove();
 
     // === CONFIG ===
-    var VERSION = "v91";
+    var VERSION = "v92";
     var GITHUB_OWNER = "FNE-stack";
     var GITHUB_REPO = "DS-TEST";
     var GITHUB_BRANCH = "main";
@@ -547,9 +547,8 @@
 
                 var $overlay = $("#lp-overlay").detach();
                 cc.innerHTML = newContent.innerHTML;
-                runInlineScripts(cc);
-                if ($overlay.length) $(cc).prepend($overlay);
-
+                // Push URL + update game_data BEFORE running inline scripts so TW's init code
+                // sees the new location/state when it reads window.location.search / game_data.
                 var cAction = cForm.getAttribute("action") || result.action;
                 try { history.pushState({}, "", cAction); } catch(e) {}
                 try {
@@ -559,6 +558,8 @@
                         game_data.screen = "place";
                     }
                 } catch(e) {}
+                runInlineScripts(cc);
+                if ($overlay.length) $(cc).prepend($overlay);
 
                 console.log("[lp v82] navigateToConfirm OK — content swapped, URL pushed:", cAction);
                 if (onSuccess) onSuccess();
@@ -612,19 +613,23 @@
                 var $overlay = $("#lp-overlay").detach();
                 var $widget  = $("#lp-widget").detach();
                 cc.innerHTML = newContent.innerHTML;
+
+                // Push URL BEFORE running inline scripts — TW's init code reads
+                // window.location.search to resolve the target= param into the target widget.
+                // If we pushState after, scripts see the old URL and the target never auto-loads.
+                try {
+                    history.pushState({}, "", url);
+                    console.log("[lp v92] ajaxNav: URL pushed before script exec: " + url);
+                } catch(e) {
+                    console.warn("[lp v92] ajaxNav: history.pushState failed: " + e.message);
+                }
+
                 runInlineScripts(cc);
+
                 if ($overlay.length) $(cc).prepend($overlay);
                 if ($widget.length)  $("body").prepend($widget);
 
                 if (onDone) onDone();
-
-                // Push state AFTER onDone so TW's code runs first, then lock in the correct URL
-                try { 
-                    history.pushState({}, "", url);
-                    console.log("[lp v87] ajaxNav: pushed URL to address bar: " + url);
-                } catch(e) {
-                    console.warn("[lp v87] ajaxNav: history.pushState failed: " + e.message);
-                }
 
                 // If att provided, auto-populate place screen x/y fields with target coords
                 // (TW's own autofill doesn't run after DOM swap). Always overwrite with correct target.
