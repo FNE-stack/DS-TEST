@@ -2,7 +2,7 @@
     $("#launchpad-panel").remove();
 
     // === CONFIG ===
-    var VERSION = "v84";
+    var VERSION = "v85";
     var GITHUB_OWNER = "FNE-stack";
     var GITHUB_REPO = "DS-TEST";
     var GITHUB_BRANCH = "main";
@@ -549,18 +549,26 @@
         });
     }
 
-    // TribalWars.redirect = AJAX swap (script survives); fall back to location.href.
-    // The delayed handleScreenReady call ensures overlay injection even if the
-    // MutationObserver fires before game_data is updated on mobile.
+    // navigate(url) — kept as a thin wrapper. Previously used TribalWars.redirect, which on this
+    // server triggers a FULL PAGE RELOAD for some URLs, killing the quickbar IIFE. Now routes
+    // through ajaxNav (fetch + DOM swap) so the script context survives. Parses the URL to keep
+    // game_data in sync so handleScreenReady sees the right screen/village afterwards.
     function navigate(url) {
-        if (typeof TribalWars !== "undefined" && TribalWars.redirect) {
-            TribalWars.redirect(url);
-            setTimeout(handleScreenReady, 700);
-            return;
-        }
-        var w = null;
-        try { w = window.open(url, "_blank"); } catch(e) {}
-        if (!w) location.href = url;
+        ajaxNav(url, function() {
+            try {
+                if (typeof game_data !== "undefined") {
+                    var m;
+                    m = url.match(/village=(\d+)/);
+                    if (m) {
+                        game_data.village = game_data.village || {};
+                        game_data.village.id = m[1];
+                    }
+                    m = url.match(/screen=([a-z_]+)/);
+                    if (m) game_data.screen = m[1];
+                }
+            } catch(e) {}
+            setTimeout(handleScreenReady, 150);
+        });
     }
 
     // Pure-AJAX nav: GET the target URL, swap #contentContainer's inner HTML, preserve our overlay,
@@ -901,11 +909,20 @@
                                 console.log("[lp v82] navigateToConfirm success → re-inject overlay");
                                 injectAttackOverlay(armAtt);
                             }, function(err) {
-                                console.warn("[lp v82] navigateToConfirm failed:", err,
-                                             "→ falling back to plain place-screen nav");
-                                // Fallback: at least get the user to the place screen via TW's
-                                // own redirect so they're not stranded.
-                                navigate(buildUrl(nextAtt));
+                                console.warn("[lp v85] navigateToConfirm failed:", err,
+                                             "→ AJAX-nav fallback to place screen (script stays alive)");
+                                // Tear down the current overlay so injectAttackOverlay can mount a fresh one.
+                                overlay.remove();
+                                ajaxNav(buildUrl(nextAtt), function() {
+                                    try {
+                                        if (typeof game_data !== "undefined") {
+                                            game_data.village = game_data.village || {};
+                                            game_data.village.id = String(nextAtt.originId);
+                                            game_data.screen = "place";
+                                        }
+                                    } catch(e) {}
+                                    injectAttackOverlay(armAtt);
+                                });
                             });
                         });
                         var closeBtn2 = $("<button style='width:100%;min-height:36px;font-size:12px;background:transparent;border:1px solid #a07030;border-radius:3px;cursor:pointer;color:#804000;'>✕ Schließen</button>");
