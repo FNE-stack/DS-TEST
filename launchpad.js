@@ -2,7 +2,7 @@
     $("#launchpad-panel").remove();
 
     // === CONFIG ===
-    var VERSION = "v92";
+    var VERSION = "v93";
     var GITHUB_OWNER = "FNE-stack";
     var GITHUB_REPO = "DS-TEST";
     var GITHUB_BRANCH = "main";
@@ -571,26 +571,20 @@
         });
     }
 
-    // navigate(url) — kept as a thin wrapper. Previously used TribalWars.redirect, which on this
-    // server triggers a FULL PAGE RELOAD for some URLs, killing the quickbar IIFE. Now routes
-    // through ajaxNav (fetch + DOM swap) so the script context survives. Parses the URL to keep
-    // game_data in sync so handleScreenReady sees the right screen/village afterwards.
+    // navigate(url) — uses TribalWars.redirect so TW's own init runs on the destination page
+    // (target widget loads, hidden x/y populated, place form fully wired). Script MAY die on
+    // full-reload paths but that's acceptable for end-of-action navigations like the panel-Angreifen
+    // fallback — the user just needs the place screen to work so they can complete the send.
+    //
+    // For in-cycle navigations where the script context MUST survive (Nächster Angriff between
+    // attacks), call ajaxNav directly instead.
     function navigate(url) {
-        ajaxNav(url, function() {
-            try {
-                if (typeof game_data !== "undefined") {
-                    var m;
-                    m = url.match(/village=(\d+)/);
-                    if (m) {
-                        game_data.village = game_data.village || {};
-                        game_data.village.id = m[1];
-                    }
-                    m = url.match(/screen=([a-z_]+)/);
-                    if (m) game_data.screen = m[1];
-                }
-            } catch(e) {}
-            setTimeout(handleScreenReady, 150);
-        });
+        if (typeof TribalWars !== "undefined" && TribalWars.redirect) {
+            TribalWars.redirect(url);
+            setTimeout(handleScreenReady, 700);
+            return;
+        }
+        location.href = url;
     }
 
     // Pure-AJAX nav: GET the target URL, swap #contentContainer's inner HTML, preserve our overlay,
