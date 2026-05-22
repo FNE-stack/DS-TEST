@@ -2,7 +2,7 @@
     $("#launchpad-panel").remove();
 
     // === CONFIG ===
-    var VERSION = "v96";
+    var VERSION = "v98";
     var GITHUB_OWNER = "FNE-stack";
     var GITHUB_REPO = "DS-TEST";
     var GITHUB_BRANCH = "main";
@@ -10,25 +10,21 @@
     var _playerName = (typeof game_data !== "undefined" && game_data.player && game_data.player.name)
                       ? game_data.player.name : "unknown";
     var GITHUB_FILE     = _playerName + ".json";
-    var GITHUB_BOT_FILE = _playerName + "_bot.json";
     var GITHUB_API     = "https://api.github.com/repos/" + GITHUB_OWNER + "/" + GITHUB_REPO + "/contents/" + encodeURIComponent(GITHUB_FILE);
-    var GITHUB_BOT_API = "https://api.github.com/repos/" + GITHUB_OWNER + "/" + GITHUB_REPO + "/contents/" + encodeURIComponent(GITHUB_BOT_FILE);
     var AUTO_REFRESH_MS = 15000;
 
     var villageMap = {};
     var currentSha = null;
     var currentPlan = [];
     var isWriting = false;
-    var botEnabled = true;
-    var botControlSha = null;
 
     // Panel session flag — set on every quickbar tap, survives page reloads via sessionStorage
     // so the panel re-appears automatically after each navigation while the script is alive.
     try { sessionStorage.setItem("lp_panel_open", "1"); } catch(e) {}
     var panelOpen = true;
 
-    // Reset Auto-Senden + jump flags at every quickbar tap — fresh start each session
-    try { sessionStorage.removeItem("lp_autosend"); } catch(e) {}
+    // Auto-Senden is persisted across sessions in localStorage (see lp_autosend handling
+    // in injectAttackOverlay / autoBtn). Only the stale jump-confirm flag is cleared on tap.
     try { sessionStorage.removeItem("lp_jump_confirm"); } catch(e) {}
 
     function isMobile() { return window.innerWidth < 700; }
@@ -43,8 +39,7 @@
     var pushBtn    = $("<button style='" + btnStyle + "'>Plan hochladen</button>");
     var refreshBtn = $("<button style='" + btnStyle + "'>Aktualisieren</button>");
     var wipeBtn    = $("<button style='" + btnStyle + "background:#fcc;'>Plan löschen</button>");
-    var botToggleBtn = $("<button style='" + btnStyle + "background:#afa;'>AN</button>");
-    var btnRow     = $("<div style='display:flex;flex-wrap:wrap;'></div>").append(pushBtn).append(refreshBtn).append(wipeBtn).append(botToggleBtn);
+    var btnRow     = $("<div style='display:flex;flex-wrap:wrap;'></div>").append(pushBtn).append(refreshBtn).append(wipeBtn);
 
     var status = $("<div style='margin-top:6px;font-size:12px;color:#555;'></div>");
     var tableContainer = $("<div style='overflow-x:auto;max-width:100%;'></div>");
@@ -157,7 +152,7 @@
             off = Math.min(twOff, ourOffset);
             if (Math.abs(twOff - ourOffset) > 1000) {
                 // Big disagreement — log once-ish so the user notices something's up
-                console.warn("[lp v96] server offset mismatch — TW:" + twOff + " ours:" + ourOffset +
+                console.warn("[lp] server offset mismatch — TW:" + twOff + " ours:" + ourOffset +
                              " using:" + off);
             }
         } else if (twOff !== null) {
@@ -458,7 +453,7 @@
             var n = document.createElement("script");
             n.textContent = old.textContent;
             try { old.parentNode.replaceChild(n, old); }
-            catch(e) { console.warn("[lp v91] script re-exec failed:", e); }
+            catch(e) { console.warn("[lp] script re-exec failed:", e); }
         }
     }
 
@@ -533,11 +528,9 @@
     function navigateToConfirm(att, btnNameOverride, onSuccess, onError) {
         var btnName = btnNameOverride || ((att.type === "support") ? "support" : "attack");
         var placeUrl = buildUrl(att);
-        console.log("[lp v82] navigateToConfirm START", { url: placeUrl, btnName: btnName, att: att });
         loadVillages(function() {
             fetchText(placeUrl)
             .then(function(placeHtml) {
-                console.log("[lp v82] step1 GET place OK, len=" + placeHtml.length);
                 var pDoc = parseDoc(placeHtml);
                 var placeForm = null;
                 var forms = pDoc.body.querySelectorAll("form");
@@ -562,7 +555,6 @@
                 var action = placeForm.getAttribute("action") || "/game.php";
                 var data = serializeForm(placeForm) + "&" + encodeURIComponent(btnName) + "=1";
 
-                console.log("[lp v82] step2 POST place →", action, "data length:", data.length);
                 return fetchText(action, {
                     method: "POST",
                     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -570,23 +562,15 @@
                 }).then(function(html) { return { html: html, action: action }; });
             })
             .then(function(result) {
-                console.log("[lp v82] step2 response received, len=" + result.html.length);
                 var cDoc = parseDoc(result.html);
 
                 var err = cDoc.querySelector(".error_box, #error_message, .system_error");
                 if (err && err.textContent.trim()) {
-                    console.warn("[lp v82] TW error in response:", err.textContent.trim());
                     throw new Error(err.textContent.trim().substring(0, 80));
                 }
 
                 var cForm = findConfirmForm(cDoc);
-                if (!cForm) {
-                    // Log the response so the user can grab it from console and share
-                    console.warn("[lp v82] NO CONFIRM FORM in response. First 500 chars:",
-                                 result.html.substring(0, 500));
-                    throw new Error("no-confirm-form");
-                }
-                console.log("[lp v82] confirm form found, action:", cForm.getAttribute("action"));
+                if (!cForm) throw new Error("no-confirm-form");
 
                 var newContent = cDoc.querySelector("#contentContainer");
                 var cc = document.getElementById("contentContainer");
@@ -608,11 +592,9 @@
                 runInlineScripts(cc);
                 if ($overlay.length) $(cc).prepend($overlay);
 
-                console.log("[lp v82] navigateToConfirm OK — content swapped, URL pushed:", cAction);
                 if (onSuccess) onSuccess();
             })
             .catch(function(e) {
-                console.error("[lp v82] navigateToConfirm FAILED:", e.message || e, e);
                 if (onError) onError(e.message || String(e));
             });
         });
@@ -636,11 +618,9 @@
 
     // Pure-AJAX nav: GET the target URL, swap #contentContainer's inner HTML, preserve our overlay,
     // update the URL bar via History API. Uses fetch (no X-Requested-With header) — $.ajax sends
-    // XHR header which makes TW return a partial response missing form fields, breaking subsequent
-    // POSTs ("Es muss ein gültiges Ziel angegeben werden"). Same trick as submitAttackDirect.
-    // Optional: pass att object to auto-populate place screen x/y fields (TW's own autofill doesn't
-    // run after DOM swap, so we do it manually — otherwise "target not set" errors on next attack).
-    function ajaxNav(url, onDone, att) {
+    // XHR header which makes TW return a partial response missing form fields. pushState happens
+    // BEFORE script execution so TW's init code reads the correct window.location.search.
+    function ajaxNav(url, onDone) {
         fetch(url, { credentials: "include", cache: "no-store" })
             .then(function(r){ return r.text(); })
             .then(function(html) {
@@ -654,73 +634,13 @@
                 var $overlay = $("#lp-overlay").detach();
                 var $widget  = $("#lp-widget").detach();
                 cc.innerHTML = newContent.innerHTML;
-
-                // Push URL BEFORE running inline scripts — TW's init code reads
-                // window.location.search to resolve the target= param into the target widget.
-                // If we pushState after, scripts see the old URL and the target never auto-loads.
-                try {
-                    history.pushState({}, "", url);
-                    console.log("[lp v92] ajaxNav: URL pushed before script exec: " + url);
-                } catch(e) {
-                    console.warn("[lp v92] ajaxNav: history.pushState failed: " + e.message);
-                }
-
+                try { history.pushState({}, "", url); } catch(e) {}
                 runInlineScripts(cc);
 
                 if ($overlay.length) $(cc).prepend($overlay);
                 if ($widget.length)  $("body").prepend($widget);
 
                 if (onDone) onDone();
-
-                // If att provided, auto-populate place screen x/y fields with target coords
-                // (TW's own autofill doesn't run after DOM swap). Always overwrite with correct target.
-                if (att && att.targetId && villageMap[String(att.targetId)]) {
-                    var targetVillage = villageMap[String(att.targetId)];
-                    var targetX = String(targetVillage.x);
-                    var targetY = String(targetVillage.y);
-                    
-                    // Try immediately, then again after small delays to override any TW code
-                    var doPopulate = function() {
-                        // Find the form (it should now be in the DOM after swap)
-                        var $form = $("form").filter(function(){
-                            return $(this).find("input[name='x'], input[name='y']").length > 0;
-                        }).first();
-                        if (!$form.length) {
-                            console.log("[lp v87] ajaxNav: form not found in DOM yet");
-                            return;
-                        }
-                        
-                        // Try to select "Koordinate" radio (may not exist on confirm forms)
-                        var $coordRadio = $form.find("input[type='radio'][value='coordinates'], input[type='radio'][value='coord']").first();
-                        if ($coordRadio.length && !$coordRadio.prop("checked")) {
-                            $coordRadio.prop("checked", true).trigger("change");
-                        }
-                        
-                        // ALWAYS set x/y, even if they already have values (could be stale from previous attack)
-                        var $xInputs = $form.find("input[name='x']");
-                        var $yInputs = $form.find("input[name='y']");
-                        var oldX = $xInputs.val() || "";
-                        var oldY = $yInputs.val() || "";
-                        
-                        $xInputs.val(targetX).trigger("change");
-                        $yInputs.val(targetY).trigger("change");
-                        
-                        if (oldX !== targetX || oldY !== targetY) {
-                            console.log("[lp v87] ajaxNav: overwrote stale coords (" + oldX + "|" + oldY + 
-                                        ") → (" + targetX + "|" + targetY + ")");
-                        } else {
-                            console.log("[lp v87] ajaxNav: confirmed coords (" + targetX + "|" + targetY + ")");
-                        }
-                        
-                        // Lock in the URL again after setting coordinates (in case TW tried to change it)
-                        try {
-                            history.pushState({}, "", url);
-                            console.log("[lp v87] ajaxNav: re-locked URL after setting coords: " + url);
-                        } catch(e) {}
-                    };
-                    doPopulate();
-                    setTimeout(doPopulate, 100);
-                }
             })
             .catch(function() { location.href = url; });
     }
@@ -911,8 +831,8 @@
     function injectAttackOverlay(p) {
         $("#lp-overlay").remove();
         if (window._lpOverlayInt) clearInterval(window._lpOverlayInt);
-        // Inherit Auto-Senden from the previous attack in this chain (sessionStorage)
-        try { autoSendArmed = sessionStorage.getItem("lp_autosend") === "1"; } catch(e) { autoSendArmed = false; }
+        // Remembered Auto-Senden state — persists across browser sessions via localStorage
+        try { autoSendArmed = localStorage.getItem("lp_autosend") === "1"; } catch(e) { autoSendArmed = false; }
         autoSendFired = false;
 
         // Load villages in the background so getSendMs() works for the next attack
@@ -964,7 +884,7 @@
         autoBtn.on("click", function() {
             autoSendArmed = !autoSendArmed;
             autoSendFired = false;
-            try { sessionStorage.setItem("lp_autosend", autoSendArmed ? "1" : "0"); } catch(e) {}
+            try { localStorage.setItem("lp_autosend", autoSendArmed ? "1" : "0"); } catch(e) {}
             paintAutoBtn();
         });
         overlay.append(autoBtn);
@@ -1026,20 +946,16 @@
                         }, 250);
                         var nextBtn = $("<button style='width:100%;min-height:44px;padding:8px;font-size:14px;font-weight:bold;background:#00468a;color:#fff;border:1px solid #00306a;border-radius:4px;cursor:pointer;box-sizing:border-box;margin-bottom:6px;'>→ Nächster Angriff</button>");
                         nextBtn.on("click", function() {
-                            console.log("[lp v82] Nächster Angriff click", armAtt);
                             nextBtn.text("Lade Bestätigung...").prop("disabled", true);
                             savePendingAttack(armAtt);
                             if (window._lpOverlayInt) clearInterval(window._lpOverlayInt);
                             var bn = (armAtt.type === "support") ? "support" : "attack";
                             navigateToConfirm(armAtt, bn, function() {
-                                console.log("[lp v82] navigateToConfirm success → re-inject overlay");
                                 injectAttackOverlay(armAtt);
                             }, function(err) {
-                                console.warn("[lp v94] navigateToConfirm failed:", err,
-                                             "→ navigate() fallback (TribalWars.redirect — proper TW init, target widget loads)");
-                                // Same approach as panel-Angreifen fallback. Pending attack is
-                                // already saved above, so if TW does a full reload here and the
-                                // script dies, re-tapping quickbar picks the cycle back up
+                                console.warn("[lp] navigateToConfirm failed: " + err + " — falling back to TribalWars.redirect");
+                                // Pending attack is already saved — if TW does a full reload here
+                                // and the script dies, re-tapping quickbar picks the cycle back up
                                 // (handleScreenReady detects pending on place screen → re-injects overlay).
                                 overlay.remove();
                                 navigate(buildUrl(nextAtt));
@@ -1047,7 +963,6 @@
                         });
                         var closeBtn2 = $("<button style='width:100%;min-height:36px;font-size:12px;background:transparent;border:1px solid #a07030;border-radius:3px;cursor:pointer;color:#804000;'>✕ Schließen</button>");
                         closeBtn2.on("click", function() {
-                            try { sessionStorage.removeItem("lp_autosend"); } catch(e) {}
                             try { sessionStorage.removeItem("lp_jump_confirm"); } catch(e) {}
                             overlay.remove();
                             ajaxNav("/game.php?village=" + p.originId + "&screen=overview");
@@ -1059,7 +974,6 @@
                         );
                         var doneClose = $("<button style='width:100%;min-height:36px;font-size:12px;background:transparent;border:1px solid #a07030;border-radius:3px;cursor:pointer;color:#804000;'>✕ Schließen</button>");
                         doneClose.on("click", function() {
-                            try { sessionStorage.removeItem("lp_autosend"); } catch(e) {}
                             try { sessionStorage.removeItem("lp_jump_confirm"); } catch(e) {}
                             overlay.remove();
                             ajaxNav("/game.php?village=" + p.originId + "&screen=overview");
@@ -1075,7 +989,6 @@
         dismissBtn.on("click", function() {
             clearPendingAttack();
             try { sessionStorage.removeItem("lp_autosent"); } catch(e) {}
-            try { sessionStorage.removeItem("lp_autosend"); } catch(e) {}
             try { sessionStorage.removeItem("lp_jump_confirm"); } catch(e) {}
             overlay.remove();
             if (window._lpOverlayInt) clearInterval(window._lpOverlayInt);
@@ -1091,59 +1004,6 @@
             return $(this).find("input[name='x'], input[name='y']").length > 0;
         }).first();
         var isConfirmFormOnScreen = isConfirmFormJq($twForm);
-        console.log("[lp v86] overlay injected — form on screen:",
-                    $twForm.length ? ($twForm.attr("action") || "no-action") : "no-form",
-                    "isConfirm:", isConfirmFormOnScreen);
-        console.log("[lp v86] current x/y values:", 
-                    $twForm.find("input[name='x']").val(), 
-                    $twForm.find("input[name='y']").val());
-        console.log("[lp v87] address bar URL:", window.location.href);
-
-        // Ensure place screen x/y fields are populated (TW's autofill may not run after AJAX nav)
-        // Even if showing confirm form, x/y may have stale values — ALWAYS overwrite with correct target
-        if ($twForm.length && p && p.targetId && villageMap[String(p.targetId)]) {
-            var targetVillage = villageMap[String(p.targetId)];
-            var targetX = String(targetVillage.x);
-            var targetY = String(targetVillage.y);
-            
-            var doSetCoords = function() {
-                // Try to find and select "Koordinate" (coordinates) radio if on place form
-                if (!isConfirmFormOnScreen) {
-                    var $coordRadio = $twForm.find("input[type='radio'][value='coordinates'], input[type='radio'][value='coord']").first();
-                    if (!$coordRadio.length) {
-                        $coordRadio = $twForm.find("input[type='radio']").filter(function() { 
-                            var nextLabel = $(this).next("label").text() || "";
-                            return nextLabel.indexOf("Koordinate") >= 0 || nextLabel.indexOf("Koordinaten") >= 0;
-                        }).first();
-                    }
-                    if ($coordRadio.length && !$coordRadio.prop("checked")) {
-                        $coordRadio.prop("checked", true).trigger("change");
-                        console.log("[lp v87] injectAttackOverlay: selected Koordinate radio");
-                    }
-                }
-                
-                // ALWAYS set x/y to the correct target, even if they already have values
-                var $xInputs = $twForm.find("input[name='x']");
-                var $yInputs = $twForm.find("input[name='y']");
-                var oldX = $xInputs.val() || "";
-                var oldY = $yInputs.val() || "";
-                
-                $xInputs.val(targetX).trigger("change");
-                $yInputs.val(targetY).trigger("change");
-                
-                if (oldX !== targetX || oldY !== targetY) {
-                    console.log("[lp v87] injectAttackOverlay: overwrote stale coords (" + oldX + "|" + oldY + 
-                                ") → (" + targetX + "|" + targetY + ")");
-                } else {
-                    console.log("[lp v87] injectAttackOverlay: confirmed coords (" + targetX + "|" + targetY + ")");
-                }
-            };
-            
-            doSetCoords();
-            setTimeout(doSetCoords, 50);
-            setTimeout(doSetCoords, 150);
-        }
-
         if (isConfirmFormOnScreen) {
             hookConfirmFormSubmit();
         } else if ($twForm.length) {
@@ -1250,7 +1110,7 @@
                 var _ok  = function() { confirmBtn.trigger("click"); };
                 var _fail = function(err) {
                     autoSendArmed = false; autoSendFired = false;
-                    try { sessionStorage.setItem("lp_autosend", "0"); } catch(e) {}
+                    try { localStorage.setItem("lp_autosend", "0"); } catch(e) {}
                     autoBtn.text("Fehler — manuell senden! (" + (err || "?") + ")")
                            .css({background:"#fcc", color:"#a00", border:"1px solid #c00"});
                 };
@@ -1260,8 +1120,6 @@
                 }).first();
                 var lfAction = $lf.length ? ($lf.attr("action") || "") : "";
                 var isConfirm = isConfirmFormJq($lf);
-                console.log("[lp v82] AUTO-SEND fired — form:", lfAction || "no-form",
-                            "isConfirm:", isConfirm, "btnName:", btnName);
 
                 if (isConfirm) {
                     // Confirm screen: ONE POST. Don't chase a phantom step-2 confirm form in
@@ -1584,50 +1442,6 @@
         });
     });
 
-    function syncBotState(callback) {
-        $.ajax({
-            url: GITHUB_BOT_API + "?ref=" + GITHUB_BRANCH + "&_=" + Date.now(),
-            headers: authHeaders(),
-            success: function(data) {
-                botControlSha = data.sha;
-                try {
-                    var content = decodeURIComponent(escape(atob(data.content.replace(/\n/g, ""))));
-                    botEnabled = JSON.parse(content).enabled !== false;
-                } catch(e) {}
-                botToggleBtn.text(botEnabled ? "AN" : "AUS")
-                            .css("background", botEnabled ? "#afa" : "#fcc");
-                if (callback) callback();
-            },
-            error: function() { if (callback) callback(); }
-        });
-    }
-
-    function writeBotState(enabled, callback) {
-        var body = { message: "bot " + (enabled ? "an" : "aus"),
-                     content: btoa(JSON.stringify({ enabled: enabled })),
-                     branch: GITHUB_BRANCH };
-        if (botControlSha) body.sha = botControlSha;
-        $.ajax({
-            url: GITHUB_BOT_API, method: "PUT", headers: authHeaders(),
-            contentType: "application/json", data: JSON.stringify(body),
-            success: function(resp) {
-                botControlSha = resp.content.sha;
-                if (callback) callback();
-            },
-            error: function(xhr) { setStatus("Bot-Toggle fehlgeschlagen: " + xhr.status, "red"); }
-        });
-    }
-
-    botToggleBtn.on("click", function() {
-        botEnabled = !botEnabled;
-        botToggleBtn.text(botEnabled ? "AN" : "AUS")
-                    .css("background", botEnabled ? "#afa" : "#fcc");
-        setStatus("Bot " + (botEnabled ? "wird aktiviert..." : "wird pausiert..."));
-        writeBotState(botEnabled, function() {
-            setStatus("Bot " + (botEnabled ? "AN" : "AUS") + ".", botEnabled ? "green" : "orange");
-        });
-    });
-
     var wipeConfirmed = false, wipeTimer = null;
     wipeBtn.on("click", function() {
         if (!wipeConfirmed) {
@@ -1758,8 +1572,6 @@
         mount.prepend(panel);
 
         if (pending && pending.arrivalMs) showCountdownWidget(pending);
-
-        syncBotState();
 
         loadVillages(function(){
             githubGet(function(data){
