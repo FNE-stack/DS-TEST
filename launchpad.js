@@ -2,7 +2,7 @@
     $("#launchpad-panel").remove();
 
     // === CONFIG ===
-    var VERSION = "v98";
+    var VERSION = "v99";
     var GITHUB_OWNER = "FNE-stack";
     var GITHUB_REPO = "DS-TEST";
     var GITHUB_BRANCH = "main";
@@ -1098,12 +1098,10 @@
                 $ping.text("Ping: " + halfRTT + "ms (Median von " + rttSamples.length + ")");
             }
 
-            // Fire at d <= 0 — no ping pre-fire. Attacks arrive ~halfRTT (30-100ms) late but
-            // NEVER early. Pre-fire was unreliable: on the first attack of a session, TW's
-            // Timing.offset_server may still be slightly off, and the pre-fire compounds that
-            // error into ~1s early arrivals. No browser-side time sync is precise enough to
-            // safely pre-fire by ping. Tradeoff: slightly late > ever-early.
-            if (autoSendArmed && !autoSendFired && d <= 0 && d > -4000) {
+            // Fire halfRTT ms before T=0 so the attack arrives at the target time.
+            // Dual-source Math.min offset guards against the wrong-positive startup bug
+            // that caused ~1s early arrivals in earlier versions.
+            if (autoSendArmed && !autoSendFired && d <= halfRTT && d > -4000) {
                 autoSendFired = true;
                 autoBtn.text("Auto-Senden: ausgelöst").css({background:"#a04000", color:"#fff", border:"1px solid #703000"});
                 var btnName = (p.type === "support") ? "support" : "attack";
