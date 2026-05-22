@@ -2,7 +2,7 @@
     $("#launchpad-panel").remove();
 
     // === CONFIG ===
-    var VERSION = "v85";
+    var VERSION = "v86";
     var GITHUB_OWNER = "FNE-stack";
     var GITHUB_REPO = "DS-TEST";
     var GITHUB_BRANCH = "main";
@@ -594,20 +594,52 @@
                 if ($overlay.length) $(cc).prepend($overlay);
                 if ($widget.length)  $("body").prepend($widget);
 
-                // If att provided, auto-populate place screen x/y fields with target coords
-                // (TW's own autofill doesn't run after DOM swap)
-                if (att && att.targetId && villageMap[String(att.targetId)]) {
-                    var targetVillage = villageMap[String(att.targetId)];
-                    var $xInput = $("input[name='x']");
-                    var $yInput = $("input[name='y']");
-                    if ($xInput.length) $xInput.val(targetVillage.x);
-                    if ($yInput.length) $yInput.val(targetVillage.y);
-                    console.log("[lp v85+] ajaxNav: auto-populated x=" + targetVillage.x + ", y=" + targetVillage.y);
-                }
-
                 try { history.pushState({}, "", url); } catch(e) {}
 
                 if (onDone) onDone();
+
+                // If att provided, auto-populate place screen x/y fields with target coords
+                // (TW's own autofill doesn't run after DOM swap). Delay slightly to let TW's code run first.
+                if (att && att.targetId && villageMap[String(att.targetId)]) {
+                    var targetVillage = villageMap[String(att.targetId)];
+                    var targetX = String(targetVillage.x);
+                    var targetY = String(targetVillage.y);
+                    
+                    // Try immediately, then again after a small delay to override any TW code
+                    var doPopulate = function() {
+                        // Find and ensure the form is still there
+                        var $form = $("form").filter(function(){
+                            return $(this).find("input[name='x'], input[name='y']").length > 0;
+                        }).first();
+                        if (!$form.length) return;
+                        
+                        // Ensure "Koordinate" (coordinates) radio is selected
+                        var $coordRadio = $form.find("input[type='radio'][value='coordinates']");
+                        if (!$coordRadio.length) {
+                            $coordRadio = $form.find("input[type='radio']").filter(function() { 
+                                var $label = $(this).next("label");
+                                var nextLabel = $label.text() || "";
+                                return nextLabel.indexOf("Koordinate") >= 0 || nextLabel.indexOf("Koordinaten") >= 0;
+                            });
+                        }
+                        if ($coordRadio.length && !$coordRadio.prop("checked")) {
+                            $coordRadio.prop("checked", true).trigger("change");
+                        }
+                        
+                        var $xInputs = $form.find("input[name='x']");
+                        var $yInputs = $form.find("input[name='y']");
+                        if ($xInputs.length) {
+                            $xInputs.val(targetX).trigger("change");
+                        }
+                        if ($yInputs.length) {
+                            $yInputs.val(targetY).trigger("change");
+                        }
+                        console.log("[lp v86] ajaxNav: set x=" + targetX + ", y=" + targetY + 
+                                    " (found " + $xInputs.length + " x inputs, " + $yInputs.length + " y inputs)");
+                    };
+                    doPopulate();
+                    setTimeout(doPopulate, 100);
+                }
             })
             .catch(function() { location.href = url; });
     }
@@ -989,15 +1021,39 @@
                     "isConfirm:", isConfirmFormOnScreen);
 
         // Ensure place screen x/y fields are populated (TW's autofill may not run after AJAX nav)
+        // Try immediately and also with delays to override any TW code that clears them
         if ($twForm.length && !isConfirmFormOnScreen && p && p.targetId && villageMap[String(p.targetId)]) {
             var targetVillage = villageMap[String(p.targetId)];
-            var $xVal = $twForm.find("input[name='x']").val() || "";
-            var $yVal = $twForm.find("input[name='y']").val() || "";
-            if (!$xVal || !$yVal) {
-                $twForm.find("input[name='x']").val(targetVillage.x);
-                $twForm.find("input[name='y']").val(targetVillage.y);
-                console.log("[lp v85+] injectAttackOverlay: populated x=" + targetVillage.x + ", y=" + targetVillage.y);
-            }
+            var targetX = String(targetVillage.x);
+            var targetY = String(targetVillage.y);
+            
+            var doSetCoords = function() {
+                // Ensure "Koordinate" (coordinates) radio is selected
+                var $coordRadio = $twForm.find("input[type='radio'][value='coordinates']");
+                if (!$coordRadio.length) {
+                    $coordRadio = $twForm.find("input[type='radio']").filter(function() { 
+                        var nextLabel = $(this).next("label").text() || "";
+                        return nextLabel.indexOf("Koordinate") >= 0 || nextLabel.indexOf("Koordinaten") >= 0;
+                    });
+                }
+                if ($coordRadio.length && !$coordRadio.prop("checked")) {
+                    $coordRadio.prop("checked", true).trigger("change");
+                    console.log("[lp v86] injectAttackOverlay: selected Koordinate radio");
+                }
+                
+                // Now set x/y
+                var $xVal = $twForm.find("input[name='x']").val() || "";
+                var $yVal = $twForm.find("input[name='y']").val() || "";
+                if (!$xVal || !$yVal) {
+                    $twForm.find("input[name='x']").val(targetX).trigger("change");
+                    $twForm.find("input[name='y']").val(targetY).trigger("change");
+                    console.log("[lp v86] injectAttackOverlay: set x=" + targetX + ", y=" + targetY);
+                }
+            };
+            
+            doSetCoords();
+            setTimeout(doSetCoords, 50);
+            setTimeout(doSetCoords, 150);
         }
 
         if (isConfirmFormOnScreen) {
