@@ -2,7 +2,7 @@
     $("#launchpad-panel").remove();
 
     // === CONFIG ===
-    var VERSION = "v93";
+    var VERSION = "v94";
     var GITHUB_OWNER = "FNE-stack";
     var GITHUB_REPO = "DS-TEST";
     var GITHUB_BRANCH = "main";
@@ -988,25 +988,14 @@
                                 console.log("[lp v82] navigateToConfirm success → re-inject overlay");
                                 injectAttackOverlay(armAtt);
                             }, function(err) {
-                                console.warn("[lp v85] navigateToConfirm failed:", err,
-                                             "→ AJAX-nav fallback to place screen (script stays alive)");
-                                // Tear down the current overlay so injectAttackOverlay can mount a fresh one.
+                                console.warn("[lp v94] navigateToConfirm failed:", err,
+                                             "→ navigate() fallback (TribalWars.redirect — proper TW init, target widget loads)");
+                                // Same approach as panel-Angreifen fallback. Pending attack is
+                                // already saved above, so if TW does a full reload here and the
+                                // script dies, re-tapping quickbar picks the cycle back up
+                                // (handleScreenReady detects pending on place screen → re-injects overlay).
                                 overlay.remove();
-                                var nextUrl = buildUrl(nextAtt);
-                                console.log("[lp v86] Nächster fallback: navigating to", nextUrl);
-                                console.log("[lp v86] nextAtt:", { originId: nextAtt.originId, targetId: nextAtt.targetId, troops: nextAtt.troops });
-                                ajaxNav(nextUrl, function() {
-                                    console.log("[lp v86] ajaxNav callback fired");
-                                    try {
-                                        if (typeof game_data !== "undefined") {
-                                            game_data.village = game_data.village || {};
-                                            game_data.village.id = String(nextAtt.originId);
-                                            game_data.screen = "place";
-                                        }
-                                    } catch(e) {}
-                                    console.log("[lp v86] about to re-inject overlay for:", { originId: nextAtt.originId, targetId: nextAtt.targetId });
-                                    injectAttackOverlay(nextAtt);
-                                }, nextAtt);
+                                navigate(buildUrl(nextAtt));
                             });
                         });
                         var closeBtn2 = $("<button style='width:100%;min-height:36px;font-size:12px;background:transparent;border:1px solid #a07030;border-radius:3px;cursor:pointer;color:#804000;'>✕ Schließen</button>");
