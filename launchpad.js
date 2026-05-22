@@ -2,7 +2,7 @@
     $("#launchpad-panel").remove();
 
     // === CONFIG ===
-    var VERSION = "v81";
+    var VERSION = "v82";
     var GITHUB_OWNER = "FNE-stack";
     var GITHUB_REPO = "DS-TEST";
     var GITHUB_BRANCH = "main";
@@ -337,12 +337,37 @@
     function findConfirmForm(doc) {
         var forms = doc.body.querySelectorAll("form");
         for (var i = 0; i < forms.length; i++) {
-            var act = forms[i].getAttribute("action") || "";
-            if (act.indexOf("try=confirm") >= 0 || forms[i].querySelector("input[name='try'][value='confirm']")) {
-                return forms[i];
-            }
+            var f = forms[i];
+            var act = f.getAttribute("action") || "";
+            var hasConfirmFlag = act.indexOf("try=confirm") >= 0 ||
+                                 f.querySelector("input[name='try'][value='confirm']");
+            if (!hasConfirmFlag) continue;
+            // A REAL confirm form has populated x/y. TW's attack-sent page often includes a
+            // "prepare another attack" stub form with try=confirm but empty x/y — we used to
+            // misread those as "TW rejected us" → confirm-rejected false positives.
+            var xv = (f.querySelector("input[name='x']") || {}).value || "";
+            var yv = (f.querySelector("input[name='y']") || {}).value || "";
+            if (!String(xv).trim() || !String(yv).trim()) continue;
+            return f;
         }
         return null;
+    }
+
+    // jQuery form → confirm-form detection. Used in the live DOM. Same heuristic plus a fallback:
+    // confirm forms keep all troop inputs hidden; place forms show them as type=number/text.
+    var TROOPS = ["spear","sword","axe","archer","spy","light","marcher","heavy","ram","catapult","knight","snob"];
+    function isConfirmFormJq($f) {
+        if (!$f || !$f.length) return false;
+        var act = $f.attr("action") || "";
+        if (act.indexOf("try=confirm") >= 0) return true;
+        if ($f.find("input[name='try'][value='confirm']").length > 0) return true;
+        // Fallback: place form has visible troop inputs, confirm doesn't
+        for (var i = 0; i < TROOPS.length; i++) {
+            if ($f.find("input[type='number'][name='" + TROOPS[i] + "']").length > 0) return false;
+            if ($f.find("input[type='text'][name='" + TROOPS[i] + "']").length > 0) return false;
+        }
+        // Has x/y but no visible troop inputs → confirm
+        return $f.find("input[name='x'], input[name='y']").length > 0;
     }
     function serializeForm(form) {
         var parts = [];
@@ -431,9 +456,12 @@
     // Script stays alive throughout. All requests via fetch (no XHR header) so TW returns full HTML.
     function navigateToConfirm(att, btnNameOverride, onSuccess, onError) {
         var btnName = btnNameOverride || ((att.type === "support") ? "support" : "attack");
+        var placeUrl = buildUrl(att);
+        console.log("[lp v82] navigateToConfirm START", { url: placeUrl, btnName: btnName, att: att });
         loadVillages(function() {
-            fetchText(buildUrl(att))
+            fetchText(placeUrl)
             .then(function(placeHtml) {
+                console.log("[lp v82] step1 GET place OK, len=" + placeHtml.length);
                 var pDoc = parseDoc(placeHtml);
                 var placeForm = null;
                 var forms = pDoc.body.querySelectorAll("form");
@@ -458,6 +486,7 @@
                 var action = placeForm.getAttribute("action") || "/game.php";
                 var data = serializeForm(placeForm) + "&" + encodeURIComponent(btnName) + "=1";
 
+                console.log("[lp v82] step2 POST place →", action, "data length:", data.length);
                 return fetchText(action, {
                     method: "POST",
                     headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -465,15 +494,23 @@
                 }).then(function(html) { return { html: html, action: action }; });
             })
             .then(function(result) {
+                console.log("[lp v82] step2 response received, len=" + result.html.length);
                 var cDoc = parseDoc(result.html);
 
                 var err = cDoc.querySelector(".error_box, #error_message, .system_error");
                 if (err && err.textContent.trim()) {
+                    console.warn("[lp v82] TW error in response:", err.textContent.trim());
                     throw new Error(err.textContent.trim().substring(0, 80));
                 }
 
                 var cForm = findConfirmForm(cDoc);
-                if (!cForm) throw new Error("no-confirm-form");
+                if (!cForm) {
+                    // Log the response so the user can grab it from console and share
+                    console.warn("[lp v82] NO CONFIRM FORM in response. First 500 chars:",
+                                 result.html.substring(0, 500));
+                    throw new Error("no-confirm-form");
+                }
+                console.log("[lp v82] confirm form found, action:", cForm.getAttribute("action"));
 
                 var newContent = cDoc.querySelector("#contentContainer");
                 var cc = document.getElementById("contentContainer");
@@ -493,9 +530,11 @@
                     }
                 } catch(e) {}
 
+                console.log("[lp v82] navigateToConfirm OK — content swapped, URL pushed:", cAction);
                 if (onSuccess) onSuccess();
             })
             .catch(function(e) {
+                console.error("[lp v82] navigateToConfirm FAILED:", e.message || e, e);
                 if (onError) onError(e.message || String(e));
             });
         });
@@ -842,22 +881,20 @@
                         }, 250);
                         var nextBtn = $("<button style='width:100%;min-height:44px;padding:8px;font-size:14px;font-weight:bold;background:#00468a;color:#fff;border:1px solid #00306a;border-radius:4px;cursor:pointer;box-sizing:border-box;margin-bottom:6px;'>→ Nächster Angriff</button>");
                         nextBtn.on("click", function() {
+                            console.log("[lp v82] Nächster Angriff click", armAtt);
                             nextBtn.text("Lade Bestätigung...").prop("disabled", true);
                             savePendingAttack(armAtt);
                             if (window._lpOverlayInt) clearInterval(window._lpOverlayInt);
-                            // Do the place→confirm swap FIRST, then inject overlay over confirm
-                            // screen. This avoids the race where the overlay's auto-send timer
-                            // fires on the place form before we've reached confirm.
                             var bn = (armAtt.type === "support") ? "support" : "attack";
                             navigateToConfirm(armAtt, bn, function() {
+                                console.log("[lp v82] navigateToConfirm success → re-inject overlay");
                                 injectAttackOverlay(armAtt);
                             }, function(err) {
-                                nextBtn.text("Fehler: " + err).prop("disabled", false)
-                                       .css({background:"#fcc", color:"#a00", border:"1px solid #a00"});
-                                setTimeout(function() {
-                                    nextBtn.text("→ Nächster Angriff").prop("disabled", false)
-                                           .css({background:"#00468a", color:"#fff", border:"1px solid #00306a"});
-                                }, 4000);
+                                console.warn("[lp v82] navigateToConfirm failed:", err,
+                                             "→ falling back to plain place-screen nav");
+                                // Fallback: at least get the user to the place screen via TW's
+                                // own redirect so they're not stranded.
+                                navigate(buildUrl(nextAtt));
                             });
                         });
                         var closeBtn2 = $("<button style='width:100%;min-height:36px;font-size:12px;background:transparent;border:1px solid #a07030;border-radius:3px;cursor:pointer;color:#804000;'>✕ Schließen</button>");
@@ -905,11 +942,10 @@
         var $twForm = $("form").filter(function(){
             return $(this).find("input[name='x'], input[name='y']").length > 0;
         }).first();
-        var twFormAction = $twForm.length ? ($twForm.attr("action") || "") : "";
-        var isConfirmFormOnScreen = $twForm.length && (
-            twFormAction.indexOf("try=confirm") >= 0 ||
-            $twForm.find("input[name='try'][value='confirm']").length > 0
-        );
+        var isConfirmFormOnScreen = isConfirmFormJq($twForm);
+        console.log("[lp v82] overlay injected — form on screen:",
+                    $twForm.length ? ($twForm.attr("action") || "no-action") : "no-form",
+                    "isConfirm:", isConfirmFormOnScreen);
 
         if (isConfirmFormOnScreen) {
             hookConfirmFormSubmit();
@@ -1015,10 +1051,9 @@
                     return $(this).find("input[name='x'],input[name='y']").length > 0;
                 }).first();
                 var lfAction = $lf.length ? ($lf.attr("action") || "") : "";
-                var isConfirm = $lf.length && (
-                    lfAction.indexOf("try=confirm") >= 0 ||
-                    $lf.find("input[name='try'][value='confirm']").length > 0
-                );
+                var isConfirm = isConfirmFormJq($lf);
+                console.log("[lp v82] AUTO-SEND fired — form:", lfAction || "no-form",
+                            "isConfirm:", isConfirm, "btnName:", btnName);
 
                 if (isConfirm) {
                     // Confirm screen: ONE POST. Don't chase a phantom step-2 confirm form in
