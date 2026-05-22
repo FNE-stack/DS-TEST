@@ -2,7 +2,7 @@
     $("#launchpad-panel").remove();
 
     // === CONFIG ===
-    var VERSION = "v80";
+    var VERSION = "v81";
     var GITHUB_OWNER = "FNE-stack";
     var GITHUB_REPO = "DS-TEST";
     var GITHUB_BRANCH = "main";
@@ -328,65 +328,6 @@
         return p;
     }
 
-    // Submit attack/support form via AJAX, auto-submitting the confirm step if TW shows one.
-    // TW's attack flow is two-step: place form → confirm page → confirm form → attack sent.
-    // We chain both requests here so the script never triggers a page reload.
-    //
-    // If $form is ALREADY the confirm form, we do a single POST. Without this, the response
-    // (the attack-sent page) may include another try=confirm form ("send another attack") which
-    // we'd POST as step-2 with no x/y → TW errors "Es muss ein gültiges Ziel angegeben werden"
-    // even though the actual attack went through. The user then thinks it failed when it didn't.
-    function ajaxSubmitAttack($form, btnName, onSuccess, onError) {
-        var method = ($form.attr("method") || "POST").toUpperCase();
-        var action = $form.attr("action") || "/game.php";
-        var isAlreadyConfirm = action.indexOf("try=confirm") >= 0 ||
-                               $form.find("input[name='try'][value='confirm']").length > 0;
-        var data   = $form.find("input:not([type=submit],[type=button],[type=image]),select,textarea")
-                          .filter(function(){ return !this.disabled && !!this.name; })
-                          .serialize();
-        data += (data ? "&" : "") + encodeURIComponent(btnName) + "=1";
-        $.ajax({ url: action, type: method, data: data,
-            success: function(html) {
-                var $doc = $("<div>").append($.parseHTML(html, null, false));
-
-                // Detect TW error pages — without this, we mark attacks "sent" that never went.
-                var $err = $doc.find(".error_box, #error_message, .system_error");
-                if ($err.length && $err.text().trim()) {
-                    onError("tw: " + $err.text().trim().substring(0, 80));
-                    return;
-                }
-
-                // We just POSTed the confirm form — attack is sent, don't go looking for step 2.
-                if (isAlreadyConfirm) { onSuccess(); return; }
-
-                var $cForm = $doc.find("form").filter(function(){
-                    var act = $(this).attr("action") || "";
-                    return act.indexOf("try=confirm") >= 0 ||
-                           $(this).find("input[name='try'][value='confirm']").length > 0;
-                }).first();
-                if (!$cForm.length) { onSuccess(); return; }
-                var cAction = $cForm.attr("action") || action;
-                var cData = $cForm.find("input:not([type=submit],[type=button],[type=image]),select,textarea")
-                                  .filter(function(){ return !this.disabled && !!this.name; })
-                                  .serialize();
-                cData += (cData ? "&" : "") + "attack=1";
-                $.ajax({ url: cAction, type: "POST", data: cData,
-                    success: function(cHtml) {
-                        var $cDoc = $("<div>").append($.parseHTML(cHtml, null, false));
-                        var $cErr = $cDoc.find(".error_box, #error_message, .system_error");
-                        if ($cErr.length && $cErr.text().trim()) {
-                            onError("tw: " + $cErr.text().trim().substring(0, 80));
-                            return;
-                        }
-                        onSuccess();
-                    },
-                    error:   function() { onError("step2-ajax"); }
-                });
-            },
-            error: function() { onError("step1-ajax"); }
-        });
-    }
-
     // Send an attack/support without navigating: GET the place screen to obtain the real form
     // (incl. CSRF token), POST it to get the confirm page, POST that to actually send.
     // Script never navigates, never dies. Falls back via onError() if any step fails.
@@ -482,6 +423,81 @@
                 .catch(function() { onError("step2"); });
             })
             .catch(function() { onError("step1"); });
+        });
+    }
+
+    // Navigate to the confirm screen for an attack: fetch place screen, POST the place form,
+    // swap the confirm HTML into #contentContainer (preserving #lp-overlay), update URL+game_data.
+    // Script stays alive throughout. All requests via fetch (no XHR header) so TW returns full HTML.
+    function navigateToConfirm(att, btnNameOverride, onSuccess, onError) {
+        var btnName = btnNameOverride || ((att.type === "support") ? "support" : "attack");
+        loadVillages(function() {
+            fetchText(buildUrl(att))
+            .then(function(placeHtml) {
+                var pDoc = parseDoc(placeHtml);
+                var placeForm = null;
+                var forms = pDoc.body.querySelectorAll("form");
+                for (var i = 0; i < forms.length; i++) {
+                    if (forms[i].querySelector("input[name='x'], input[name='y']")) {
+                        placeForm = forms[i]; break;
+                    }
+                }
+                if (!placeForm) throw new Error("no-place-form");
+
+                var troops = att.troops || {};
+                Object.keys(troops).forEach(function(u) {
+                    var el = placeForm.querySelector("input[name='" + u + "']") ||
+                             placeForm.querySelector("input[name='unit_" + u + "']");
+                    if (el) el.value = troops[u] || 0;
+                });
+                if (att.catapultTarget && att.catapultTarget !== "0") {
+                    var bld = placeForm.querySelector("select[name='building']");
+                    if (bld) bld.value = att.catapultTarget;
+                }
+
+                var action = placeForm.getAttribute("action") || "/game.php";
+                var data = serializeForm(placeForm) + "&" + encodeURIComponent(btnName) + "=1";
+
+                return fetchText(action, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                    body: data
+                }).then(function(html) { return { html: html, action: action }; });
+            })
+            .then(function(result) {
+                var cDoc = parseDoc(result.html);
+
+                var err = cDoc.querySelector(".error_box, #error_message, .system_error");
+                if (err && err.textContent.trim()) {
+                    throw new Error(err.textContent.trim().substring(0, 80));
+                }
+
+                var cForm = findConfirmForm(cDoc);
+                if (!cForm) throw new Error("no-confirm-form");
+
+                var newContent = cDoc.querySelector("#contentContainer");
+                var cc = document.getElementById("contentContainer");
+                if (!newContent || !cc) throw new Error("no-cc");
+
+                var $overlay = $("#lp-overlay").detach();
+                cc.innerHTML = newContent.innerHTML;
+                if ($overlay.length) $(cc).prepend($overlay);
+
+                var cAction = cForm.getAttribute("action") || result.action;
+                try { history.pushState({}, "", cAction); } catch(e) {}
+                try {
+                    if (typeof game_data !== "undefined") {
+                        game_data.village = game_data.village || {};
+                        game_data.village.id = String(att.originId);
+                        game_data.screen = "place";
+                    }
+                } catch(e) {}
+
+                if (onSuccess) onSuccess();
+            })
+            .catch(function(e) {
+                if (onError) onError(e.message || String(e));
+            });
         });
     }
 
@@ -826,23 +842,22 @@
                         }, 250);
                         var nextBtn = $("<button style='width:100%;min-height:44px;padding:8px;font-size:14px;font-weight:bold;background:#00468a;color:#fff;border:1px solid #00306a;border-radius:4px;cursor:pointer;box-sizing:border-box;margin-bottom:6px;'>→ Nächster Angriff</button>");
                         nextBtn.on("click", function() {
-                            nextBtn.text("...").prop("disabled", true);
+                            nextBtn.text("Lade Bestätigung...").prop("disabled", true);
                             savePendingAttack(armAtt);
-                            // Always land on confirm screen for the next attack. Use our own
-                            // AJAX nav (not TribalWars.redirect) so the quickbar script stays alive.
-                            try { sessionStorage.setItem("lp_jump_confirm", "1"); } catch(e) {}
                             if (window._lpOverlayInt) clearInterval(window._lpOverlayInt);
-                            overlay.remove();
-                            ajaxNav(buildUrl(nextAtt), function() {
-                                // Update game_data so handleScreenReady sees the new village/screen.
-                                try {
-                                    if (typeof game_data !== "undefined") {
-                                        game_data.village = game_data.village || {};
-                                        game_data.village.id = String(nextAtt.originId);
-                                        game_data.screen = "place";
-                                    }
-                                } catch(e) {}
+                            // Do the place→confirm swap FIRST, then inject overlay over confirm
+                            // screen. This avoids the race where the overlay's auto-send timer
+                            // fires on the place form before we've reached confirm.
+                            var bn = (armAtt.type === "support") ? "support" : "attack";
+                            navigateToConfirm(armAtt, bn, function() {
                                 injectAttackOverlay(armAtt);
+                            }, function(err) {
+                                nextBtn.text("Fehler: " + err).prop("disabled", false)
+                                       .css({background:"#fcc", color:"#a00", border:"1px solid #a00"});
+                                setTimeout(function() {
+                                    nextBtn.text("→ Nächster Angriff").prop("disabled", false)
+                                           .css({background:"#00468a", color:"#fff", border:"1px solid #00306a"});
+                                }, 4000);
                             });
                         });
                         var closeBtn2 = $("<button style='width:100%;min-height:36px;font-size:12px;background:transparent;border:1px solid #a07030;border-radius:3px;cursor:pointer;color:#804000;'>✕ Schließen</button>");
@@ -884,31 +899,38 @@
 
         mount.prepend(overlay);
 
-        // Hook TW's attack/support buttons to submit via AJAX (FarmGod-style blanket).
-        // This keeps the script alive after the attack is sent — no page reload.
+        // Detect what form is on screen and hook the appropriate buttons.
+        // Place form → Angreifen click should land us on confirm (not auto-send).
+        // Confirm form → submit click should AJAX-POST and mark sent.
         var $twForm = $("form").filter(function(){
             return $(this).find("input[name='x'], input[name='y']").length > 0;
         }).first();
-        if ($twForm.length) {
+        var twFormAction = $twForm.length ? ($twForm.attr("action") || "") : "";
+        var isConfirmFormOnScreen = $twForm.length && (
+            twFormAction.indexOf("try=confirm") >= 0 ||
+            $twForm.find("input[name='try'][value='confirm']").length > 0
+        );
+
+        if (isConfirmFormOnScreen) {
+            hookConfirmFormSubmit();
+        } else if ($twForm.length) {
             var _bSel = "input[type='submit'][name='attack'],button[name='attack']," +
                         "input[type='submit'][name='support'],button[name='support']";
             $(_bSel).off("click.lp").on("click.lp", function(e) {
-                var bName = $(this).attr("name");
+                var $btn = $(this);
+                var bName = $btn.attr("name");
                 e.preventDefault();
                 e.stopImmediatePropagation();
-                $(this).prop("disabled", true);
-                ajaxSubmitAttack($twForm, bName,
-                    function() { confirmBtn.trigger("click"); },
-                    function() {
-                        // AJAX failed — remove hook, fall back to native click + page reload
-                        $(_bSel).off("click.lp");
-                        try { sessionStorage.setItem("lp_autosent", JSON.stringify({
-                            id: p.id, originId: p.originId, targetId: p.targetId,
-                            arrivalMs: p.arrivalMs, type: bName, ts: Date.now()
-                        })); } catch(e2) {}
-                        $(_bSel).filter("[name='" + bName + "']").prop("disabled", false).first()[0].click();
-                    }
-                );
+                $btn.prop("disabled", true);
+
+                // Swap to confirm screen (lets user review + toggle Auto-Senden)
+                navigateToConfirm(p, bName, function() {
+                    injectAttackOverlay(p);
+                }, function(err) {
+                    $btn.prop("disabled", false);
+                    confirmBtn.text("Fehler: " + err)
+                              .css({background:"#fcc", color:"#a00", border:"1px solid #a00"});
+                });
             });
         }
 
@@ -933,16 +955,30 @@
                                  .filter(function(){ return !this.disabled && !!this.name; })
                                  .serialize();
                 data += (data ? "&" : "") + "attack=1";
-                $.ajax({ url: action, type: "POST", data: data,
-                    success: function() { confirmBtn.trigger("click"); },
-                    error: function() {
-                        // Fall back to native submit + page reload + lp_autosent marker
-                        try { sessionStorage.setItem("lp_autosent", JSON.stringify({
-                            id: p.id, originId: p.originId, targetId: p.targetId,
-                            arrivalMs: p.arrivalMs, type: p.type || "attack", ts: Date.now()
-                        })); } catch(e) {}
-                        $cForm.off("submit.lp")[0].submit();
+                fetch(action, {
+                    method: "POST",
+                    credentials: "include",
+                    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                    body: data
+                })
+                .then(function(r){ return r.text(); })
+                .then(function(html) {
+                    var doc = parseDoc(html);
+                    var err = doc.querySelector(".error_box, #error_message, .system_error");
+                    if (err && err.textContent.trim()) {
+                        confirmBtn.text("Fehler: " + err.textContent.trim().substring(0, 80))
+                                  .css({background:"#fcc", color:"#a00", border:"1px solid #a00"});
+                        return;
                     }
+                    confirmBtn.trigger("click");
+                })
+                .catch(function() {
+                    // Fall back to native submit + page reload + lp_autosent marker
+                    try { sessionStorage.setItem("lp_autosent", JSON.stringify({
+                        id: p.id, originId: p.originId, targetId: p.targetId,
+                        arrivalMs: p.arrivalMs, type: p.type || "attack", ts: Date.now()
+                    })); } catch(e) {}
+                    $cForm.off("submit.lp")[0].submit();
                 });
             }
 
@@ -957,83 +993,6 @@
                 submitConfirmAjax();
             });
         }
-
-        // POST the live place form to TW, then swap the confirm HTML into #contentContainer
-        // (while preserving #lp-overlay). Lands the user on the confirm screen with no reload.
-        function jumpToConfirmScreen() {
-            if (!$("#lp-overlay").length) return; // user dismissed before we fired
-            var $form = $("form").filter(function(){
-                return $(this).find("input[name='x'],input[name='y']").length > 0;
-            }).first();
-            if (!$form.length) return;
-
-            // If the live form is ALREADY the confirm form (e.g., we landed straight on confirm),
-            // there's nothing to jump — just hook it for AJAX submit.
-            var formAction = $form.attr("action") || "";
-            if (formAction.indexOf("try=confirm") >= 0 ||
-                $form.find("input[name='try'][value='confirm']").length > 0) {
-                hookConfirmFormSubmit();
-                return;
-            }
-
-            var btnName = (p.type === "support") ? "support" : "attack";
-            var data    = $form.find("input:not([type=submit],[type=button],[type=image]),select,textarea")
-                               .filter(function(){ return !this.disabled && !!this.name; })
-                               .serialize();
-            data += (data ? "&" : "") + encodeURIComponent(btnName) + "=1";
-
-            // Use fetch (no X-Requested-With) so TW returns full HTML, same as submitAttackDirect.
-            fetch(formAction || "/game.php", {
-                method: "POST",
-                credentials: "include",
-                headers: { "Content-Type": "application/x-www-form-urlencoded" },
-                body: data
-            })
-            .then(function(r){ return r.text(); })
-            .then(function(html) {
-                if (!$("#lp-overlay").length) return;
-                var $newDoc = $("<div>").append($.parseHTML(html, null, false));
-
-                // Surface TW errors so the user sees what's wrong instead of silently bailing
-                var $err = $newDoc.find(".error_box, #error_message, .system_error");
-                if ($err.length && $err.text().trim()) {
-                    var msg = $err.text().trim().substring(0, 80);
-                    confirmBtn.text("Fehler: " + msg)
-                              .css({background:"#fcc", color:"#a00", border:"1px solid #a00"});
-                    return;
-                }
-
-                var $confirmContent = $newDoc.find("#contentContainer").first();
-                if (!$confirmContent.length) $confirmContent = $newDoc;
-                var $cForm = $confirmContent.find("form").filter(function(){
-                    var act = $(this).attr("action") || "";
-                    return act.indexOf("try=confirm") >= 0 ||
-                           $(this).find("input[name='try'][value='confirm']").length > 0;
-                }).first();
-                if (!$cForm.length) return;
-
-                var $cc = $("#contentContainer");
-                if (!$cc.length) return;
-                var $overlay = $("#lp-overlay").detach();
-                $cc.html($confirmContent.html());
-                $cc.prepend($overlay);
-
-                // Update URL bar so a refresh/share lands the user back on confirm
-                var cAction = $cForm.attr("action") || formAction;
-                try { history.pushState({}, "", cAction); } catch(e) {}
-
-                hookConfirmFormSubmit();
-            })
-            .catch(function() { /* leave place screen as-is; user can click Angreifen */ });
-        }
-
-        // Auto-jump if the previous "→ Nächster Angriff" click set the flag
-        try {
-            if (sessionStorage.getItem("lp_jump_confirm") === "1") {
-                sessionStorage.removeItem("lp_jump_confirm");
-                setTimeout(jumpToConfirmScreen, 300);
-            }
-        } catch(e) {}
 
         // Timer — 100ms for precision near T=0
         window._lpOverlayInt = setInterval(function() {
@@ -1051,13 +1010,46 @@
                     autoBtn.text("Fehler — manuell senden! (" + (err || "?") + ")")
                            .css({background:"#fcc", color:"#a00", border:"1px solid #c00"});
                 };
+
                 var $lf = $("form").filter(function(){
                     return $(this).find("input[name='x'],input[name='y']").length > 0;
                 }).first();
-                ($lf.length
-                    ? function(ok, fail) { ajaxSubmitAttack($lf, btnName, ok, fail); }
-                    : function(ok, fail) { submitAttackDirect(p, btnName, ok, fail); }
-                )(_ok, _fail);
+                var lfAction = $lf.length ? ($lf.attr("action") || "") : "";
+                var isConfirm = $lf.length && (
+                    lfAction.indexOf("try=confirm") >= 0 ||
+                    $lf.find("input[name='try'][value='confirm']").length > 0
+                );
+
+                if (isConfirm) {
+                    // Confirm screen: ONE POST. Don't chase a phantom step-2 confirm form in
+                    // TW's response — that's what was spuriously erroring even though the attack
+                    // actually went through ingame.
+                    var cData = $lf.find("input:not([type=submit],[type=button],[type=image]),select,textarea")
+                                   .filter(function(){ return !this.disabled && !!this.name; })
+                                   .serialize();
+                    cData += (cData ? "&" : "") + "attack=1";
+                    fetch(lfAction || "/game.php", {
+                        method: "POST",
+                        credentials: "include",
+                        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                        body: cData
+                    })
+                    .then(function(r){ return r.text(); })
+                    .then(function(html) {
+                        var doc = parseDoc(html);
+                        var err = doc.querySelector(".error_box, #error_message, .system_error");
+                        if (err && err.textContent.trim()) {
+                            _fail("tw: " + err.textContent.trim().substring(0, 80));
+                            return;
+                        }
+                        _ok();
+                    })
+                    .catch(function(e) { _fail(e.message || "ajax"); });
+                } else {
+                    // Place screen or no form: full 3-step from scratch (same flow as the panel
+                    // Angreifen button — proven reliable).
+                    submitAttackDirect(p, btnName, _ok, _fail);
+                }
             }
 
             var $cd = $("#lp-cd");
