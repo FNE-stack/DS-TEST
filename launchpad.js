@@ -575,7 +575,9 @@
     // update the URL bar via History API. Uses fetch (no X-Requested-With header) — $.ajax sends
     // XHR header which makes TW return a partial response missing form fields, breaking subsequent
     // POSTs ("Es muss ein gültiges Ziel angegeben werden"). Same trick as submitAttackDirect.
-    function ajaxNav(url, onDone) {
+    // Optional: pass att object to auto-populate place screen x/y fields (TW's own autofill doesn't
+    // run after DOM swap, so we do it manually — otherwise "target not set" errors on next attack).
+    function ajaxNav(url, onDone, att) {
         fetch(url, { credentials: "include", cache: "no-store" })
             .then(function(r){ return r.text(); })
             .then(function(html) {
@@ -591,6 +593,17 @@
                 cc.innerHTML = newContent.innerHTML;
                 if ($overlay.length) $(cc).prepend($overlay);
                 if ($widget.length)  $("body").prepend($widget);
+
+                // If att provided, auto-populate place screen x/y fields with target coords
+                // (TW's own autofill doesn't run after DOM swap)
+                if (att && att.targetId && villageMap[String(att.targetId)]) {
+                    var targetVillage = villageMap[String(att.targetId)];
+                    var $xInput = $("input[name='x']");
+                    var $yInput = $("input[name='y']");
+                    if ($xInput.length) $xInput.val(targetVillage.x);
+                    if ($yInput.length) $yInput.val(targetVillage.y);
+                    console.log("[lp v85+] ajaxNav: auto-populated x=" + targetVillage.x + ", y=" + targetVillage.y);
+                }
 
                 try { history.pushState({}, "", url); } catch(e) {}
 
@@ -922,7 +935,7 @@
                                         }
                                     } catch(e) {}
                                     injectAttackOverlay(armAtt);
-                                });
+                                }, nextAtt);
                             });
                         });
                         var closeBtn2 = $("<button style='width:100%;min-height:36px;font-size:12px;background:transparent;border:1px solid #a07030;border-radius:3px;cursor:pointer;color:#804000;'>✕ Schließen</button>");
@@ -974,6 +987,18 @@
         console.log("[lp v82] overlay injected — form on screen:",
                     $twForm.length ? ($twForm.attr("action") || "no-action") : "no-form",
                     "isConfirm:", isConfirmFormOnScreen);
+
+        // Ensure place screen x/y fields are populated (TW's autofill may not run after AJAX nav)
+        if ($twForm.length && !isConfirmFormOnScreen && p && p.targetId && villageMap[String(p.targetId)]) {
+            var targetVillage = villageMap[String(p.targetId)];
+            var $xVal = $twForm.find("input[name='x']").val() || "";
+            var $yVal = $twForm.find("input[name='y']").val() || "";
+            if (!$xVal || !$yVal) {
+                $twForm.find("input[name='x']").val(targetVillage.x);
+                $twForm.find("input[name='y']").val(targetVillage.y);
+                console.log("[lp v85+] injectAttackOverlay: populated x=" + targetVillage.x + ", y=" + targetVillage.y);
+            }
+        }
 
         if (isConfirmFormOnScreen) {
             hookConfirmFormSubmit();
