@@ -1,11 +1,11 @@
 {
   "attacks": [
     {
-      "id": "8805_4434_1779437040000",
+      "id": "8805_4434_1779438780000",
       "originId": "8805",
       "targetId": "4434",
       "slowest": "spy",
-      "arrivalMs": 1779437040000,
+      "arrivalMs": 1779438780000,
       "catapultTarget": "8",
       "troops": {
         "spear": null,
@@ -22,17 +22,17 @@
         "snob": null,
         "militia": 0
       },
-      "raw": "8805&4434&spy&1779437040000&8&false&false&spear=/sword=/axe=/archer=/spy=MjU=/light=/marcher=/heavy=/ram=/catapult=/knight=/snob=/militia=MA==",
-      "sent": true,
-      "sentBy": "Donald John Trump",
-      "sentAt": 1779436327314
+      "raw": "8805&4434&spy&1779438780000&8&false&false&spear=/sword=/axe=/archer=/spy=MjU=/light=/marcher=/heavy=/ram=/catapult=/knight=/snob=/militia=MA==",
+      "sent": false,
+      "sentBy": null,
+      "sentAt": null
     },
     {
-      "id": "8805_4434_1779437065000",
+      "id": "8805_4434_1779438805000",
       "originId": "8805",
       "targetId": "4434",
       "slowest": "spy",
-      "arrivalMs": 1779437065000,
+      "arrivalMs": 1779438805000,
       "catapultTarget": "8",
       "troops": {
         "spear": null,
@@ -49,7 +49,7 @@
         "snob": null,
         "militia": 0
       },
-      "raw": "8805&4434&spy&1779437065000&8&false&false&spear=/sword=/axe=/archer=/spy=MjU=/light=/marcher=/heavy=/ram=/catapult=/knight=/snob=/militia=MA==",
+      "raw": "8805&4434&spy&1779438805000&8&false&false&spear=/sword=/axe=/archer=/spy=MjU=/light=/marcher=/heavy=/ram=/catapult=/knight=/snob=/militia=MA==",
       "sent": false,
       "sentBy": null,
       "sentAt": null
