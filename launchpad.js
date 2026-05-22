@@ -2,7 +2,7 @@
     $("#launchpad-panel").remove();
 
     // === CONFIG ===
-    var VERSION = "v90";
+    var VERSION = "v91";
     var GITHUB_OWNER = "FNE-stack";
     var GITHUB_REPO = "DS-TEST";
     var GITHUB_BRANCH = "main";
@@ -395,6 +395,26 @@
                .then(function(r) { return r.text(); });
     }
 
+    // After we swap HTML in via innerHTML, <script> tags don't execute. TW's place screen has
+    // inline scripts that finish populating the place form (CSRF h, x/y, JS-bound handlers) at
+    // runtime — without re-running them the form is half-baked and a native submit gives
+    // "Es muss ein gültiges Ziel angegeben werden" until the user hits F5.
+    // Re-create each <script> node so the browser executes it on insertion.
+    function runInlineScripts(rootEl) {
+        if (!rootEl) return;
+        var scripts = rootEl.querySelectorAll("script");
+        for (var i = 0; i < scripts.length; i++) {
+            var old = scripts[i];
+            // Skip external scripts — libraries (jQuery etc.) are already loaded and re-running
+            // them can wipe global state. Only inline scripts need execution here.
+            if (old.src) continue;
+            var n = document.createElement("script");
+            n.textContent = old.textContent;
+            try { old.parentNode.replaceChild(n, old); }
+            catch(e) { console.warn("[lp v91] script re-exec failed:", e); }
+        }
+    }
+
     function submitAttackDirect(att, btnName, onSuccess, onError) {
         loadVillages(function() {
             // Step 1: GET place screen — use fetch (no X-Requested-With) so TW gives full HTML
@@ -527,6 +547,7 @@
 
                 var $overlay = $("#lp-overlay").detach();
                 cc.innerHTML = newContent.innerHTML;
+                runInlineScripts(cc);
                 if ($overlay.length) $(cc).prepend($overlay);
 
                 var cAction = cForm.getAttribute("action") || result.action;
@@ -591,6 +612,7 @@
                 var $overlay = $("#lp-overlay").detach();
                 var $widget  = $("#lp-widget").detach();
                 cc.innerHTML = newContent.innerHTML;
+                runInlineScripts(cc);
                 if ($overlay.length) $(cc).prepend($overlay);
                 if ($widget.length)  $("body").prepend($widget);
 
