@@ -2,7 +2,7 @@
     $("#launchpad-panel").remove();
 
     // === CONFIG ===
-    var VERSION = "v82";
+    var VERSION = "v84";
     var GITHUB_OWNER = "FNE-stack";
     var GITHUB_REPO = "DS-TEST";
     var GITHUB_BRANCH = "main";
@@ -140,18 +140,27 @@
         return Date.now() + off;
     }
 
-    // Half-RTT to TW server — used to pre-fire auto-send by this many ms for ping compensation.
-    // Capped at 150ms so a slow first measurement (TLS/DNS setup ~1s) can't fire attacks too early.
+    // Half-RTT (ping) measurement for auto-send pre-fire compensation.
+    // Rolling 7-sample median (kills outliers — one slow measurement can't make us fire 1s early).
+    // Measured every 5s, capped at 100ms.
     var halfRTT = 0;
-    var HALF_RTT_CAP = 150;
+    var rttSamples = [];
+    var HALF_RTT_CAP = 100;
     function measureHalfRTT() {
-        var _t0 = Date.now();
+        var t0 = (typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now();
         fetch("/game.php", { method: "HEAD", credentials: "include", cache: "no-store" })
-            .then(function(){ halfRTT = Math.min(HALF_RTT_CAP, Math.round((Date.now() - _t0) / 2)); })
+            .then(function(){
+                var t1 = (typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now();
+                rttSamples.push((t1 - t0) / 2);
+                if (rttSamples.length > 7) rttSamples.shift();
+                var sorted = rttSamples.slice().sort(function(a,b){ return a-b; });
+                var median = sorted[Math.floor(sorted.length / 2)];
+                halfRTT = Math.min(HALF_RTT_CAP, Math.max(0, Math.round(median)));
+            })
             .catch(function(){});
     }
     measureHalfRTT();
-    setInterval(measureHalfRTT, 60000);
+    setInterval(measureHalfRTT, 5000);
 
     var worldSpeed = (typeof game_data !== "undefined" && game_data.world && game_data.world.speed) ? (+game_data.world.speed || 1) : 1;
     var unitSpeed = (typeof game_data !== "undefined" && game_data.world && game_data.world.unit_speed) ? (+game_data.world.unit_speed || 1) : 1;
@@ -808,6 +817,8 @@
         timesDiv += "</div>";
         overlay.append(timesDiv);
 
+        overlay.append("<div id='lp-ping' style='font-size:10px;color:#888;text-align:right;margin-bottom:3px;font-family:monospace;'>Ping: --</div>");
+
         var autoBtn = $("<button style='width:100%;min-height:38px;font-size:13px;font-weight:bold;border-radius:4px;cursor:pointer;margin-bottom:4px;box-sizing:border-box;'></button>");
         function paintAutoBtn() {
             autoBtn.text(autoSendArmed ? "Auto-Senden: AN" : "Auto-Senden: AUS")
@@ -1035,6 +1046,14 @@
             if (!$("#lp-overlay").length) { clearInterval(window._lpOverlayInt); return; }
             var d = cdTarget - serverNow();
 
+            // Update live ping display
+            var $ping = $("#lp-ping");
+            if ($ping.length) {
+                $ping.text("Ping: " + halfRTT + "ms (Median von " + rttSamples.length + ")");
+            }
+
+            // Pre-fire by median halfRTT so attacks arrive ~T=0. Median-of-7 sampling makes
+            // this stable — a single slow/fast network blip can't blow up the timing.
             if (autoSendArmed && !autoSendFired && d <= halfRTT && d > -4000) {
                 autoSendFired = true;
                 autoBtn.text("Auto-Senden: ausgelöst").css({background:"#a04000", color:"#fff", border:"1px solid #703000"});
