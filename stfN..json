@@ -50,9 +50,9 @@
         "militia": 0
       },
       "raw": "882&3552&spy&1779462910000&8&false&false&spear=/sword=/axe=/archer=/spy=MQ==/light=/marcher=/heavy=/ram=/catapult=/knight=/snob=/militia=MA==",
-      "sent": false,
-      "sentBy": null,
-      "sentAt": null
+      "sent": true,
+      "sentBy": "stfN.",
+      "sentAt": 1779462371037
     },
     {
       "id": "882_3552_1779462920000",
