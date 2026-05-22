@@ -2,7 +2,7 @@
     $("#launchpad-panel").remove();
 
     // === CONFIG ===
-    var VERSION = "v94";
+    var VERSION = "v96";
     var GITHUB_OWNER = "FNE-stack";
     var GITHUB_REPO = "DS-TEST";
     var GITHUB_BRANCH = "main";
@@ -133,29 +133,76 @@
         };
     }
 
-    // Re-read Timing.offset_server each call — it can load after our script does, and a stale
-    // 0 offset has caused attacks to fire ~1s early when the client clock differs from server.
+    // serverNow() returns server-time-in-ms, used by the auto-send timer to decide T=0.
+    //
+    // Two independent sources of the client→server offset:
+    //   1. TW's Timing.offset_server — TW computes this from its own AJAX exchanges
+    //   2. ourOffset — we measure it ourselves from HTTP Date headers on our pings
+    //
+    // We use the MOST-NEGATIVE (most conservative) of the two. The auto-send timer fires when
+    // serverNow() >= sendMs. A more-negative offset makes serverNow() smaller, so the timer
+    // fires LATER. That guarantees no early arrivals as long as EITHER source is correct:
+    //   - If TW is wrong-positive (e.g. says 0 but actual is -1100ms) and ours catches it,
+    //     min picks ours → fire on time.
+    //   - If ours is wrong-positive and TW catches it, min picks TW.
+    //   - Worst case both wrong-positive → still fires early (no fix possible without a
+    //     trusted external time source).
+    var ourOffset = null;
+    var ourOffsetSamples = [];
     function serverNow() {
-        var off = (typeof Timing !== "undefined" && Timing.offset_server) ? Timing.offset_server : 0;
+        var twOff = (typeof Timing !== "undefined" && typeof Timing.offset_server === "number")
+                    ? Timing.offset_server : null;
+        var off;
+        if (twOff !== null && ourOffset !== null) {
+            off = Math.min(twOff, ourOffset);
+            if (Math.abs(twOff - ourOffset) > 1000) {
+                // Big disagreement — log once-ish so the user notices something's up
+                console.warn("[lp v96] server offset mismatch — TW:" + twOff + " ours:" + ourOffset +
+                             " using:" + off);
+            }
+        } else if (twOff !== null) {
+            off = twOff;
+        } else if (ourOffset !== null) {
+            off = ourOffset;
+        } else {
+            off = 0;
+        }
         return Date.now() + off;
     }
 
-    // Half-RTT (ping) measurement for auto-send pre-fire compensation.
-    // Rolling 7-sample median (kills outliers — one slow measurement can't make us fire 1s early).
-    // Measured every 5s, capped at 100ms.
+    // Half-RTT (ping) measurement + server-time offset measurement, sharing a single fetch.
+    // Median over rolling 7 samples to absorb network jitter and Date-header second-rounding.
     var halfRTT = 0;
     var rttSamples = [];
     var HALF_RTT_CAP = 100;
     function measureHalfRTT() {
-        var t0 = (typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now();
+        var localStart = Date.now();
+        var perfT0 = (typeof performance !== "undefined" && performance.now) ? performance.now() : localStart;
         fetch("/game.php", { method: "HEAD", credentials: "include", cache: "no-store" })
-            .then(function(){
-                var t1 = (typeof performance !== "undefined" && performance.now) ? performance.now() : Date.now();
-                rttSamples.push((t1 - t0) / 2);
+            .then(function(r){
+                var localEnd = Date.now();
+                var perfT1 = (typeof performance !== "undefined" && performance.now) ? performance.now() : localEnd;
+
+                // Update half-RTT (median of recent samples)
+                rttSamples.push((perfT1 - perfT0) / 2);
                 if (rttSamples.length > 7) rttSamples.shift();
                 var sorted = rttSamples.slice().sort(function(a,b){ return a-b; });
                 var median = sorted[Math.floor(sorted.length / 2)];
                 halfRTT = Math.min(HALF_RTT_CAP, Math.max(0, Math.round(median)));
+
+                // Measure our own server-time offset from HTTP Date header (second precision —
+                // it's noisy, but median of 7 samples washes most of that out).
+                var dateHdr = r.headers && r.headers.get ? r.headers.get("Date") : null;
+                if (dateHdr) {
+                    var serverT = new Date(dateHdr).getTime();
+                    if (!isNaN(serverT)) {
+                        var clientMid = localStart + (localEnd - localStart) / 2;
+                        ourOffsetSamples.push(serverT - clientMid);
+                        if (ourOffsetSamples.length > 7) ourOffsetSamples.shift();
+                        var oSorted = ourOffsetSamples.slice().sort(function(a,b){ return a-b; });
+                        ourOffset = Math.round(oSorted[Math.floor(oSorted.length / 2)]);
+                    }
+                }
             })
             .catch(function(){});
     }
@@ -1191,9 +1238,12 @@
                 $ping.text("Ping: " + halfRTT + "ms (Median von " + rttSamples.length + ")");
             }
 
-            // Pre-fire by median halfRTT so attacks arrive ~T=0. Median-of-7 sampling makes
-            // this stable — a single slow/fast network blip can't blow up the timing.
-            if (autoSendArmed && !autoSendFired && d <= halfRTT && d > -4000) {
+            // Fire at d <= 0 — no ping pre-fire. Attacks arrive ~halfRTT (30-100ms) late but
+            // NEVER early. Pre-fire was unreliable: on the first attack of a session, TW's
+            // Timing.offset_server may still be slightly off, and the pre-fire compounds that
+            // error into ~1s early arrivals. No browser-side time sync is precise enough to
+            // safely pre-fire by ping. Tradeoff: slightly late > ever-early.
+            if (autoSendArmed && !autoSendFired && d <= 0 && d > -4000) {
                 autoSendFired = true;
                 autoBtn.text("Auto-Senden: ausgelöst").css({background:"#a04000", color:"#fff", border:"1px solid #703000"});
                 var btnName = (p.type === "support") ? "support" : "attack";
