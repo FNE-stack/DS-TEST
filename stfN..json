@@ -2264,9 +2264,9 @@
         "militia": 0
       },
       "raw": "4347&1113&ram&1780213248000&14&false&false&spear=/sword=/axe=/archer=/spy=MQ==/light=MjI=/marcher=/heavy=/ram=/catapult=MQ==/knight=/snob=/militia=MA==",
-      "sent": false,
-      "sentBy": null,
-      "sentAt": null
+      "sent": true,
+      "sentBy": "stfN.",
+      "sentAt": 1780082767436
     },
     {
       "id": "4260_406_1780213262000",
