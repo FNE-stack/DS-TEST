@@ -2,15 +2,16 @@
     $("#launchpad-panel").remove();
 
     // === CONFIG ===
-    var VERSION = "v99";
+    var VERSION = "v100";
     var GITHUB_OWNER = "FNE-stack";
-    var GITHUB_REPO = "DS-TEST";
+    var GITHUB_REPO = "DS-TEST";        // public — hosts launchpad.js
+    var GITHUB_DATA_REPO = "DS-plans";  // private — stores attack plan JSONs
     var GITHUB_BRANCH = "main";
     var GITHUB_TOKEN = window.LAUNCHPAD_TOKEN || "";
     var _playerName = (typeof game_data !== "undefined" && game_data.player && game_data.player.name)
                       ? game_data.player.name : "unknown";
     var GITHUB_FILE     = _playerName + ".json";
-    var GITHUB_API     = "https://api.github.com/repos/" + GITHUB_OWNER + "/" + GITHUB_REPO + "/contents/" + encodeURIComponent(GITHUB_FILE);
+    var GITHUB_API     = "https://api.github.com/repos/" + GITHUB_OWNER + "/" + GITHUB_DATA_REPO + "/contents/" + encodeURIComponent(GITHUB_FILE);
     var AUTO_REFRESH_MS = 15000;
 
     var villageMap = {};
