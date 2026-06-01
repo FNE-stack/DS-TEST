@@ -5,7 +5,7 @@
     var VERSION = "v100";
     var GITHUB_OWNER = "FNE-stack";
     var GITHUB_REPO = "DS-TEST";        // public — hosts launchpad.js
-    var GITHUB_DATA_REPO = "DS-plans";  // private — stores attack plan JSONs
+    var GITHUB_DATA_REPO = "DS-PLAN";  // private — stores attack plan JSONs
     var GITHUB_BRANCH = "main";
     var GITHUB_TOKEN = window.LAUNCHPAD_TOKEN || "";
     var _playerName = (typeof game_data !== "undefined" && game_data.player && game_data.player.name)
