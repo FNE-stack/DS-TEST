@@ -24,14 +24,20 @@
 (function () {
   'use strict';
 
-  // Cleanup vorherige Instanz (Quickbar Re-Tap würde sonst Panel doppeln)
+  // Cleanup vorherige Instanz
   document.querySelectorAll('#mh-box, #mh-toggle, #mh-style').forEach(el => el.remove());
   if (window._mhPoll) { clearInterval(window._mhPoll); window._mhPoll = null; }
 
-  // Quickbar-Tap setzt window.LAUNCHPAD_TOKEN / window.MIEZHUB_TOKEN direkt vor $.getScript.
-  // Tampermonkey lädt das Script bei document-end — da sind die window-Vars leer.
-  // Damit können wir unterscheiden: bei Quickbar-Load → Panel direkt aufmachen.
+  // Launchpad-Pattern: Panel ist Default-on. Closed-Flag in sessionStorage merkt sich
+  // wenn der User explizit geschlossen hat (= stay closed bei TM-Auto-Load auf nächster Seite).
+  // Quickbar-Tap killt das Flag immer → Re-Tap macht Panel sicher wieder auf, auch in der App.
   const IS_QUICKBAR_TAP = !!(window.LAUNCHPAD_TOKEN || window.MIEZHUB_TOKEN);
+  if (IS_QUICKBAR_TAP) {
+    try { sessionStorage.removeItem('mh_closed'); } catch (e) {}
+  }
+  try {
+    if (sessionStorage.getItem('mh_closed') === '1') return;  // User hat geschlossen — Script exit
+  } catch (e) {}
 
   /* ================= CONFIG ================= */
 
@@ -76,10 +82,12 @@
 
   const WB_UNITS = ['spear','sword','axe','archer','spy','light','marcher','heavy','ram','catapult','knight','snob','militia'];
 
+  // Voradeln = Loyalität runterziehen damit Kollege mit weniger als 4 AGs adeln kann.
+  // Daher MUSS 1 Adel rein (sendsSnob: true, minSnob: 1) — slowest wird snob (35 mpf).
   const TYPE_META = {
-    off:      { label: 'OFF',            color: '#dc2626', mpf: 30, minAxe: 2000, withSiege: true,  emoji: '⚔' },
-    voradeln: { label: 'Voradeln',       color: '#f97316', mpf: 10, minAxe: 1000, withSiege: false, emoji: '⏱' },
-    zc:       { label: 'Zwischencleaner', color: '#22c55e', mpf: 18, minAxe: 500,  withSiege: false, emoji: '🧹' }
+    off:      { label: 'OFF',             color: '#dc2626', mpf: 30, minAxe: 2000, withSiege: true,  sendsSnob: false, minSnob: 0, emoji: '⚔' },
+    voradeln: { label: 'Voradeln',        color: '#f97316', mpf: 35, minAxe: 1000, withSiege: true,  sendsSnob: true,  minSnob: 1, emoji: '👑' },
+    zc:       { label: 'Zwischencleaner', color: '#22c55e', mpf: 18, minAxe: 500,  withSiege: false, sendsSnob: false, minSnob: 0, emoji: '🧹' }
   };
 
   /* ================= STATE ================= */
@@ -374,6 +382,7 @@
     const viable = [];
     myVillages.forEach(v => {
       if ((v.units.axe || 0) < meta.minAxe) return;
+      if (meta.minSnob > 0 && (v.units.snob || 0) < meta.minSnob) return;  // Voradeln braucht Adel
       if (v.x === req.targetX && v.y === req.targetY) return;
 
       const d = dist(v, targetCoord);
@@ -411,11 +420,14 @@
     if (!coord) return null;
     const [tx, ty] = coord.split('|').map(Number);
 
-    // Auto-Erkennung des Typs aus dem Slowest-Token
+    // Auto-Erkennung des Typs aus dem Slowest-Token:
+    //  snob → Voradeln (Loyalitäts-Drop mit 1 Adel)
+    //  ram/cat → OFF (voller Nuker mit Belagerung)
+    //  axe/spear/sword/heavy/light/marcher → ZC (Cleaner ohne Adel/Siege)
     let type = 'off';
-    if (slowestToken === 'light' || slowestToken === 'marcher') type = 'voradeln';
-    else if (slowestToken === 'axe' || slowestToken === 'spear' || slowestToken === 'sword' || slowestToken === 'heavy') type = 'zc';
+    if (slowestToken === 'snob') type = 'voradeln';
     else if (slowestToken === 'ram' || slowestToken === 'catapult') type = 'off';
+    else type = 'zc';
 
     return { targetX: tx, targetY: ty, target: coord, arrivalMs, type };
   }
@@ -527,6 +539,9 @@
       comp.ram = village.units.ram || 0;
       comp.catapult = village.units.catapult || 0;
     }
+    if (meta.sendsSnob) {
+      comp.snob = 1;  // Voradeln = 1 Adel mit voller Begleitung
+    }
     return comp;
   }
 
@@ -550,19 +565,18 @@
   style.id = 'mh-style';
   style.textContent = `
 #mh-box {
-  position: fixed;
-  bottom: 20px;
-  right: 20px;
   width: 540px;
+  max-width: calc(100vw - 16px);
+  margin: 12px auto;
   background: linear-gradient(160deg,#0f172a,#1e293b);
   border-radius: 14px;
   color: #e5e7eb;
   font-family: Inter, Verdana;
-  box-shadow: 0 15px 40px rgba(0,0,0,.7);
+  box-shadow: 0 4px 18px rgba(0,0,0,.5);
+  position: relative;
   z-index: 9999;
 }
 #mh-header {
-  cursor: move;
   padding: 12px;
   font-weight: 600;
   background: linear-gradient(90deg,#7c2d12,#9a3412);
@@ -748,26 +762,11 @@
   padding: 20px;
   font-size: 11px;
 }
-#mh-toggle {
-  display: flex !important;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  background-image: url("https://dsde.innogamescdn.com/asset/c1c7057d/graphic/unit/unit_axe.webp");
-  background-size: contain;
-  background-repeat: no-repeat;
-  background-position: center;
-  transition: transform 0.15s ease;
-}
-#mh-toggle:hover { transform: scale(1.15); }
-
 /* Mobile / TW App: Panel über volle Breite, größere Touch-Targets */
 @media (max-width: 700px) {
   #mh-box {
     width: calc(100vw - 12px) !important;
-    right: 6px !important;
-    left: 6px !important;
-    bottom: 6px !important;
+    margin: 6px auto !important;
     max-height: 88vh !important;
     border-radius: 10px;
   }
@@ -805,16 +804,16 @@
   const box = document.createElement('div');
   box.id = 'mh-box';
   box.innerHTML = `
-<div id="mh-header" style="display:none;">
+<div id="mh-header">
   <span>🐾 MiezHub <span style="font-size:10px;opacity:0.7;">${VERSION}</span></span>
-  <span id="mh-close" style="cursor:pointer;">✕</span>
+  <span id="mh-close" style="cursor:pointer;padding:4px 10px;">✕</span>
 </div>
-<div id="mh-tabs" style="display:none;">
+<div id="mh-tabs">
   <button class="active" data-tab="list">Anfragen</button>
   <button data-tab="create">Erstellen</button>
   <button data-tab="mine">Meine</button>
 </div>
-<div id="mh-body" style="display:none;">
+<div id="mh-body">
   <div id="mh-status">
     <span id="mh-sync-info">noch nicht geladen</span>
     <span id="mh-refresh" style="cursor:pointer;color:#fde68a;">↻ Aktualisieren</span>
@@ -838,9 +837,9 @@
           <textarea id="mh-wb-import" rows="4" placeholder="123456&789012&ram&1735894800000&0&false&true&spear=..."></textarea>
           <label>Typ-Mapping</label>
           <select id="mh-wb-import-type">
-            <option value="auto">🪄 Auto pro Zeile (ram/cat→OFF, light→Voradeln, axe→ZC)</option>
+            <option value="auto">🪄 Auto pro Zeile (snob→Voradeln, ram/cat→OFF, sonst ZC)</option>
             <option value="off">⚔ OFF für alle</option>
-            <option value="voradeln">⏱ Voradeln für alle</option>
+            <option value="voradeln">👑 Voradeln für alle</option>
             <option value="zc">🧹 ZC für alle</option>
           </select>
           <label>Slots pro importierter Anfrage</label>
@@ -851,9 +850,9 @@
 
       <label>Typ</label>
       <select id="mh-create-type">
-        <option value="off">⚔ OFF (voller Nuker)</option>
-        <option value="voradeln">⏱ Voradeln (Cleaner vor Adel)</option>
-        <option value="zc">🧹 Zwischencleaner (zwischen feindlichen Adelswellen)</option>
+        <option value="off">⚔ OFF (voller Nuker, kein Adel)</option>
+        <option value="voradeln">👑 Voradeln (1 Adel + Begleitung — Loyalität runterziehen für Kollegen-Adelung)</option>
+        <option value="zc">🧹 Zwischencleaner (Cleaner zwischen feindlichen Adelswellen)</option>
       </select>
 
       <label>Ziel-Koordinaten (z.B. 510|450)</label>
@@ -883,19 +882,11 @@
   <div style="text-align:right;font-size:10px;color:#94a3b8;margin-top:8px;">MiezHub ${VERSION} · ${escHtml(PLAYER_NAME)} · Cap ${MAX_OPEN_REQUESTS_PER_PLAYER}</div>
 </div>
 `;
-  document.body.appendChild(box);
-
-  // Opener im questlog
-  const opener = document.createElement('div');
-  opener.classList.add('quest');
-  opener.id = 'mh-toggle';
-  opener.title = '🐾 MiezHub — Stamm-OFF-Anforderungen';
-  const questlog = document.querySelector('#questlog_new');
-  if (questlog) {
-    questlog.appendChild(opener);
-  } else {
-    console.warn('[MiezHub] #questlog_new nicht gefunden — Opener fehlt');
-  }
+  // Inline-Mount wie launchpad: direkt in #contentContainer (oder body fallback) prependen.
+  // Kein Questlog-Icon mehr — Panel ist Default-sichtbar, Close-Button räumt's weg.
+  // Funktioniert auch in der TW App weil keine Desktop-Sidebar nötig ist.
+  const mount = document.getElementById('contentContainer') || document.body;
+  mount.insertBefore(box, mount.firstChild);
 
   /* ================= RENDER ================= */
 
@@ -1086,17 +1077,15 @@
 
   function bindEvents() {
     const calc = document.getElementById('mh-create-submit');
-    const toggle = document.getElementById('mh-toggle');
     const closeBtn = document.getElementById('mh-close');
     const header = document.getElementById('mh-header');
-    const tabsBar = document.getElementById('mh-tabs');
     const body = document.getElementById('mh-body');
     const tabBtns = document.querySelectorAll('#mh-tabs button');
     const refreshBtn = document.getElementById('mh-refresh');
     const filterMineBtn = document.getElementById('mh-filter-mine');
     const filterAllBtn = document.getElementById('mh-filter-all');
 
-    if (!calc || !toggle || !header || !body || tabBtns.length === 0) {
+    if (!calc || !closeBtn || !header || !body || tabBtns.length === 0) {
       return setTimeout(bindEvents, 50);
     }
 
@@ -1113,37 +1102,13 @@
       };
     });
 
-    // Open/close panel
-    function togglePanel() {
-      const hidden = body.style.display === 'none';
-      body.style.display = hidden ? 'block' : 'none';
-      tabsBar.style.display = hidden ? 'flex' : 'none';
-      header.style.display = hidden ? 'flex' : 'none';
-      panelOpen = hidden;
-      if (hidden) {
-        refresh();
-        startPolling();
-      } else {
-        stopPolling();
-      }
-    }
-    toggle.onclick = togglePanel;
-    closeBtn.onclick = togglePanel;
-
-    // Drag
-    let drag = false, ox = 0, oy = 0;
-    header.onmousedown = e => {
-      drag = true; ox = e.clientX - box.offsetLeft; oy = e.clientY - box.offsetTop;
+    // Close: Panel komplett aus dem DOM + Closed-Flag setzen.
+    // Re-Öffnen → Quickbar-Tap (löscht das Flag wieder).
+    closeBtn.onclick = () => {
+      try { sessionStorage.setItem('mh_closed', '1'); } catch (e) {}
+      stopPolling();
+      box.remove();
     };
-    document.addEventListener('mouseup', () => drag = false);
-    document.addEventListener('mousemove', e => {
-      if (drag) {
-        box.style.left = (e.clientX - ox) + 'px';
-        box.style.top = (e.clientY - oy) + 'px';
-        box.style.right = 'auto';
-        box.style.bottom = 'auto';
-      }
-    });
 
     // Manual refresh
     refreshBtn.onclick = refresh;
@@ -1196,10 +1161,9 @@
       }
     };
 
-    // Auto-Open wenn per Schnelleiste geladen — Tampermonkey-Load lässt's beim Icon
-    if (IS_QUICKBAR_TAP) {
-      togglePanel();
-    }
+    // Panel ist Default-sichtbar → direkt syncen + Polling starten
+    refresh();
+    startPolling();
 
     // WB-Import → Anfragen erstellen
     const wbImportBtn = document.getElementById('mh-wb-import-btn');
