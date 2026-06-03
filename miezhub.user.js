@@ -28,6 +28,11 @@
   document.querySelectorAll('#mh-box, #mh-toggle, #mh-style').forEach(el => el.remove());
   if (window._mhPoll) { clearInterval(window._mhPoll); window._mhPoll = null; }
 
+  // Quickbar-Tap setzt window.LAUNCHPAD_TOKEN / window.MIEZHUB_TOKEN direkt vor $.getScript.
+  // Tampermonkey lädt das Script bei document-end — da sind die window-Vars leer.
+  // Damit können wir unterscheiden: bei Quickbar-Load → Panel direkt aufmachen.
+  const IS_QUICKBAR_TAP = !!(window.LAUNCHPAD_TOKEN || window.MIEZHUB_TOKEN);
+
   /* ================= CONFIG ================= */
 
   const VERSION = 'v1';
@@ -359,6 +364,7 @@
     const arrivalSec = Math.floor(req.arrivalMs / 1000);
     const nowSec = Math.floor(Date.now() / 1000);
 
+    const targetCoord = { x: req.targetX, y: req.targetY };
     let best = null;
     myVillages.forEach(v => {
       // Mindest-Truppen (axe-Schwelle pro Typ)
@@ -366,7 +372,7 @@
       // Selbst-Angriff verboten
       if (v.x === req.targetX && v.y === req.targetY) return;
 
-      const d = dist(v, req);
+      const d = dist(v, targetCoord);
       const travel = travelSec(d, meta.mpf);
       const sendSec = arrivalSec - travel;
       if (sendSec <= nowSec) return;  // zu spät
@@ -1088,6 +1094,11 @@
         updateCreateInfo();
       }
     };
+
+    // Auto-Open wenn per Schnelleiste geladen — Tampermonkey-Load lässt's beim Icon
+    if (IS_QUICKBAR_TAP) {
+      togglePanel();
+    }
 
     // Delegated handler for claim/release/delete/wb
     body.addEventListener('click', async (e) => {
