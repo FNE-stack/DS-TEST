@@ -88,6 +88,7 @@
   let currentSha = null;
   let myVillages = [];          // [{vid, x, y, units: {...}}]
   let villageIdMap = {};        // "x|y" → vid
+  let villageCoordByVid = {};   // vid → "x|y" (für WB-Import-Reverse-Lookup)
   // pollTimer wird in window._mhPoll gespeichert damit Re-Tap der Quickbar
   // den alten Interval-Timer killen kann (siehe Cleanup oben).
   let lastSyncAt = null;
@@ -341,9 +342,14 @@
   async function loadVillageIds() {
     const txt = await fetch('/map/village.txt').then(r => r.text());
     const map = {};
+    villageCoordByVid = {};
     txt.split('\n').forEach(l => {
       const p = l.split(',');
-      if (p.length >= 4) map[`${p[2]}|${p[3]}`] = p[0];
+      if (p.length >= 4) {
+        const coord = `${p[2]}|${p[3]}`;
+        map[coord] = p[0];
+        villageCoordByVid[p[0]] = coord;
+      }
     });
     return map;
   }
@@ -355,33 +361,63 @@
 
   /* ================= FEASIBILITY ================= */
 
-  // Welches MEINER Dörfer kann diesen Request am besten erfüllen?
-  // Returns { village, sendMs, dist, travel } für bestes Dorf, oder null.
-  function findBestVillage(req) {
+  // Alle MEINER Dörfer die diesen Request erfüllen können — sortiert nach Distanz.
+  // Returns [{ village, sendSec, travel, dist }, ...]
+  function findAllViableVillages(req) {
     const meta = TYPE_META[req.type];
-    if (!meta) return null;
+    if (!meta) return [];
 
     const arrivalSec = Math.floor(req.arrivalMs / 1000);
     const nowSec = Math.floor(Date.now() / 1000);
-
     const targetCoord = { x: req.targetX, y: req.targetY };
-    let best = null;
+
+    const viable = [];
     myVillages.forEach(v => {
-      // Mindest-Truppen (axe-Schwelle pro Typ)
       if ((v.units.axe || 0) < meta.minAxe) return;
-      // Selbst-Angriff verboten
       if (v.x === req.targetX && v.y === req.targetY) return;
 
       const d = dist(v, targetCoord);
       const travel = travelSec(d, meta.mpf);
       const sendSec = arrivalSec - travel;
-      if (sendSec <= nowSec) return;  // zu spät
+      if (sendSec <= nowSec) return;
 
-      if (!best || d < best.dist) {
-        best = { village: v, sendSec, travel, dist: d };
-      }
+      viable.push({ village: v, sendSec, travel, dist: d });
     });
-    return best;
+
+    viable.sort((a, b) => a.dist - b.dist);
+    return viable;
+  }
+
+  function findBestVillage(req) {
+    const all = findAllViableVillages(req);
+    return all[0] || null;
+  }
+
+  /* ================= WB IMPORT PARSER ================= */
+
+  // Format: fromVid&toVid&slowestToken&arrivalMs&0&false&true&unit=B64/unit=B64/...
+  // Returns { targetX, targetY, target, arrivalMs, type } oder null.
+  // fromVid wird verworfen — Quelldorf wird beim Claim individuell gewählt.
+  function parseWBLine(line) {
+    const parts = (line || '').trim().split('&');
+    if (parts.length < 4) return null;
+
+    const toVid = parts[1];
+    const slowestToken = parts[2];
+    const arrivalMs = parseInt(parts[3], 10);
+    if (!toVid || !arrivalMs || isNaN(arrivalMs)) return null;
+
+    const coord = villageCoordByVid[toVid];
+    if (!coord) return null;
+    const [tx, ty] = coord.split('|').map(Number);
+
+    // Auto-Erkennung des Typs aus dem Slowest-Token
+    let type = 'off';
+    if (slowestToken === 'light' || slowestToken === 'marcher') type = 'voradeln';
+    else if (slowestToken === 'axe' || slowestToken === 'spear' || slowestToken === 'sword' || slowestToken === 'heavy') type = 'zc';
+    else if (slowestToken === 'ram' || slowestToken === 'catapult') type = 'off';
+
+    return { targetX: tx, targetY: ty, target: coord, arrivalMs, type };
   }
 
   /* ================= REQUEST OPS ================= */
@@ -724,6 +760,45 @@
   transition: transform 0.15s ease;
 }
 #mh-toggle:hover { transform: scale(1.15); }
+
+/* Mobile / TW App: Panel über volle Breite, größere Touch-Targets */
+@media (max-width: 700px) {
+  #mh-box {
+    width: calc(100vw - 12px) !important;
+    right: 6px !important;
+    left: 6px !important;
+    bottom: 6px !important;
+    max-height: 88vh !important;
+    border-radius: 10px;
+  }
+  #mh-header { padding: 10px; font-size: 13px; }
+  #mh-body { padding: 8px; max-height: 80vh; }
+  #mh-tabs button { padding: 12px 4px; font-size: 13px; }
+  #mh-body input,
+  #mh-body textarea,
+  #mh-body select {
+    padding: 10px;
+    font-size: 14px;          /* >=16px verhindert iOS-Zoom, 14 ist Kompromiss */
+    min-height: 40px;
+  }
+  #mh-body button.mh-action {
+    padding: 12px;
+    font-size: 14px;
+    min-height: 44px;
+  }
+  #mh-body button.mh-secondary {
+    padding: 10px 14px;
+    font-size: 12px;
+    min-height: 38px;
+  }
+  .mh-req { padding: 10px; }
+  .mh-req-head { flex-wrap: wrap; gap: 6px; }
+  .mh-coord { font-size: 14px; }
+  .mh-progress { font-size: 12px; }
+  .mh-wb-out { font-size: 11px; }
+  /* Action-Reihe (Dropdown + Button) untereinander damit's nicht überquillt */
+  .mh-village-pick { width: 100% !important; flex: none !important; }
+}
 `;
   document.head.appendChild(style);
 
@@ -756,6 +831,24 @@
 
     <!-- Tab: Erstellen -->
     <div id="mh-tab-create">
+      <details style="margin-bottom:10px;border:1px solid #334155;border-radius:6px;padding:6px 8px;background:#020617;">
+        <summary style="cursor:pointer;font-size:11px;color:#fde68a;font-weight:600;">📥 Aus Workbench-Befehl(en) importieren</summary>
+        <div style="padding-top:8px;">
+          <label>WB-Zeilen (eine Anfrage pro Zeile, Herkunftsdorf wird ignoriert)</label>
+          <textarea id="mh-wb-import" rows="4" placeholder="123456&789012&ram&1735894800000&0&false&true&spear=..."></textarea>
+          <label>Typ-Mapping</label>
+          <select id="mh-wb-import-type">
+            <option value="auto">🪄 Auto pro Zeile (ram/cat→OFF, light→Voradeln, axe→ZC)</option>
+            <option value="off">⚔ OFF für alle</option>
+            <option value="voradeln">⏱ Voradeln für alle</option>
+            <option value="zc">🧹 ZC für alle</option>
+          </select>
+          <label>Slots pro importierter Anfrage</label>
+          <input id="mh-wb-import-slots" type="number" min="1" max="20" value="1">
+          <button id="mh-wb-import-btn" class="mh-action" style="width:100%;">📥 Import + Anfragen erstellen</button>
+        </div>
+      </details>
+
       <label>Typ</label>
       <select id="mh-create-type">
         <option value="off">⚔ OFF (voller Nuker)</option>
@@ -849,11 +942,19 @@
     } else if (slotsFilled >= req.slotsNeeded) {
       actionHtml = `<span style="color:#22c55e;font-size:11px;">✓ Voll besetzt</span>`;
     } else {
-      const best = findBestVillage(req);
-      if (best) {
-        const sendStr = fmtTime(best.sendSec * 1000);
-        feasHtml = `<div class="mh-feas-ok">✓ Bestes Dorf: ${best.village.x}|${best.village.y} — send ${sendStr}</div>`;
-        actionHtml = `<button class="mh-action" data-action="claim" data-id="${req.id}" data-village="${best.village.x}|${best.village.y}">Übernehmen aus ${best.village.x}|${best.village.y}</button>`;
+      const viable = findAllViableVillages(req);
+      if (viable.length > 0) {
+        const optionsHtml = viable.map(c => {
+          const sendTime = fmtTime(c.sendSec * 1000);
+          return `<option value="${c.village.x}|${c.village.y}">${c.village.x}|${c.village.y} — send ${sendTime} (${c.dist.toFixed(1)}F)</option>`;
+        }).join('');
+        feasHtml = `<div class="mh-feas-ok">✓ ${viable.length} Dorf${viable.length > 1 ? 'er' : ''} möglich (sortiert nach Nähe)</div>`;
+        actionHtml = `
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:4px;">
+            <select class="mh-village-pick" data-id="${req.id}" style="flex:1;min-width:180px;">${optionsHtml}</select>
+            <button class="mh-action" data-action="claim" data-id="${req.id}">Übernehmen</button>
+          </div>
+        `;
       } else {
         feasHtml = `<div class="mh-feas-fail">✗ Kein Dorf kann's pünktlich (zu weit oder zu wenig Truppen)</div>`;
         actionHtml = `<button class="mh-action" disabled>kein passendes Dorf</button>`;
@@ -1100,6 +1201,82 @@
       togglePanel();
     }
 
+    // WB-Import → Anfragen erstellen
+    const wbImportBtn = document.getElementById('mh-wb-import-btn');
+    if (wbImportBtn) {
+      wbImportBtn.onclick = async () => {
+        try {
+          wbImportBtn.disabled = true;
+          wbImportBtn.textContent = '⏳ importiere…';
+
+          // VillageCoordByVid sicher laden (für Reverse-Lookup)
+          if (Object.keys(villageCoordByVid).length === 0) await loadVillageIds();
+
+          const text = document.getElementById('mh-wb-import').value;
+          const typeOverride = document.getElementById('mh-wb-import-type').value;
+          const slotsImport = Math.max(1, Math.min(20, +document.getElementById('mh-wb-import-slots').value || 1));
+
+          const lines = text.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('//'));
+          if (lines.length === 0) { alert('Keine WB-Zeilen eingefügt.'); return; }
+
+          const parsed = [];
+          const skipped = [];
+          lines.forEach(l => {
+            const p = parseWBLine(l);
+            if (p) parsed.push(p); else skipped.push(l.slice(0, 40));
+          });
+
+          if (parsed.length === 0) {
+            alert(`Keine validen WB-Zeilen geparsed.\n\nÜbersprungen: ${skipped.length} Zeile(n).`);
+            return;
+          }
+
+          // Cap-Check vorab (cumulativ)
+          const myOpen = countMyOpenRequests(cachedData);
+          if (myOpen + parsed.length > MAX_OPEN_REQUESTS_PER_PLAYER) {
+            const max = MAX_OPEN_REQUESTS_PER_PLAYER - myOpen;
+            if (max <= 0) {
+              alert(`Du hast schon ${MAX_OPEN_REQUESTS_PER_PLAYER} offene Anfragen. Erst schließen oder löschen.`);
+              return;
+            }
+            if (!confirm(`Cap ${MAX_OPEN_REQUESTS_PER_PLAYER} würde überschritten — nur die ersten ${max} importieren?`)) return;
+            parsed.length = max;
+          }
+
+          const summary = parsed.map(p => `  ${p.target} @ ${fmtTime(p.arrivalMs)} (${TYPE_META[typeOverride === 'auto' ? p.type : typeOverride].label})`).join('\n');
+          if (!confirm(`${parsed.length} Anfrage(n) erstellen?\n\n${summary}${skipped.length > 0 ? `\n\n(${skipped.length} Zeile(n) übersprungen)` : ''}`)) return;
+
+          let created = 0;
+          for (const p of parsed) {
+            try {
+              const type = typeOverride === 'auto' ? p.type : typeOverride;
+              await createRequest({
+                type,
+                targetX: p.targetX, targetY: p.targetY,
+                arrivalMs: p.arrivalMs,
+                slotsNeeded: slotsImport,
+                notes: ''
+              });
+              created++;
+            } catch (e) {
+              console.warn('[MiezHub] Import skip:', e.message);
+            }
+          }
+
+          document.getElementById('mh-wb-import').value = '';
+          document.querySelector('#mh-tabs button[data-tab="list"]').click();
+          await refresh();
+          alert(`${created} Anfrage(n) erstellt + auf Discord gepingt.`);
+        } catch (e) {
+          console.error('[MiezHub] WB-Import Fehler:', e);
+          alert('Fehler: ' + e.message);
+        } finally {
+          wbImportBtn.disabled = false;
+          wbImportBtn.textContent = '📥 Import + Anfragen erstellen';
+        }
+      };
+    }
+
     // Delegated handler for claim/release/delete/wb
     body.addEventListener('click', async (e) => {
       const btn = e.target.closest('button[data-action]');
@@ -1109,7 +1286,10 @@
       try {
         btn.disabled = true;
         if (action === 'claim') {
-          await claimSlot(id, btn.dataset.village);
+          const select = body.querySelector(`select.mh-village-pick[data-id="${id}"]`);
+          const fromVillage = (btn.dataset.village || (select && select.value) || '').trim();
+          if (!fromVillage) { alert('Kein Dorf gewählt.'); btn.disabled = false; return; }
+          await claimSlot(id, fromVillage);
           await refresh();
         } else if (action === 'release') {
           if (!confirm('Slot wirklich freigeben?')) { btn.disabled = false; return; }
