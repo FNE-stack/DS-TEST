@@ -2,7 +2,7 @@
     $("#launchpad-panel").remove();
 
     // === CONFIG ===
-    var VERSION = "v106";
+    var VERSION = "v107";
     var GITHUB_OWNER = "FNE-stack";
     var GITHUB_REPO = "DS-TEST";        // public — hosts launchpad.js
     var GITHUB_DATA_REPO = "DS-PLAN";  // private — stores attack plan JSONs
@@ -409,11 +409,35 @@
     // beim Abschicken durchrutschen und die falsche Mauer angreifen.
     function setBuildingInForm(form, target) {
         var bld = form.querySelector("select[name='building']");
-        if (!bld) return;
-        if (!target || target === "0" || target === "none") { bld.value = "0"; return; }
+        // Hilfsfunktion: hidden input garantiert ins Form bringen — entfernt jedes
+        // vorhandene name="building"-Element (Select oder hidden) damit nichts doppelt
+        // im POST-Body landet. TW füllt den Select auf vielen Welten erst per JS;
+        // im gefetchten statischen HTML ist er gar nicht da → wir MÜSSEN hidden input setzen
+        // sonst nimmt TW seinen gespeicherten Default ("Wall" aus "als Standard übernehmen").
+        function setHiddenBuilding(val) {
+            var existing = form.querySelectorAll("[name='building']");
+            for (var x = 0; x < existing.length; x++) {
+                try { existing[x].parentNode.removeChild(existing[x]); } catch(e){}
+            }
+            var hidden = (form.ownerDocument || document).createElement("input");
+            hidden.type = "hidden";
+            hidden.name = "building";
+            hidden.value = val;
+            form.appendChild(hidden);
+        }
+
+        if (!target || target === "0" || target === "none") {
+            if (bld) bld.value = "0"; else setHiddenBuilding("0");
+            return;
+        }
         // User-Mapping / Slug-Auflösung zuerst — danach mit dem TW-Slug arbeiten statt Rohwert.
         var resolvedT = resolveBuilding(target);
         var t = resolvedT ? resolvedT.slug : String(target);
+
+        // Kein Select im statischen HTML → hidden input einhängen damit `building=<slug>`
+        // garantiert im POST-Body landet (sonst durchschlüpft TW-Default "Wall").
+        if (!bld) { setHiddenBuilding(t); return; }
+
         if (String(bld.value || "0") === t) return;
         var opts = bld.querySelectorAll("option");
         for (var i = 0; i < opts.length; i++) {
@@ -435,13 +459,9 @@
                 if (opts[k3].textContent.trim() === twName) { bld.value = opts[k3].value; return; }
             }
         }
-        // Kein Match in den Select-Optionen (TW füllt den Select erst per JS — statisches HTML hat nur value="0").
-        // → Select entfernen und hidden input setzen, damit der Rohwert direkt in den POST-Body geht.
-        var hidden = (form.ownerDocument || document).createElement("input");
-        hidden.type = "hidden";
-        hidden.name = "building";
-        hidden.value = t;
-        bld.parentNode.replaceChild(hidden, bld);
+        // Kein Match in den Select-Optionen — Select durch hidden input ersetzen.
+        try { bld.parentNode.removeChild(bld); } catch(e){}
+        setHiddenBuilding(t);
         console.warn("[lp] Kata-Ziel '" + t + "' kein Select-Match — als hidden input '" + t + "' gesetzt");
     }
 
@@ -1220,7 +1240,8 @@
             setTimeout(function(){
                 var $sel = $("select[name='building']");
                 if (!$sel.length) return;
-                if (String($sel.val() || "0") !== "0") return;  // User hat Auswahl, in Ruhe lassen
+                // KEIN Skip mehr bei non-zero — TW's gespeicherter Default ("Wall") ist non-zero
+                // und hat genau hier verhindert dass unser Plan-Wert greift.
 
                 // Slug-Auflösung (incl. localStorage-Mapping) zuerst
                 var resolvedLive = resolveBuilding(p.catapultTarget);
