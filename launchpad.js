@@ -2,7 +2,7 @@
     $("#launchpad-panel").remove();
 
     // === CONFIG ===
-    var VERSION = "v104";
+    var VERSION = "v105";
     var GITHUB_OWNER = "FNE-stack";
     var GITHUB_REPO = "DS-TEST";        // public — hosts launchpad.js
     var GITHUB_DATA_REPO = "DS-PLAN";  // private — stores attack plan JSONs
@@ -253,7 +253,8 @@
         if (!probe) { if (onLoaded) onLoaded(); return; }
         // fetchText (kein AJAX-Header) + catapult in URL → TW liefert volles HTML inkl. Building-Select
         var probeUrl = "/game.php?village=" + probe.originId + "&screen=place&target=" + probe.targetId
-                       + "&catapult=" + ((probe.troops && probe.troops.catapult) || 1);
+                       + "&catapult=" + ((probe.troops && probe.troops.catapult) || 1)
+                       + (probe.catapultTarget && probe.catapultTarget !== "0" ? "&building=" + encodeURIComponent(probe.catapultTarget) : "");
         fetchText(probeUrl).then(function(html) {
             var selMatch = html.match(/name=["']building["'][\s\S]*?<\/select>/i);
             if (!selMatch) { if (onLoaded) onLoaded(); return; }
@@ -315,6 +316,8 @@
         if (!bld) return;
         if (!target || target === "0" || target === "none") { bld.value = "0"; return; }
         var t = String(target);
+        // If TW pre-filled the select (via &building= in URL), value is already correct — done.
+        if (String(bld.value || "0") === t) return;
         var opts = bld.querySelectorAll("option");
         for (var i = 0; i < opts.length; i++) {
             if (opts[i].value === t) { bld.value = t; return; }
@@ -449,6 +452,7 @@
         for (var u in a.troops) {
             if (a.troops[u] > 0) p += "&" + u + "=" + a.troops[u];
         }
+        if (a.catapultTarget && a.catapultTarget !== "0") p += "&building=" + encodeURIComponent(a.catapultTarget);
         return p;
     }
 
