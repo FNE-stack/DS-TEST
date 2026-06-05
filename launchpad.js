@@ -2,7 +2,7 @@
     $("#launchpad-panel").remove();
 
     // === CONFIG ===
-    var VERSION = "v101";
+    var VERSION = "v102";
     var GITHUB_OWNER = "FNE-stack";
     var GITHUB_REPO = "DS-TEST";        // public — hosts launchpad.js
     var GITHUB_DATA_REPO = "DS-PLAN";  // private — stores attack plan JSONs
@@ -114,7 +114,7 @@
         // Some planners export epoch seconds, others epoch milliseconds.
         var arrivalMs = (arrivalRaw > 0 && arrivalRaw < 1000000000000) ? (arrivalRaw * 1000) : arrivalRaw;
 
-        return {
+        var parsed = {
             id: parts[0] + "_" + parts[1] + "_" + parts[3],
             originId: parts[0],
             targetId: parts[1],
@@ -127,6 +127,13 @@
             sentBy: null,
             sentAt: null
         };
+
+        // Diagnostic-Log für Cata-Angriffe — hilft beim Debug von Plan-Formaten
+        // wenn der Kata-Wert nicht zu den TW-Standards passt (z.B. "36", "43"...).
+        if (troops.catapult > 0) {
+            console.log("[lp] Cata-Line: catapultTarget='" + parts[4] + "' aus parts:", parts);
+        }
+        return parsed;
     }
 
     // serverNow() returns server-time-in-ms, used by the auto-send timer to decide T=0.
@@ -280,21 +287,29 @@
                 if (BUILDINGS[s2] === k) { slug = s2; name = k; break; }
             }
         }
-        if (!name) name = "Gebäude #" + k;
-        if (!slug) slug = kLow;
+        if (name) {
+            if (!slug) slug = kLow;
+            return "<img src='/graphic/buildings/" + slug + ".png' " +
+                   "onerror='this.style.display=\"none\"' " +
+                   "title='" + name + "' style='width:18px;height:18px;vertical-align:middle;margin-right:3px;'>" +
+                   "<span>" + name + "</span>";
+        }
 
-        return "<img src='/graphic/buildings/" + slug + ".png' " +
-               "onerror='this.style.display=\"none\"' " +
-               "title='" + name + "' style='width:18px;height:18px;vertical-align:middle;margin-right:3px;'>" +
-               "<span>" + name + "</span>";
+        // Unbekannter Plan-Wert (z.B. Format-Mismatch oder Custom-AP) → Warnung statt
+        // stiller Falsch-Anzeige. Hilft beim Diagnose welcher Wert aus dem Plan kommt.
+        return "<span style='color:#c00;font-weight:bold;' " +
+               "title='Plan-Wert: " + k + " — konnte nicht aufgelöst werden (siehe F12-Console)'>" +
+               "⚠ Kata-Ziel '" + k + "' unbekannt — manuell wählen</span>";
     }
 
-    // Setzt Kata-Ziel in einem (gefetchten) Place-Form robust — direkt-value, dann option-text,
-    // dann slug→deutscher Name→option-text. Macht nichts wenn target leer/0 oder kein Select.
+    // Setzt Kata-Ziel in einem (gefetchten) Place-Form robust. Wenn der Wert nicht
+    // aufgelöst werden kann, wird der Select EXPLIZIT auf "0" (nichts) gesetzt — sonst
+    // würde TW's gespeicherter Default (z.B. "Wall" aus "als Standard übernehmen")
+    // beim Abschicken durchrutschen und die falsche Mauer angreifen.
     function setBuildingInForm(form, target) {
-        if (!target || target === "0" || target === "none") return;
         var bld = form.querySelector("select[name='building']");
         if (!bld) return;
+        if (!target || target === "0" || target === "none") { bld.value = "0"; return; }
         var t = String(target);
         var opts = bld.querySelectorAll("option");
         for (var i = 0; i < opts.length; i++) {
@@ -309,6 +324,9 @@
                 if (opts[k2].textContent.trim() === germanName) { bld.value = opts[k2].value; return; }
             }
         }
+        // Nichts gepasst → "nichts" forcen statt TW's Default durchrutschen lassen
+        bld.value = "0";
+        console.warn("[lp] Kata-Ziel '" + t + "' konnte nicht aufgelöst werden — auf 'nichts' gesetzt (statt TW-Default)");
     }
 
     function getSendMs(att) {
@@ -1105,8 +1123,14 @@
                 var germanName = BUILDINGS[t.toLowerCase()];
                 if (germanName) {
                     $opts.each(function(){
-                        if ($(this).text().trim() === germanName) { $sel.val(this.value); return false; }
+                        if ($(this).text().trim() === germanName) { $sel.val(this.value); matched = true; return false; }
                     });
+                }
+
+                if (!matched) {
+                    // Nichts gepasst → "nichts" forcen damit TW's Default (Wall etc.) nicht durchrutscht
+                    $sel.val("0");
+                    console.warn("[lp] Kata-Ziel '" + t + "' konnte nicht aufgelöst werden — Select auf 'nichts' gesetzt");
                 }
             }, 150);
         }
