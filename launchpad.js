@@ -2,7 +2,7 @@
     $("#launchpad-panel").remove();
 
     // === CONFIG ===
-    var VERSION = "v100";
+    var VERSION = "v101";
     var GITHUB_OWNER = "FNE-stack";
     var GITHUB_REPO = "DS-TEST";        // public — hosts launchpad.js
     var GITHUB_DATA_REPO = "DS-PLAN";  // private — stores attack plan JSONs
@@ -237,40 +237,78 @@
     };
     // Dynamic building ID map — fetched once in the background from TW's attack form HTML
     var twBuildingIds = {};
-    function loadBuildingIds(attacks) {
-        if (Object.keys(twBuildingIds).length > 0) return;
+    function loadBuildingIds(attacks, onLoaded) {
+        if (Object.keys(twBuildingIds).length > 0) { if (onLoaded) onLoaded(); return; }
         var probe = null;
         for (var i = 0; i < attacks.length; i++) {
             if (attacks[i].troops && attacks[i].troops.catapult > 0) { probe = attacks[i]; break; }
         }
-        if (!probe) return;
+        if (!probe) { if (onLoaded) onLoaded(); return; }
         $.get("/game.php?village=" + probe.originId + "&screen=place&target=" + probe.targetId, function(html) {
             var selMatch = html.match(/name=["']building["'][\s\S]*?<\/select>/i);
-            if (!selMatch) return;
+            if (!selMatch) { if (onLoaded) onLoaded(); return; }
             var re = /<option[^>]+value=["'](\d+)["'][^>]*>([^<]+)<\/option>/gi;
             var m, found = false;
             while ((m = re.exec(selMatch[0])) !== null) {
                 if (m[1] !== "0") { twBuildingIds[m[1]] = m[2].trim(); found = true; }
             }
             if (found && currentPlan.length > 0) renderPlan(currentPlan);
-        });
+            if (onLoaded) onLoaded();
+        }).fail(function(){ if (onLoaded) onLoaded(); });
     }
     function buildingHtml(key, troops) {
         if (!key || key === "0" || key === "none") return "";
         if (troops && !(troops.catapult > 0)) return "";
         var k = String(key);
-        // Prefer TW's own label (populated from place screen select)
-        var name = twBuildingIds[k];
-        if (!name) {
-            // Fall back: try string key in BUILDINGS map
-            var mapped = BUILDINGS[k.toLowerCase()];
-            name = mapped || ("Gebäude #" + k);
+
+        // Resolve display name + image slug. key kann sein:
+        //  - ein Slug wie "main"            (DS-Workbench Format)
+        //  - eine numerische TW-ID wie "1"  (AP / DS-Ultimate Format)
+        //  - ein deutscher Name wie "Hauptgebäude"
+        var name = null, slug = null;
+        var kLow = k.toLowerCase();
+        if (BUILDINGS[kLow]) {
+            slug = kLow;
+            name = BUILDINGS[kLow];
+        } else if (twBuildingIds[k]) {
+            name = twBuildingIds[k];
+            for (var s in BUILDINGS) {
+                if (BUILDINGS[s] === name) { slug = s; break; }
+            }
+        } else {
+            for (var s2 in BUILDINGS) {
+                if (BUILDINGS[s2] === k) { slug = s2; name = k; break; }
+            }
         }
-        var imgKey = k.toLowerCase();
-        return "<img src='/graphic/buildings/" + imgKey + ".png' " +
+        if (!name) name = "Gebäude #" + k;
+        if (!slug) slug = kLow;
+
+        return "<img src='/graphic/buildings/" + slug + ".png' " +
                "onerror='this.style.display=\"none\"' " +
                "title='" + name + "' style='width:18px;height:18px;vertical-align:middle;margin-right:3px;'>" +
                "<span>" + name + "</span>";
+    }
+
+    // Setzt Kata-Ziel in einem (gefetchten) Place-Form robust — direkt-value, dann option-text,
+    // dann slug→deutscher Name→option-text. Macht nichts wenn target leer/0 oder kein Select.
+    function setBuildingInForm(form, target) {
+        if (!target || target === "0" || target === "none") return;
+        var bld = form.querySelector("select[name='building']");
+        if (!bld) return;
+        var t = String(target);
+        var opts = bld.querySelectorAll("option");
+        for (var i = 0; i < opts.length; i++) {
+            if (opts[i].value === t) { bld.value = t; return; }
+        }
+        for (var j = 0; j < opts.length; j++) {
+            if (opts[j].textContent.trim() === t) { bld.value = opts[j].value; return; }
+        }
+        var germanName = BUILDINGS[t.toLowerCase()];
+        if (germanName) {
+            for (var k2 = 0; k2 < opts.length; k2++) {
+                if (opts[k2].textContent.trim() === germanName) { bld.value = opts[k2].value; return; }
+            }
+        }
     }
 
     function getSendMs(att) {
@@ -480,10 +518,7 @@
                              placeForm.querySelector("input[name='unit_" + u + "']");
                     if (el) el.value = troops[u] || 0;
                 });
-                if (att.catapultTarget && att.catapultTarget !== "0") {
-                    var bld = placeForm.querySelector("select[name='building']");
-                    if (bld) bld.value = att.catapultTarget;
-                }
+                setBuildingInForm(placeForm, att.catapultTarget);
 
                 var action = placeForm.getAttribute("action") || "/game.php";
                 var data = serializeForm(placeForm) + "&" + encodeURIComponent(btnName) + "=1";
@@ -548,10 +583,7 @@
                              placeForm.querySelector("input[name='unit_" + u + "']");
                     if (el) el.value = troops[u] || 0;
                 });
-                if (att.catapultTarget && att.catapultTarget !== "0") {
-                    var bld = placeForm.querySelector("select[name='building']");
-                    if (bld) bld.value = att.catapultTarget;
-                }
+                setBuildingInForm(placeForm, att.catapultTarget);
 
                 var action = placeForm.getAttribute("action") || "/game.php";
                 var data = serializeForm(placeForm) + "&" + encodeURIComponent(btnName) + "=1";
@@ -855,8 +887,24 @@
             "</div>"
         );
 
+        // Building-Anzeige: refreshable damit deutsche Namen + Icon nachträglich
+        // erscheinen sobald loadBuildingIds() das TW-Mapping nachlädt.
         var bHtml = buildingHtml(p.catapultTarget, p.troops);
-        if (bHtml) overlay.append("<div style='font-size:11px;color:#804000;margin-bottom:8px;'>⚙&nbsp;" + bHtml + "</div>");
+        var $bldDiv = null;
+        if (bHtml) {
+            $bldDiv = $("<div class='lp-bld' style='font-size:11px;color:#804000;margin-bottom:8px;'>⚙&nbsp;" + bHtml + "</div>");
+            overlay.append($bldDiv);
+        } else if (p.troops && p.troops.catapult > 0 && p.catapultTarget && p.catapultTarget !== "0") {
+            $bldDiv = $("<div class='lp-bld' style='font-size:11px;color:#804000;margin-bottom:8px;'>⚙&nbsp;<i>Gebäude wird geladen…</i></div>");
+            overlay.append($bldDiv);
+        }
+        if (p.troops && p.troops.catapult > 0 && Object.keys(twBuildingIds).length === 0) {
+            loadBuildingIds([{ originId: p.originId, targetId: p.targetId, troops: p.troops }], function(){
+                if (!$bldDiv || !$bldDiv.length) return;
+                var refreshed = buildingHtml(p.catapultTarget, p.troops);
+                if (refreshed) $bldDiv.html("⚙&nbsp;" + refreshed);
+            });
+        }
 
         var cdLabel = sendMs ? "Losschicken in" : "Ankunft in";
         overlay.append(
@@ -1028,9 +1076,39 @@
             });
         }
 
-        // Set catapult building target in TW's own select
+        // Kata-Ziel in TW's eigenen Select setzen — robuste Variante:
+        //  - Wenn User schon manuell was gewählt hat (non-zero), NICHT überschreiben
+        //  - Sonst: numerischer Match, dann Text-Match, dann Slug→Name→Text
         if (p.catapultTarget && p.catapultTarget !== "0") {
-            setTimeout(function(){ $("select[name='building']").val(p.catapultTarget); }, 150);
+            setTimeout(function(){
+                var $sel = $("select[name='building']");
+                if (!$sel.length) return;
+                if (String($sel.val() || "0") !== "0") return;  // User hat Auswahl, in Ruhe lassen
+
+                var t = String(p.catapultTarget);
+
+                // 1) direkter Value-Match
+                var $opts = $sel.find("option");
+                var matched = false;
+                $opts.each(function(){
+                    if (this.value === t) { $sel.val(t); matched = true; return false; }
+                });
+                if (matched) return;
+
+                // 2) direkter Text-Match (z.B. User hat "Hauptgebäude" als String drin)
+                $opts.each(function(){
+                    if ($(this).text().trim() === t) { $sel.val(this.value); matched = true; return false; }
+                });
+                if (matched) return;
+
+                // 3) Slug → deutscher Name → option text
+                var germanName = BUILDINGS[t.toLowerCase()];
+                if (germanName) {
+                    $opts.each(function(){
+                        if ($(this).text().trim() === germanName) { $sel.val(this.value); return false; }
+                    });
+                }
+            }, 150);
         }
 
         // Hook the confirm form (post-jump) to AJAX-submit instead of native form POST.
