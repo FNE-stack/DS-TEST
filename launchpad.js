@@ -2,7 +2,7 @@
     $("#launchpad-panel").remove();
 
     // === CONFIG ===
-    var VERSION = "v105";
+    var VERSION = "v106";
     var GITHUB_OWNER = "FNE-stack";
     var GITHUB_REPO = "DS-TEST";        // public — hosts launchpad.js
     var GITHUB_DATA_REPO = "DS-PLAN";  // private — stores attack plan JSONs
@@ -242,69 +242,165 @@
         snob:   "Adelshof",   watchtower:"Späherturm", church:  "Kirche",
         church_f:"Erstkirche",academy:  "Akademie"
     };
-    // Dynamic building ID map — fetched once in the background from TW's attack form HTML
+
+    // User-pflegbares Mapping für unbekannte Plan-Werte (z.B. "36" → "wall").
+    // Liegt in localStorage; wird über den Picker-Dialog gefüllt sobald der User
+    // einmal sagt was "36" bedeutet — danach kennt das Script den Wert dauerhaft.
+    var BUILDING_MAP_KEY = "lp_building_map_v1";
+    function getBuildingMap() {
+        try { return JSON.parse(localStorage.getItem(BUILDING_MAP_KEY) || "{}") || {}; }
+        catch(e) { return {}; }
+    }
+    function saveBuildingMapping(rawId, slug) {
+        var map = getBuildingMap();
+        map[String(rawId)] = String(slug);
+        try { localStorage.setItem(BUILDING_MAP_KEY, JSON.stringify(map)); } catch(e){}
+    }
+    // Wandelt einen Plan-Wert (slug / deutscher Name / numerische WB-ID) in einen TW-Slug um.
+    // Returns: { slug, name } wenn auflösbar, sonst null.
+    function resolveBuilding(rawKey) {
+        if (rawKey === null || rawKey === undefined) return null;
+        var k = String(rawKey);
+        if (!k || k === "0" || k === "none") return null;
+        var kLow = k.toLowerCase();
+        if (BUILDINGS[kLow]) return { slug: kLow, name: BUILDINGS[kLow] };
+        // Saved user mapping
+        var map = getBuildingMap();
+        if (map[k] && BUILDINGS[map[k]]) return { slug: map[k], name: BUILDINGS[map[k]] };
+        // Deutscher Name?
+        for (var s in BUILDINGS) {
+            if (BUILDINGS[s] === k) return { slug: s, name: k };
+        }
+        // twBuildingIds (numerische TW-ID → Name aus Place-Form)
+        if (twBuildingIds[k]) {
+            var nm = twBuildingIds[k];
+            for (var s2 in BUILDINGS) {
+                if (BUILDINGS[s2] === nm) return { slug: s2, name: nm };
+            }
+        }
+        return null;
+    }
+    // Picker-Dialog: User wählt was ein unbekannter Plan-Wert bedeutet.
+    function showBuildingPicker(rawId) {
+        if ($("#lp-bld-picker").length) return; // schon offen
+        var opts = '<option value="">— bitte wählen —</option>';
+        opts += '<option value="0">Nichts (keine Präferenz)</option>';
+        Object.keys(BUILDINGS).forEach(function(s){
+            opts += '<option value="' + s + '">' + BUILDINGS[s] + ' (' + s + ')</option>';
+        });
+        var $bd = $("<div id='lp-bld-backdrop' style='position:fixed;inset:0;background:rgba(0,0,0,0.55);z-index:99998;'></div>");
+        var $dlg = $(
+            "<div id='lp-bld-picker' style='position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:99999;background:#f4e4bc;border:2px solid #603000;border-radius:6px;padding:18px;min-width:320px;box-shadow:0 6px 24px rgba(0,0,0,0.5);font-family:Verdana,sans-serif;'>" +
+            "<h3 style='margin:0 0 10px 0;color:#603000;'>Kata-Ziel '" + rawId + "' zuordnen</h3>" +
+            "<p style='margin:0 0 10px 0;font-size:12px;'>Welches TW-Gebäude entspricht diesem Plan-Wert?<br><i>Wird gespeichert und für alle weiteren Pläne genutzt.</i></p>" +
+            "<select id='lp-bld-pick' style='width:100%;padding:5px;margin-bottom:12px;font-size:13px;'>" + opts + "</select>" +
+            "<div style='text-align:right;'>" +
+            "<button id='lp-bld-cancel' style='margin-right:6px;padding:4px 10px;'>Abbrechen</button>" +
+            "<button id='lp-bld-save' class='btn btn-confirm-yes' style='padding:4px 12px;'>Speichern</button>" +
+            "</div></div>"
+        );
+        $("body").append($bd).append($dlg);
+        function close() { $bd.remove(); $dlg.remove(); }
+        $bd.on("click", close);
+        $("#lp-bld-cancel").on("click", close);
+        $("#lp-bld-save").on("click", function(){
+            var pick = $("#lp-bld-pick").val();
+            if (!pick) return;
+            saveBuildingMapping(rawId, pick);
+            close();
+            if (currentPlan && currentPlan.length > 0) renderPlan(currentPlan);
+        });
+    }
+    // Globale Hook damit der Inline-onclick aus buildingHtml() den Picker öffnen kann.
+    window.lpOpenBuildingPicker = function(rawId) { showBuildingPicker(rawId); };
+    // Dynamic building ID map — fetched once in the background from TW's attack form HTML.
+    // Modern TW-Welten benutzen numerische Option-Values im building-Select (z.B. value="36" = Hauptgebäude),
+    // ältere Welten nutzen Slugs ("main", "wall"). Wir lesen beides und speichern was wir kriegen.
     var twBuildingIds = {};
+    // Hilfsfunktion: trägt einen Mapping-Eintrag rückwärts auch ins persistente User-Mapping ein,
+    // damit "36" → "main" einmal gelernt und für immer aufgelöst wird.
+    function recordBuildingMapping(rawId, twName) {
+        twBuildingIds[rawId] = twName;
+        // Versuche den TW-Namen einem deutschen Anzeigenamen aus BUILDINGS zuzuordnen → Slug
+        for (var slug in BUILDINGS) {
+            if (BUILDINGS[slug] === twName) { saveBuildingMapping(rawId, slug); return; }
+        }
+    }
     function loadBuildingIds(attacks, onLoaded) {
         if (Object.keys(twBuildingIds).length > 0) { if (onLoaded) onLoaded(); return; }
+
+        // 1) In-Page-Globals zuerst probieren — TW exposed BuildingMain / BuildingInfo / game_data.buildings
+        //    auf vielen Screens mit der numerischen ID die wir suchen.
+        try {
+            var sources = [];
+            if (typeof BuildingMain !== "undefined" && BuildingMain && BuildingMain.buildings) sources.push(BuildingMain.buildings);
+            if (typeof BuildingInfo !== "undefined" && BuildingInfo) sources.push(BuildingInfo);
+            if (typeof game_data !== "undefined" && game_data && game_data.buildings && typeof game_data.buildings === "object" && !Array.isArray(game_data.buildings)) sources.push(game_data.buildings);
+            sources.forEach(function(src) {
+                Object.keys(src).forEach(function(k) {
+                    var entry = src[k];
+                    if (!entry || typeof entry !== "object") return;
+                    var id = entry.id || entry.building_id || entry.buildingId;
+                    var name = entry.name_de || entry.name || (BUILDINGS[k] || k);
+                    if (id != null) recordBuildingMapping(String(id), name);
+                });
+            });
+            if (Object.keys(twBuildingIds).length > 0) {
+                console.log("[lp] loadBuildingIds: aus In-Page-Globals:", JSON.parse(JSON.stringify(twBuildingIds)));
+            }
+        } catch(e) { console.warn("[lp] loadBuildingIds: globals check error", e); }
+
+        // 2) Place-Form fetchen — die definitive Quelle für numerische Building-IDs.
         var probe = null;
         for (var i = 0; i < attacks.length; i++) {
             if (attacks[i].troops && attacks[i].troops.catapult > 0) { probe = attacks[i]; break; }
         }
         if (!probe) { if (onLoaded) onLoaded(); return; }
-        // fetchText (kein AJAX-Header) + catapult in URL → TW liefert volles HTML inkl. Building-Select
         var probeUrl = "/game.php?village=" + probe.originId + "&screen=place&target=" + probe.targetId
-                       + "&catapult=" + ((probe.troops && probe.troops.catapult) || 1)
-                       + (probe.catapultTarget && probe.catapultTarget !== "0" ? "&building=" + encodeURIComponent(probe.catapultTarget) : "");
+                       + "&catapult=" + ((probe.troops && probe.troops.catapult) || 1);
         fetchText(probeUrl).then(function(html) {
-            var selMatch = html.match(/name=["']building["'][\s\S]*?<\/select>/i);
-            if (!selMatch) { if (onLoaded) onLoaded(); return; }
-            // Capture alle Option-Werte (numeric und slug)
-            var re = /<option[^>]+value=["']([^"']+)["'][^>]*>([^<]+)<\/option>/gi;
-            var m, found = false;
-            while ((m = re.exec(selMatch[0])) !== null) {
-                if (m[1] !== "0") { twBuildingIds[m[1]] = m[2].trim(); found = true; }
+            var selMatch = html.match(/<select[^>]*name=["']building["'][\s\S]*?<\/select>/i);
+            if (!selMatch) {
+                // Fallback ohne <select-Tag (manche TW-Versionen rendern attrib-order anders)
+                selMatch = html.match(/name=["']building["'][\s\S]*?<\/select>/i);
             }
-            if (found && currentPlan.length > 0) renderPlan(currentPlan);
+            if (!selMatch) {
+                console.warn("[lp] loadBuildingIds: building-Select NICHT im fetchten Place-Form gefunden — "
+                           + "TW liefert wahrscheinlich nur Stub-HTML. URL:", probeUrl);
+                if (onLoaded) onLoaded(); return;
+            }
+            var re = /<option[^>]+value=["']([^"']+)["'][^>]*>([^<]+)<\/option>/gi;
+            var m, count = 0;
+            while ((m = re.exec(selMatch[0])) !== null) {
+                if (m[1] !== "0") { recordBuildingMapping(m[1], m[2].trim()); count++; }
+            }
+            console.log("[lp] loadBuildingIds: " + count + " Options aus Place-Form geparst. twBuildingIds:",
+                        JSON.parse(JSON.stringify(twBuildingIds)));
+            if (count > 0 && currentPlan.length > 0) renderPlan(currentPlan);
             if (onLoaded) onLoaded();
-        }).catch(function(){ if (onLoaded) onLoaded(); });
+        }).catch(function(err){
+            console.warn("[lp] loadBuildingIds: fetch failed:", err);
+            if (onLoaded) onLoaded();
+        });
     }
     function buildingHtml(key, troops) {
         if (!key || key === "0" || key === "none") return "";
         if (troops && !(troops.catapult > 0)) return "";
         var k = String(key);
 
-        // Resolve display name + image slug. key kann sein:
-        //  - ein Slug wie "main"            (DS-Workbench Format)
-        //  - eine numerische TW-ID wie "1"  (AP / DS-Ultimate Format)
-        //  - ein deutscher Name wie "Hauptgebäude"
-        var name = null, slug = null;
-        var kLow = k.toLowerCase();
-        if (BUILDINGS[kLow]) {
-            slug = kLow;
-            name = BUILDINGS[kLow];
-        } else if (twBuildingIds[k]) {
-            name = twBuildingIds[k];
-            for (var s in BUILDINGS) {
-                if (BUILDINGS[s] === name) { slug = s; break; }
-            }
-        } else {
-            for (var s2 in BUILDINGS) {
-                if (BUILDINGS[s2] === k) { slug = s2; name = k; break; }
-            }
-        }
-        if (name) {
-            if (!slug) slug = kLow;
-            return "<img src='/graphic/buildings/" + slug + ".png' " +
+        var resolved = resolveBuilding(k);
+        if (resolved) {
+            return "<img src='/graphic/buildings/" + resolved.slug + ".png' " +
                    "onerror='this.style.display=\"none\"' " +
-                   "title='" + name + "' style='width:18px;height:18px;vertical-align:middle;margin-right:3px;'>" +
-                   "<span>" + name + "</span>";
+                   "title='" + resolved.name + "' style='width:18px;height:18px;vertical-align:middle;margin-right:3px;'>" +
+                   "<span>" + resolved.name + "</span>";
         }
-
-        // Unbekannter Plan-Wert (z.B. Format-Mismatch oder Custom-AP) → Warnung statt
-        // stiller Falsch-Anzeige. Hilft beim Diagnose welcher Wert aus dem Plan kommt.
-        return "<span style='color:#c00;font-weight:bold;' " +
-               "title='Plan-Wert: " + k + " — konnte nicht aufgelöst werden (siehe F12-Console)'>" +
-               "⚠ Kata-Ziel '" + k + "' unbekannt — manuell wählen</span>";
+        // Unbekannter Plan-Wert → klickbarer Link öffnet Picker, User mappt einmalig.
+        var safe = k.replace(/'/g, "\\'");
+        return "<a href='javascript:void(0)' onclick='window.lpOpenBuildingPicker(\"" + safe + "\")' " +
+               "style='color:#c00;font-weight:bold;text-decoration:underline;cursor:pointer;' " +
+               "title='Plan-Wert: " + k + " — klicken um Gebäude zuzuordnen'>" +
+               "⚠ Kata-Ziel '" + k + "' unbekannt — klicken zum Zuordnen</a>";
     }
 
     // Setzt Kata-Ziel in einem (gefetchten) Place-Form robust. Wenn der Wert nicht
@@ -315,8 +411,9 @@
         var bld = form.querySelector("select[name='building']");
         if (!bld) return;
         if (!target || target === "0" || target === "none") { bld.value = "0"; return; }
-        var t = String(target);
-        // If TW pre-filled the select (via &building= in URL), value is already correct — done.
+        // User-Mapping / Slug-Auflösung zuerst — danach mit dem TW-Slug arbeiten statt Rohwert.
+        var resolvedT = resolveBuilding(target);
+        var t = resolvedT ? resolvedT.slug : String(target);
         if (String(bld.value || "0") === t) return;
         var opts = bld.querySelectorAll("option");
         for (var i = 0; i < opts.length; i++) {
@@ -452,7 +549,9 @@
         for (var u in a.troops) {
             if (a.troops[u] > 0) p += "&" + u + "=" + a.troops[u];
         }
-        if (a.catapultTarget && a.catapultTarget !== "0") p += "&building=" + encodeURIComponent(a.catapultTarget);
+        // Nur einen aufgelösten TW-Slug an die URL hängen — Rohwerte wie "36" lehnt TW ab.
+        var resolvedB = resolveBuilding(a.catapultTarget);
+        if (resolvedB) p += "&building=" + encodeURIComponent(resolvedB.slug);
         return p;
     }
 
@@ -1123,7 +1222,9 @@
                 if (!$sel.length) return;
                 if (String($sel.val() || "0") !== "0") return;  // User hat Auswahl, in Ruhe lassen
 
-                var t = String(p.catapultTarget);
+                // Slug-Auflösung (incl. localStorage-Mapping) zuerst
+                var resolvedLive = resolveBuilding(p.catapultTarget);
+                var t = resolvedLive ? resolvedLive.slug : String(p.catapultTarget);
 
                 // 1) direkter Value-Match
                 var $opts = $sel.find("option");
