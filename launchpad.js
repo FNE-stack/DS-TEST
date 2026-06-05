@@ -2,7 +2,7 @@
     $("#launchpad-panel").remove();
 
     // === CONFIG ===
-    var VERSION = "v102";
+    var VERSION = "v104";
     var GITHUB_OWNER = "FNE-stack";
     var GITHUB_REPO = "DS-TEST";        // public — hosts launchpad.js
     var GITHUB_DATA_REPO = "DS-PLAN";  // private — stores attack plan JSONs
@@ -251,17 +251,21 @@
             if (attacks[i].troops && attacks[i].troops.catapult > 0) { probe = attacks[i]; break; }
         }
         if (!probe) { if (onLoaded) onLoaded(); return; }
-        $.get("/game.php?village=" + probe.originId + "&screen=place&target=" + probe.targetId, function(html) {
+        // fetchText (kein AJAX-Header) + catapult in URL → TW liefert volles HTML inkl. Building-Select
+        var probeUrl = "/game.php?village=" + probe.originId + "&screen=place&target=" + probe.targetId
+                       + "&catapult=" + ((probe.troops && probe.troops.catapult) || 1);
+        fetchText(probeUrl).then(function(html) {
             var selMatch = html.match(/name=["']building["'][\s\S]*?<\/select>/i);
             if (!selMatch) { if (onLoaded) onLoaded(); return; }
-            var re = /<option[^>]+value=["'](\d+)["'][^>]*>([^<]+)<\/option>/gi;
+            // Capture alle Option-Werte (numeric und slug)
+            var re = /<option[^>]+value=["']([^"']+)["'][^>]*>([^<]+)<\/option>/gi;
             var m, found = false;
             while ((m = re.exec(selMatch[0])) !== null) {
                 if (m[1] !== "0") { twBuildingIds[m[1]] = m[2].trim(); found = true; }
             }
             if (found && currentPlan.length > 0) renderPlan(currentPlan);
             if (onLoaded) onLoaded();
-        }).fail(function(){ if (onLoaded) onLoaded(); });
+        }).catch(function(){ if (onLoaded) onLoaded(); });
     }
     function buildingHtml(key, troops) {
         if (!key || key === "0" || key === "none") return "";
@@ -324,9 +328,21 @@
                 if (opts[k2].textContent.trim() === germanName) { bld.value = opts[k2].value; return; }
             }
         }
-        // Nichts gepasst → "nichts" forcen statt TW's Default durchrutschen lassen
-        bld.value = "0";
-        console.warn("[lp] Kata-Ziel '" + t + "' konnte nicht aufgelöst werden — auf 'nichts' gesetzt (statt TW-Default)");
+        // 4) twBuildingIds: numerische WB-ID → TW-Name → option text
+        var twName = twBuildingIds[t];
+        if (twName) {
+            for (var k3 = 0; k3 < opts.length; k3++) {
+                if (opts[k3].textContent.trim() === twName) { bld.value = opts[k3].value; return; }
+            }
+        }
+        // Kein Match in den Select-Optionen (TW füllt den Select erst per JS — statisches HTML hat nur value="0").
+        // → Select entfernen und hidden input setzen, damit der Rohwert direkt in den POST-Body geht.
+        var hidden = (form.ownerDocument || document).createElement("input");
+        hidden.type = "hidden";
+        hidden.name = "building";
+        hidden.value = t;
+        bld.parentNode.replaceChild(hidden, bld);
+        console.warn("[lp] Kata-Ziel '" + t + "' kein Select-Match — als hidden input '" + t + "' gesetzt");
     }
 
     function getSendMs(att) {
@@ -1127,6 +1143,15 @@
                     });
                 }
 
+                // 4) twBuildingIds: numerische WB-ID → TW-Name → option text
+                if (!matched) {
+                    var twLiveName = twBuildingIds[t];
+                    if (twLiveName) {
+                        $opts.each(function(){
+                            if ($(this).text().trim() === twLiveName) { $sel.val(this.value); matched = true; return false; }
+                        });
+                    }
+                }
                 if (!matched) {
                     // Nichts gepasst → "nichts" forcen damit TW's Default (Wall etc.) nicht durchrutscht
                     $sel.val("0");
