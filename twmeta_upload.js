@@ -17,7 +17,7 @@
 
     // === CONFIG ===
     var API_KEY            = "tw_IC1liGAw25BfyJ961jo8-rxWsj6V3I9H4uKVmVgr87HumN_b";
-    var LINKED_ACCOUNT_ID  = 46;          // aus dem HAR — ggf. anpassen
+    var LINKED_ACCOUNT_ID  = 46;
     var API_URL            = "https://api.twmeta.net/tribalwars/attack-planner/village-troops";
     var THROTTLE_MS        = 80;          // Pause zwischen POSTs, damit die API nicht spamt
 
