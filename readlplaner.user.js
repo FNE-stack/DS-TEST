@@ -652,7 +652,7 @@
 }
 #rp-tab-content > div { display: none; }
 #rp-tab-content > div.active { display: block; }
-#rp-body input,
+#rp-body input:not([type="checkbox"]),
 #rp-body textarea {
   width: 100%;
   background: #020617;
@@ -811,11 +811,18 @@
   #rp-header { padding: 10px; font-size: 13px; }
   #rp-body { padding: 8px; max-height: 80vh; }
   #rp-tabs button { padding: 12px 4px; font-size: 13px; }
-  #rp-body input,
+  #rp-body input:not([type="checkbox"]),
   #rp-body textarea {
     padding: 10px;
     font-size: 14px;
     min-height: 40px;
+  }
+  .rp-checkbox-row input[type="checkbox"] {
+    width: 22px !important;
+    height: 22px !important;
+    min-width: 22px;
+    min-height: 22px;
+    flex-shrink: 0;
   }
   #rp-body button {
     padding: 12px;
