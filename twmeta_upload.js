@@ -21,42 +21,65 @@
     var API_URL            = "https://api.twmeta.net/tribalwars/attack-planner/village-troops";
     var THROTTLE_MS        = 80;          // Pause zwischen POSTs, damit die API nicht spamt
 
-    // === Sanity: richtige Screen-Seite? ===
-    var qs = new URLSearchParams(location.search);
-    if (qs.get("screen") !== "overview_villages" || qs.get("mode") !== "units") {
-        UI.ErrorMessage("Bitte zuerst auf 'Übersichten → Truppen (Komplett)' öffnen.");
-        return;
+    // === Page selber holen (egal wo der User gerade ist) ===
+    // mode=combined&page=-1 → ALLE Dörfer auf einer Seite mit Truppen-Spalten.
+    // Genau dieselbe Quelle die snipe.js benutzt.
+    var fetchUrl = (typeof game_data !== "undefined" && game_data.link_base_pure)
+                   ? game_data.link_base_pure + "overview_villages&mode=combined&group=0&page=-1"
+                   : "/game.php?screen=overview_villages&mode=combined&group=0&page=-1";
+
+    UI.SuccessMessage("Lese Truppen aus überdorfsicht…");
+
+    $.get(fetchUrl).done(function(html) {
+        parseAndUpload(html);
+    }).fail(function(xhr) {
+        UI.ErrorMessage("Konnte Übersicht nicht laden (Status " + (xhr && xhr.status) + ").");
+    });
+
+    function parseAndUpload(html) {
+        var $doc = $($.parseHTML(html));
+        var isMobile = $doc.find("#mobileHeader").length > 0 || $("#mobileHeader").length > 0;
+
+        var villages = isMobile ? parseMobile($doc) : parseDesktop($doc);
+        if (!villages.length) {
+            console.warn("[twmeta] Parser fand keine Dörfer. Erste 500 Zeichen der Response:",
+                         html.substring(0, 500));
+            UI.ErrorMessage("Keine Dörfer in Übersicht gefunden — siehe Console.");
+            return;
+        }
+        uploadAll(villages);
     }
 
-    // === Parsing (Desktop und Mobile) ===
-    var isMobile = $("#mobileHeader").length > 0;
+    function parseDesktop($doc) {
+        // Erst #combined_table, dann jede beliebige Tabelle deren Header Unit-Bilder enthält.
+        var $table = $doc.find("#combined_table");
+        if (!$table.length) {
+            $doc.find("table").each(function() {
+                if ($(this).find("th img[src*='unit_']").length >= 3) { $table = $(this); return false; }
+            });
+        }
+        if (!$table.length) { console.warn("[twmeta] keine Truppen-Tabelle gefunden"); return []; }
 
-    function parseDesktop() {
-        var $rows = $("#combined_table tr.nowrap");
-        var $head = $("#combined_table tr:eq(0) th");
-        if (!$rows.length || !$head.length) return [];
-
-        // Spalten-Index → Unit-Slug aus den th-Bildern
+        var $head = $table.find("tr").first().find("th");
         var colUnit = {};
         $head.each(function(idx) {
             var src = $(this).find("img").attr("src") || "";
             var m = src.match(/unit_([a-z_]+)\.(png|webp)/i);
             if (m) colUnit[idx] = m[1];
         });
+        console.log("[twmeta] Spalten:", colUnit);
 
         var villages = [];
-        $rows.each(function() {
-            var $tds = $(this).find("td");
-            // Koord aus dem Namens-/Link-Feld extrahieren — "(444|516)" Form
-            var txt = $(this).text();
-            var c = txt.match(/\((\d+)\|(\d+)\)/);
+        $table.find("tr").each(function() {
+            var $tr = $(this);
+            if (!$tr.find("td").length) return; // Header-Reihe
+            var c = $tr.text().match(/\((\d+)\|(\d+)\)/);
             if (!c) return;
             var coord = String(c[1]).padStart(3, "0") + String(c[2]).padStart(3, "0");
-
             var troops = {};
+            var $tds = $tr.find("td");
             Object.keys(colUnit).forEach(function(idx) {
-                var cell = $tds.eq(parseInt(idx, 10));
-                var n = parseInt((cell.text() || "").replace(/\D/g, ""), 10);
+                var n = parseInt(($tds.eq(parseInt(idx,10)).text() || "").replace(/\D/g, ""), 10);
                 troops[colUnit[idx]] = isNaN(n) ? 0 : n;
             });
             villages.push({ coord: coord, troops: troops });
@@ -64,34 +87,27 @@
         return villages;
     }
 
-    function parseMobile() {
+    function parseMobile($doc) {
         var villages = [];
-        $(".overview-container > div").each(function() {
+        $doc.find(".overview-container > div").each(function() {
             var $el = $(this);
-            var txt = $el.text();
-            var c = txt.match(/\((\d+)\|(\d+)\)/);
+            var c = $el.text().match(/\((\d+)\|(\d+)\)/);
             if (!c) return;
             var coord = String(c[1]).padStart(3, "0") + String(c[2]).padStart(3, "0");
-
             var troops = {};
             $el.find(".overview-units-row > div.unit-row-item").each(function() {
                 var src = $(this).find("img").attr("src") || "";
                 var m = src.match(/unit_([a-z_]+)(?:@2x)?\.(png|webp)/i);
                 if (!m) return;
-                var unit = m[1];
                 var n = parseInt(($(this).find("span.unit-row-name").text() || "").replace(/\D/g, ""), 10);
-                troops[unit] = isNaN(n) ? 0 : n;
+                troops[m[1]] = isNaN(n) ? 0 : n;
             });
             villages.push({ coord: coord, troops: troops });
         });
         return villages;
     }
 
-    var villages = isMobile ? parseMobile() : parseDesktop();
-    if (!villages.length) {
-        UI.ErrorMessage("Keine Dörfer aus der Tabelle geparst. Richtige Seite (mode=units)?");
-        return;
-    }
+    function uploadAll(villages) {
 
     // twmeta erwartet exakt diese Unit-Keys — alles andere wird verworfen.
     // (Aus dem HAR: spear, sword, axe, spy, light, heavy, ram, catapult, snob.)
@@ -148,6 +164,8 @@
         postOne(v, function(){ setTimeout(next, THROTTLE_MS); });
     }
     next();
+
+    } // uploadAll
 
 })();
 
