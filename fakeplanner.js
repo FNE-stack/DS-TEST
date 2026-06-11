@@ -105,45 +105,85 @@
             tick();
         }).fail(function(){ tick(true); });
 
-        // My at-home troops per village. Drop the `type=own` parameter — TW
-        // defaults `mode=units` to at-home already, and adding `type=own` on
-        // de252 returns a page with no `tbody.row_marker` elements (same bug
-        // DS_FarmBot hit). Without this fix every village's troops came back
-        // empty and every fake got rejected as "ohne genug Truppen".
-        $.get("/game.php?screen=overview_villages&mode=units&group=0&page=-1", function(html){
+        // My at-home troops per village. Use native DOMParser instead of
+        // jQuery — jQuery's $("<div>").html() strips <tbody> outside <table>
+        // parents and returns empty. DOMParser handles the full TW page.
+        //
+        // URL needs a `village=` context param — without it TW redirects to a
+        // "pick a village" page that has no troop tables. Use the player's
+        // current village id (always valid since the script runs in TW).
+        var villagesPath = "/game.php?village=" + encodeURIComponent(myVid) +
+                           "&screen=overview_villages&mode=units&group=0&page=-1";
+        $.get(villagesPath, function(html){
             try {
                 var unitOrder = (typeof game_data !== "undefined" && game_data.units)
                                 ? game_data.units : ["spear","sword","axe","spy","light","heavy","ram","catapult","snob"];
-                // Strip stylesheets/scripts so we don't blow up jQuery with side-effect tags.
-                var safeHtml = html.replace(/<script[\s\S]*?<\/script>/gi, "")
-                                   .replace(/<link[^>]*>/gi, "");
-                var $doc = $("<div>").html(safeHtml);
-                $doc.find("tbody.row_marker").each(function(){
-                    var $tbody = $(this);
-                    var vid = $tbody.find(".quickedit-vn").attr("data-id");
+                var doc = new DOMParser().parseFromString(html, "text/html");
+
+                // Diagnostic — what did we actually get?
+                var tbodies = doc.querySelectorAll("tbody.row_marker");
+                console.log("[fakeplanner] units page: " + tbodies.length +
+                    " tbody.row_marker found, html length " + html.length);
+
+                // Accepted row labels (lower-case, normalized) — different TW
+                // markets and screen variants label this row differently:
+                //   - "eigene"  (de combined view)
+                //   - "im dorf" (de detailed units view, what de252 shows)
+                //   - "own"     (en)
+                //   - "in village" (en variant)
+                // We prefer "eigene"/"own" if present (own troops only, no
+                // foreign supports). Falls back to "im dorf"/"in village" if
+                // that's all there is — most players don't have foreign
+                // supports stationed in their own villages anyway.
+                var PREFERRED_LABELS = ["eigene", "own"];
+                var FALLBACK_LABELS = ["im dorf", "in village"];
+
+                tbodies.forEach(function(tbody){
+                    var qe = tbody.querySelector(".quickedit-vn");
+                    var vid = qe ? qe.getAttribute("data-id") : null;
                     if (!vid) return;
-                    // The "eigene" row = own troops at home (excludes supports
-                    // from elsewhere). First cell of that row is literal text.
-                    var $eigeneRow = $tbody.find("tr").filter(function(){
-                        var firstTd = $(this).find("td").not(".unit-item").first().text().trim().toLowerCase();
-                        return firstTd === "eigene" || firstTd === "own";
-                    }).first();
-                    if (!$eigeneRow.length) return;
+                    var trs = tbody.querySelectorAll("tr");
+                    var preferredRow = null, fallbackRow = null;
+                    for (var ti = 0; ti < trs.length; ti++) {
+                        var firstLabelTd = null;
+                        var tds = trs[ti].querySelectorAll("td");
+                        for (var di = 0; di < tds.length; di++) {
+                            if (!tds[di].classList.contains("unit-item")) {
+                                firstLabelTd = tds[di];
+                                break;
+                            }
+                        }
+                        if (!firstLabelTd) continue;
+                        var label = (firstLabelTd.textContent || "").trim().toLowerCase();
+                        if (PREFERRED_LABELS.indexOf(label) !== -1 && !preferredRow) preferredRow = trs[ti];
+                        if (FALLBACK_LABELS.indexOf(label) !== -1 && !fallbackRow) fallbackRow = trs[ti];
+                    }
+                    var pickedRow = preferredRow || fallbackRow;
+                    if (!pickedRow) return;
                     var t = {};
-                    $eigeneRow.find("td.unit-item").each(function(i){
-                        var n = parseInt(($(this).text() || "0").replace(/\D/g, ""), 10) || 0;
-                        var u = unitOrder[i];
+                    var unitCells = pickedRow.querySelectorAll("td.unit-item");
+                    unitCells.forEach(function(td, idx){
+                        var n = parseInt((td.textContent || "0").replace(/\D/g, ""), 10) || 0;
+                        var u = unitOrder[idx];
                         if (u) t[u] = n;
                     });
                     troopsByVid[vid] = t;
                 });
                 console.log("[fakeplanner] troops parsed for " +
                     Object.keys(troopsByVid).length + " villages");
+                if (Object.keys(troopsByVid).length === 0 && tbodies.length === 0) {
+                    // Dump a chunk so we can see what TW served instead.
+                    console.warn("[fakeplanner] no tbody.row_marker — first 400 chars of response:",
+                        html.substr(0, 400));
+                }
             } catch(e) {
                 console.warn("[fakeplanner] troops parse failed", e);
             }
             tick();
-        }).fail(function(){ tick(true); });
+        }).fail(function(xhr){
+            console.warn("[fakeplanner] units page GET failed", xhr && xhr.status);
+            tick(true);
+        });
 
         $.get("/map/village.txt", function(data){
             data.split("\n").forEach(function(line){
