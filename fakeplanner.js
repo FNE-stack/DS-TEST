@@ -374,30 +374,36 @@
 
     // Build the smallest possible fake for a target from one origin village's
     // actual at-home troops. Returns the troop object on success, or null if
-    // the village can't pay the fake limit even using everything it has.
+    // the village can't meet the hard requirements (minCats + minSpies).
     //
     // Rules (auto, no manual template):
-    //   1. Use `opts.minCats` (e.g. 1) catapults as the absolute minimum —
-    //      cats dictate runtime so the attack arrives in cat-time.
-    //   2. If 1 cat is enough for fake limit, stop.
-    //   3. Otherwise add MORE cats up to `opts.maxCats` (e.g. 8) — they're
-    //      the densest fs (8 each) so each additional cat saves ~8 spies.
-    //   4. Then spies, then spears/swords/axes/archers to top off.
+    //   1. HARD requirements — village MUST have these or skip:
+    //        - `opts.minCats` catapults (default 1) — runtime dictates fake-cred
+    //        - `opts.minSpies` spies   (default 5) — always send spies for intel
+    //   2. If those alone already pass the fake limit → done.
+    //   3. Otherwise top up cats to maxCats (densest filler).
+    //   4. Then more spies, then spears/swords/axes/archers.
     function buildFakeFromVillage(origin, target, reservedHere, opts) {
         var have = troopsByVid[origin.vid] || {};
         function avail(u) { return Math.max(0, (have[u] || 0) - (reservedHere[u] || 0)); }
 
         var minCats = Math.max(1, opts.minCats || 1);
         var maxCats = Math.max(minCats, opts.maxCats || 8);
-        if (avail("catapult") < minCats) return null;  // no cats = no fake
+        var minSpies = Math.max(0, opts.minSpies != null ? opts.minSpies : 5);
+
+        // Hard requirements check.
+        if (avail("catapult") < minCats) return null;
+        if (avail("spy") < minSpies) return null;
 
         var t = { catapult: minCats };
-        var currentFs = minCats * UNIT_FARM_SPACE.catapult;
+        if (minSpies > 0) t.spy = minSpies;
+        var currentFs = minCats * UNIT_FARM_SPACE.catapult
+                      + minSpies * UNIT_FARM_SPACE.spy;
         var required = target && target.points > 0 ? target.points * worldFakeLimit : 0;
 
         if (currentFs >= required) return t;
 
-        // Step 2: top up to maxCats first — cats are the densest filler.
+        // Step 2: top up cats to maxCats first (each cat = 8 fs, densest).
         var moreCatsWanted = Math.ceil((required - currentFs) / UNIT_FARM_SPACE.catapult);
         var extraCatsLimit = maxCats - minCats;
         var extraCats = Math.min(moreCatsWanted, extraCatsLimit, avail("catapult") - minCats);
@@ -411,7 +417,9 @@
         for (var i = 0; i < FILLER_ORDER.length; i++) {
             var u = FILLER_ORDER[i];
             if (!UNIT_FARM_SPACE[u]) continue;
-            var availUnits = avail(u);
+            // For spies we already added minSpies — only count what's left available.
+            var alreadyUsed = t[u] || 0;
+            var availUnits = avail(u) - alreadyUsed;
             if (availUnits <= 0) continue;
 
             var neededFs = required - currentFs;
@@ -610,6 +618,12 @@
                         "die effizientesten Filler (8 fs).'>" +
                 "</div>" +
 
+                "<label>Min. Späher:</label>" +
+                "<input id='fp-minspies' type='number' min='0' max='200' value='5' " +
+                    "style='width:80px;' " +
+                    "title='Pflicht-Späher pro Fake (für Intel). Hat ein Dorf weniger Späher als hier " +
+                    "eingestellt, wird der Fake aus diesem Dorf abgelehnt.'>" +
+
                 "<label>Fake-Logik:</label>" +
                 "<div style='font-size:11px;color:#555;'>" +
                     "<b>Welt-Fakelimit: " + fakeLimitPct + "%</b> der Dorf-Punkte<br>" +
@@ -692,6 +706,7 @@
             endMs: new Date($("#fp-end").val()).getTime(),
             minCats: parseInt($("#fp-mincats").val(), 10) || 1,
             maxCats: parseInt($("#fp-maxcats").val(), 10) || 8,
+            minSpies: parseInt($("#fp-minspies").val(), 10) || 0,
             maxDist: parseFloat($("#fp-maxdist").val()) || 25
         };
     }
@@ -720,6 +735,7 @@
         var result = generateAllFakes(targets, myVillages, {
             minCats: ui.minCats,
             maxCats: ui.maxCats,
+            minSpies: ui.minSpies,
             maxDist: ui.maxDist
         });
         var droppedFar = result.droppedFar;
