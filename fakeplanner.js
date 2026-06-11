@@ -86,13 +86,18 @@
             if (--calls === 0) done(errors > 0);
         }
 
-        // World config — gives us the fake-limit ratio. Search anywhere in
-        // the XML (TW nests this under <config><game> on some markets and
-        // directly under <config> on others; just grab whichever shows up).
+        // World config — gives us the fake-limit ratio. TW's XML returns this
+        // as a percentage VALUE (e.g. "1" = 1%, "5" = 5%), NOT a fraction.
+        // We auto-detect: if value > 1 it's percent → divide by 100; if ≤ 1
+        // it's already a fraction. Was showing 100% before because we treated
+        // "1" as fraction.
         $.get("/interface.php?func=get_config", function(xml){
             try {
                 var fl = $(xml).find("fake_limit").first().text();
-                if (fl) worldFakeLimit = parseFloat(fl) || worldFakeLimit;
+                var v = parseFloat(fl);
+                if (!isNaN(v) && v > 0) {
+                    worldFakeLimit = v > 1 ? v / 100 : v;
+                }
             } catch(e){}
             tick();
         }).fail(function(){ tick(true); });
@@ -312,99 +317,115 @@
         return candidates.slice(0, count);
     }
 
-    // === Origin assignment (round-robin, balanced load) ===
-    // For each target, pick the closest origin that currently has the FEWEST
-    // assignments. This balances load across all villages — no village gets a
-    // second fake until every village has gotten one, no village gets a third
-    // until every village has gotten two, etc. Allows N fakes > village count.
-    function assignOrigins(myVillages, targets) {
+    // (assignOrigins removed — generateAllFakes now does origin selection +
+    // troop building in one pass, since the village's available troops
+    // determine whether a target is even feasible from it.)
+
+    // Filler order — preference for what fills the fake limit. Spies first
+    // (cheapest strategically, fastest 9 mpf), then cheap defensive infantry.
+    // Order matters: earlier units get used first when filling.
+    var FILLER_ORDER = ["spy", "spear", "sword", "axe", "archer"];
+
+    // Build the smallest possible fake for a target from one origin village's
+    // actual at-home troops. Returns the troop object on success, or null if
+    // the village can't pay the fake limit even using everything it has.
+    //
+    // Rules (auto-generated, no manual template):
+    //   - Always include opts.minCats catapults (default 1) — they dictate
+    //     runtime so the attack arrives in catapult-time, looking real.
+    //   - Fill remaining farm-space requirement using FILLER_ORDER, taking
+    //     ONLY what the village has available (minus already-reserved troops).
+    //   - Use the smallest unit count that reaches the threshold.
+    function buildFakeFromVillage(origin, target, reservedHere, opts) {
+        var have = troopsByVid[origin.vid] || {};
+        function avail(u) { return Math.max(0, (have[u] || 0) - (reservedHere[u] || 0)); }
+
+        var minCats = Math.max(1, opts.minCats || 1);
+        if (avail("catapult") < minCats) return null;  // no cats = no fake (runtime needs cat speed)
+
+        var t = { catapult: minCats };
+        var currentFs = minCats * UNIT_FARM_SPACE.catapult;
+        var required = target && target.points > 0 ? target.points * worldFakeLimit : 0;
+
+        if (currentFs >= required) return t;  // 1 cat already passes for small villages
+
+        // Fill remaining required FS, walking the preferred filler list.
+        for (var i = 0; i < FILLER_ORDER.length; i++) {
+            var u = FILLER_ORDER[i];
+            if (!UNIT_FARM_SPACE[u]) continue;
+            var availUnits = avail(u);
+            if (availUnits <= 0) continue;
+
+            var neededFs = required - currentFs;
+            var fsPer = UNIT_FARM_SPACE[u];
+            var neededUnits = Math.ceil(neededFs / fsPer);
+            var use = Math.min(neededUnits, availUnits);
+
+            if (use > 0) {
+                t[u] = (t[u] || 0) + use;
+                currentFs += use * fsPer;
+            }
+            if (currentFs >= required) return t;
+        }
+        // Walked all filler options, still under the limit → village can't pay.
+        return null;
+    }
+
+    // === Generation: pick origin + build troops in one pass ===
+    // For each target, walk candidate villages in order of (assignment count,
+    // distance). For each candidate, try buildFakeFromVillage. If it works,
+    // reserve those troops and move on. If no village can build it, drop.
+    function generateAllFakes(targets, myVillages, opts) {
         var perVillageCount = {};
         myVillages.forEach(function(v){ perVillageCount[v.vid] = 0; });
-        var assignments = [];
+        var reservedByVid = {};
+
+        var fakes = [];
+        var droppedNoUnits = 0;
+        var droppedFar = 0;
 
         targets.forEach(function(target){
-            // Find minimum current assignment count across all villages.
-            var minCount = Infinity;
-            myVillages.forEach(function(v){
-                if (perVillageCount[v.vid] < minCount) minCount = perVillageCount[v.vid];
+            // Sort: villages with fewest current assignments first (round-robin),
+            // then closest first (cheapest send). Each village can be picked
+            // again only after every other has caught up.
+            var ranked = myVillages.slice().sort(function(a, b){
+                var c = perVillageCount[a.vid] - perVillageCount[b.vid];
+                if (c !== 0) return c;
+                return dist(a, target) - dist(b, target);
             });
-            // Among villages tied for the min, pick the one closest to target.
-            var best = null;
-            var bestD = Infinity;
-            myVillages.forEach(function(o){
-                if (perVillageCount[o.vid] !== minCount) return;
-                var d = dist(o, target);
-                if (d < bestD) { bestD = d; best = o; }
-            });
-            if (best) {
-                perVillageCount[best.vid]++;
-                assignments.push({ origin: best, target: target, dist: bestD });
+
+            var built = null;
+            for (var i = 0; i < ranked.length; i++) {
+                var origin = ranked[i];
+                var d = dist(origin, target);
+                if (d > opts.maxDist) continue;  // ranked by dist within tie, but max applies
+                var troops = buildFakeFromVillage(
+                    origin, target, reservedByVid[origin.vid] || {}, opts
+                );
+                if (troops) {
+                    reservedByVid[origin.vid] = reservedByVid[origin.vid] || {};
+                    Object.keys(troops).forEach(function(u){
+                        reservedByVid[origin.vid][u] =
+                            (reservedByVid[origin.vid][u] || 0) + troops[u];
+                    });
+                    perVillageCount[origin.vid]++;
+                    built = { origin: origin, target: target, troops: troops, dist: d };
+                    break;
+                }
+            }
+
+            if (!built) {
+                // Check if it was a distance issue or a unit issue.
+                var anyInRange = myVillages.some(function(v){
+                    return dist(v, target) <= opts.maxDist;
+                });
+                if (!anyInRange) droppedFar++;
+                else droppedNoUnits++;
+            } else {
+                fakes.push(built);
             }
         });
-        return assignments;
-    }
-
-    // === Template builder ===
-    // Returns { spear: N, spy: N, ... } per UI selection.
-    function buildTroopTemplate(uiVals) {
-        var t = {};
-        WB_UNIT_ORDER.forEach(function(u){
-            if (u === "militia") return;
-            var n = parseInt(uiVals[u] || 0, 10);
-            if (n > 0) t[u] = n;
-        });
-        return t;
-    }
-    // Quick presets.
-    function presetTemplate(name) {
-        switch (name) {
-            case "spy": return { spy: 1 };
-            case "spear": return { spear: 1 };
-            case "spy_sword": return { spy: 1, sword: 1 };
-            case "spy_ram": return { spy: 1, ram: 1 };
-            case "spy_ram_cat5": return { spy: 1, ram: 1, catapult: 5 };
-            default: return { spy: 1 };
-        }
-    }
-    // Compute total farm space of a troops object.
-    function farmSpaceOf(troops) {
-        var sum = 0;
-        Object.keys(troops).forEach(function(u){
-            sum += (UNIT_FARM_SPACE[u] || 0) * (troops[u] || 0);
-        });
-        return sum;
-    }
-    // Per-target template: start with the base, then ensure the attack passes
-    // the world's fake-limit threshold by adding a small fixed number of cats
-    // PLUS however many spies are needed to reach `target.points * world_fake_limit`.
-    //
-    // Why spies + few cats (not just cats)?
-    //   Spies are 2 fs each — they fill farm space cheap and barely slow the
-    //   attack. Cats are 8 fs each but every cat is real damage potential and
-    //   you don't want to ship 50 cats per fake. User's rule: cap cats at
-    //   `opts.catCount` (default 5), fill the rest with spies.
-    //
-    // Worked example: 12000-pt village, 1% fake limit → need 120 fs.
-    //   5 cats = 40 fs  →  remaining 80 fs  →  40 spies.
-    //   Result: { catapult: 5, spy: 40 }. Slowest unit = catapult (30 mpf).
-    function buildTroopsForTarget(baseTroops, target, opts) {
-        var t = {};
-        Object.keys(baseTroops).forEach(function(k){ t[k] = baseTroops[k]; });
-
-        if (opts.passFakeLimit && target && target.points > 0) {
-            // Add the configured catapult count first (or top up if base already has cats).
-            var catCount = Math.max(1, opts.catCount || 5);
-            t.catapult = Math.max(t.catapult || 0, catCount);
-            // Then fill remaining farm space with spies.
-            var required = target.points * worldFakeLimit;
-            var current = farmSpaceOf(t);
-            if (current < required) {
-                var needFs = Math.ceil(required - current);
-                var addSpies = Math.ceil(needFs / UNIT_FARM_SPACE.spy);
-                t.spy = (t.spy || 0) + addSpies;
-            }
-        }
-        return t;
+        return { fakes: fakes, droppedFar: droppedFar, droppedNoUnits: droppedNoUnits };
     }
 
     // === Arrival time spread ===
@@ -521,39 +542,19 @@
                 "<div><input id='fp-minp' type='number' min='0' placeholder='min' style='width:48%;'> " +
                 "<input id='fp-maxp' type='number' min='0' placeholder='max' style='width:48%;'></div>" +
 
-                "<label>Vorlage:</label>" +
-                "<select id='fp-preset' style='width:100%;'>" +
-                    "<option value='spy'>1 Späher (billig, schnell)</option>" +
-                    "<option value='spear'>1 Speer (minimum)</option>" +
-                    "<option value='spy_sword'>1 Späher + 1 Schwert</option>" +
-                    "<option value='spy_ram'>1 Späher + 1 Ramme</option>" +
-                    "<option value='spy_ram_cat5'>1 Späher + 1 Ramme + 5 Katas</option>" +
-                    "<option value='custom'>Eigene Auswahl…</option>" +
-                "</select>" +
+                "<label>Min. Katapulte:</label>" +
+                "<input id='fp-mincats' type='number' min='1' max='10' value='1' " +
+                    "style='width:80px;' " +
+                    "title='Mindest-Anzahl Katapulte pro Fake. Dient nur der Tarnung (Cat-Runtime). " +
+                    "Höher = mehr Tarnung, aber mehr Kosten. 1 reicht meistens.'>" +
 
-                "<label>Eigene Truppen:</label>" +
-                "<div id='fp-custom' style='display:none;font-size:11px;'>" +
-                    WB_UNIT_ORDER.filter(function(u){ return u !== "militia"; }).map(function(u){
-                        return "<label style='display:inline-block;width:90px;'>" + u +
-                               ": <input data-unit='" + u +
-                               "' type='number' min='0' value='0' " +
-                               "style='width:50px;'></label>";
-                    }).join("") +
-                "</div>" +
-
-                "<label>Tarn-Optionen:</label>" +
-                "<div style='font-size:11px;'>" +
-                    "<label style='display:block;margin-bottom:3px;cursor:pointer;'>" +
-                        "<input id='fp-passfakelimit' type='checkbox' checked> " +
-                        "Fakelimit umgehen <span style='color:#888;'>(Welt: " + fakeLimitPct +
-                        "% Dorf-Punkte → fülle mit Spähern auf)</span>" +
-                    "</label>" +
-                    "<label style='display:block;cursor:pointer;'>" +
-                        "Katapulte pro Fake: " +
-                        "<input id='fp-catcount' type='number' min='1' max='20' value='5' " +
-                        "style='width:60px;margin-left:4px;'>" +
-                        "<span style='color:#888;'> (kleine Anzahl, Rest = Späher)</span>" +
-                    "</label>" +
+                "<label>Fake-Logik:</label>" +
+                "<div style='font-size:11px;color:#555;'>" +
+                    "<b>Welt-Fakelimit: " + fakeLimitPct + "%</b> der Dorf-Punkte<br>" +
+                    "Generierung: <b>" + (opts.minCats || 1) + " Kata + Auffüllen mit " +
+                    FILLER_ORDER.join(" → ") + "</b><br>" +
+                    "<span style='color:#888;'>Pro Fake wird der kleinstmögliche Mix aus " +
+                    "deinen verfügbaren Truppen gewählt der das Limit knackt.</span>" +
                 "</div>" +
 
             "</div>" +
