@@ -1,0 +1,691 @@
+(function(){
+    "use strict";
+
+    // === CONFIG ===
+    var VERSION = "v1";
+    var GITHUB_OWNER = "FNE-stack";
+    var GITHUB_DATA_REPO = "DS-PLAN";
+    var GITHUB_BRANCH = "main";
+    var GITHUB_TOKEN = window.LAUNCHPAD_TOKEN || "";
+    var _playerName = (typeof game_data !== "undefined" && game_data.player && game_data.player.name)
+                      ? game_data.player.name : "unknown";
+    var FAKES_FILE = _playerName + "-fakes.json";
+    var FAKES_API = "https://api.github.com/repos/" + GITHUB_OWNER + "/" + GITHUB_DATA_REPO
+                    + "/contents/" + encodeURIComponent(FAKES_FILE);
+
+    // === Remove any previous instance ===
+    $("#fakeplanner-panel").remove();
+    if (window._fpInt) { clearInterval(window._fpInt); window._fpInt = null; }
+
+    // === World data state ===
+    var villages = [];   // [{vid, name, x, y, pid, points}]
+    var players = [];    // [{pid, name, tid, ...}]
+    var tribes = [];     // [{tid, name, tag, members, points}]
+    var myVid = String((typeof game_data !== "undefined" && game_data.village)
+                       ? game_data.village.id : "");
+    var myPid = String((typeof game_data !== "undefined" && game_data.player)
+                       ? game_data.player.id : "");
+    var villageById = {};
+    var villagesByPlayer = {};
+    var playerById = {};
+    var tribeById = {};
+
+    var worldSpeed = (game_data.world && +game_data.world.speed) ? +game_data.world.speed : 1;
+    var unitSpeed  = (game_data.world && +game_data.world.unit_speed) ? +game_data.world.unit_speed : 1;
+    var UNIT_SPEEDS = {
+        spear: 18, sword: 22, axe: 18, archer: 18, spy: 9,
+        light: 10, marcher: 10, heavy: 11, ram: 30, catapult: 30,
+        knight: 10, snob: 35, militia: 18
+    };
+    // Workbench unit order — MUST match what launchpad.js parses (spear, sword,
+    // axe, archer, spy, light, marcher, heavy, ram, catapult, knight, snob, militia).
+    var WB_UNIT_ORDER = ["spear","sword","axe","archer","spy","light","marcher",
+                         "heavy","ram","catapult","knight","snob","militia"];
+
+    // === UI ===
+    var panel = $(
+        "<div id='fakeplanner-panel' style='background:#f4e4bc;border:1px solid #804000;" +
+        "padding:10px;margin:8px 0;font-family:Verdana;max-width:100%;box-sizing:border-box;'></div>"
+    );
+    panel.append("<h3 style='margin:0 0 8px 0;font-size:14px;'>Fake Planner " +
+                 "<span style='font-size:11px;color:#888;font-weight:normal;'>" + VERSION + "</span>" +
+                 "<span id='fp-close' style='cursor:pointer;float:right;color:#804000;'>✕</span>" +
+                 "</h3>");
+
+    var status = $("<div id='fp-status' style='margin:6px 0;font-size:12px;color:#555;min-height:16px;'>Lade Weltdaten…</div>");
+    var body = $("<div id='fp-body' style='display:none;'></div>");
+    panel.append(status).append(body);
+
+    var mount = $("#contentContainer").length ? $("#contentContainer") : $("body");
+    mount.prepend(panel);
+
+    $("#fp-close").on("click", function(){ panel.remove(); });
+
+    function setStatus(msg, color) {
+        status.text(msg).css("color", color || "#555");
+    }
+
+    // === Load world data ===
+    function loadWorldData(done) {
+        var calls = 3, errors = 0;
+        function tick(err) {
+            if (err) errors++;
+            if (--calls === 0) done(errors > 0);
+        }
+
+        $.get("/map/village.txt", function(data){
+            data.split("\n").forEach(function(line){
+                var p = line.split(",");
+                if (p.length < 6) return;
+                var v = {
+                    vid: p[0],
+                    name: decodeURIComponent((p[1]||"").replace(/\+/g, "%20")),
+                    x: parseInt(p[2], 10),
+                    y: parseInt(p[3], 10),
+                    pid: p[4] || "0",
+                    points: parseInt(p[5], 10) || 0
+                };
+                villages.push(v);
+                villageById[v.vid] = v;
+                (villagesByPlayer[v.pid] = villagesByPlayer[v.pid] || []).push(v);
+            });
+            tick();
+        }).fail(function(){ tick(true); });
+
+        $.get("/map/player.txt", function(data){
+            data.split("\n").forEach(function(line){
+                var p = line.split(",");
+                if (p.length < 3) return;
+                var pl = {
+                    pid: p[0],
+                    name: decodeURIComponent((p[1]||"").replace(/\+/g, "%20")),
+                    tid: p[2],
+                    villages: parseInt(p[3], 10) || 0,
+                    points: parseInt(p[4], 10) || 0,
+                    rank: parseInt(p[5], 10) || 0
+                };
+                players.push(pl);
+                playerById[pl.pid] = pl;
+            });
+            tick();
+        }).fail(function(){ tick(true); });
+
+        $.get("/map/ally.txt", function(data){
+            data.split("\n").forEach(function(line){
+                var p = line.split(",");
+                if (p.length < 4) return;
+                var t = {
+                    tid: p[0],
+                    name: decodeURIComponent((p[1]||"").replace(/\+/g, "%20")),
+                    tag: decodeURIComponent((p[2]||"").replace(/\+/g, "%20")),
+                    members: parseInt(p[3], 10) || 0,
+                    villages: parseInt(p[4], 10) || 0,
+                    points: parseInt(p[5], 10) || 0,
+                    allpoints: parseInt(p[6], 10) || 0,
+                    rank: parseInt(p[7], 10) || 0
+                };
+                tribes.push(t);
+                tribeById[t.tid] = t;
+            });
+            tick();
+        }).fail(function(){ tick(true); });
+    }
+
+    // === Helpers ===
+    function dist(v1, v2) {
+        return Math.hypot(v1.x - v2.x, v1.y - v2.y);
+    }
+    function distCoord(v, x, y) {
+        return Math.hypot(v.x - x, v.y - y);
+    }
+    function b64(s) {
+        return btoa(String(s));
+    }
+    function getMyVillages() {
+        return (villagesByPlayer[myPid] || []).slice();
+    }
+    function getCurrentVillage() {
+        return villageById[myVid] || null;
+    }
+
+    // Slowest unit (highest mpf) among non-zero units in a troops object.
+    function slowestUnit(troops) {
+        var slowestName = null;
+        var slowestMpf = -1;
+        Object.keys(troops).forEach(function(u){
+            if (!troops[u] || troops[u] <= 0) return;
+            var mpf = UNIT_SPEEDS[u] || 0;
+            if (mpf > slowestMpf) { slowestMpf = mpf; slowestName = u; }
+        });
+        return slowestName;
+    }
+
+    // Compute milliseconds of travel for the troops over the given distance.
+    function travelMs(troops, distance) {
+        var slow = slowestUnit(troops);
+        if (!slow) return 0;
+        return Math.round(distance * UNIT_SPEEDS[slow] * 60 / (worldSpeed * unitSpeed)) * 1000;
+    }
+
+    // Encode troops object into launchpad's workbench format.
+    // Empty values for zero units, base64(count) for non-zero, militia always "MA==".
+    function encodeTroopsWB(troops) {
+        return WB_UNIT_ORDER.map(function(u){
+            if (u === "militia") return "militia=MA==";
+            var n = parseInt(troops[u] || 0, 10);
+            return u + "=" + (n > 0 ? b64(n) : "");
+        }).join("/");
+    }
+
+    // Build a single workbench line for one fake.
+    function buildWorkbenchLine(originVid, targetVid, troops, arrivalMs) {
+        var slowest = slowestUnit(troops) || "spear";
+        return [
+            originVid,
+            targetVid,
+            slowest,
+            arrivalMs,
+            "0",        // catapult target (fakes don't catapult)
+            "false",    // unknown flag (launchpad always emits false)
+            "false",    // unknown flag
+            encodeTroopsWB(troops)
+        ].join("&");
+    }
+
+    // Convert one parsed fake into launchpad's JSON entry format (mirrors parseLine).
+    function fakeToLaunchpadEntry(originVid, targetVid, troops, arrivalMs) {
+        var id = originVid + "_" + targetVid + "_" + arrivalMs;
+        return {
+            id: id,
+            originId: String(originVid),
+            targetId: String(targetVid),
+            slowest: slowestUnit(troops) || "spear",
+            arrivalMs: arrivalMs,
+            catapultTarget: "0",
+            troops: troops,
+            raw: buildWorkbenchLine(originVid, targetVid, troops, arrivalMs),
+            sent: false,
+            sentBy: null,
+            sentAt: null,
+            type: "attack"
+        };
+    }
+
+    // === Target selection ===
+    function pickTargetsByTribe(tribeId, mode, frontX, frontY, count, opts) {
+        opts = opts || {};
+        // All enemy villages of that tribe.
+        var enemyPids = players.filter(function(p){ return p.tid === tribeId; })
+                               .map(function(p){ return p.pid; });
+        var enemyPidSet = {};
+        enemyPids.forEach(function(p){ enemyPidSet[p] = true; });
+        var candidates = villages.filter(function(v){ return enemyPidSet[v.pid]; });
+
+        // Filter by min/max points if set.
+        if (opts.minPoints) {
+            candidates = candidates.filter(function(v){ return v.points >= opts.minPoints; });
+        }
+        if (opts.maxPoints) {
+            candidates = candidates.filter(function(v){ return v.points <= opts.maxPoints; });
+        }
+        // Optional: exclude players (e.g. inactives, specific allies of enemy).
+        if (opts.excludePids && opts.excludePids.length) {
+            var exSet = {};
+            opts.excludePids.forEach(function(p){ exSet[p] = true; });
+            candidates = candidates.filter(function(v){ return !exSet[v.pid]; });
+        }
+
+        if (mode === "front") {
+            candidates.sort(function(a, b){
+                return distCoord(a, frontX, frontY) - distCoord(b, frontX, frontY);
+            });
+        } else {
+            // random — shuffle in place (Fisher-Yates)
+            for (var i = candidates.length - 1; i > 0; i--) {
+                var j = Math.floor(Math.random() * (i + 1));
+                var tmp = candidates[i];
+                candidates[i] = candidates[j];
+                candidates[j] = tmp;
+            }
+        }
+        return candidates.slice(0, count);
+    }
+
+    // === Origin assignment (round-robin, 1 fake max per origin) ===
+    // For each target (in order), pick the closest *unused* origin from myVillages.
+    function assignOrigins(myVillages, targets) {
+        var usedOrigins = {};
+        var assignments = [];  // [{origin, target}]
+
+        // Pre-sort targets by distance-to-nearest-origin? Optional — we go in
+        // the order given (which is already "closest first" for front mode).
+        targets.forEach(function(target){
+            var best = null;
+            var bestD = Infinity;
+            myVillages.forEach(function(o){
+                if (usedOrigins[o.vid]) return;
+                var d = dist(o, target);
+                if (d < bestD) { bestD = d; best = o; }
+            });
+            if (best) {
+                usedOrigins[best.vid] = true;
+                assignments.push({ origin: best, target: target, dist: bestD });
+            }
+        });
+        return assignments;
+    }
+
+    // === Template builder ===
+    // Returns { spear: N, spy: N, ... } per UI selection.
+    function buildTroopTemplate(uiVals) {
+        var t = {};
+        WB_UNIT_ORDER.forEach(function(u){
+            if (u === "militia") return;
+            var n = parseInt(uiVals[u] || 0, 10);
+            if (n > 0) t[u] = n;
+        });
+        return t;
+    }
+    // Quick presets.
+    function presetTemplate(name) {
+        switch (name) {
+            case "spy": return { spy: 1 };
+            case "spear": return { spear: 1 };
+            case "spy_sword": return { spy: 1, sword: 1 };
+            case "spy_ram": return { spy: 1, ram: 1 };
+            case "spy_ram_cat5": return { spy: 1, ram: 1, catapult: 5 };
+            default: return { spy: 1 };
+        }
+    }
+
+    // === Arrival time spread ===
+    // Returns N timestamps spread between start and end ms, with optional jitter.
+    function spreadArrivals(startMs, endMs, n, jitterMs) {
+        if (n === 1) return [Math.floor((startMs + endMs) / 2)];
+        var out = [];
+        var step = (endMs - startMs) / (n - 1);
+        for (var i = 0; i < n; i++) {
+            var t = startMs + i * step;
+            if (jitterMs) t += (Math.random() - 0.5) * 2 * jitterMs;
+            out.push(Math.floor(t));
+        }
+        return out;
+    }
+
+    // === GitHub I/O for the fakes file ===
+    function authHeaders() {
+        return { "Authorization": "Bearer " + GITHUB_TOKEN,
+                 "Accept": "application/vnd.github+json" };
+    }
+    function ghGetFakes(done) {
+        $.ajax({
+            url: FAKES_API + "?ref=" + GITHUB_BRANCH + "&_=" + Date.now(),
+            headers: authHeaders(),
+            success: function(data){
+                try {
+                    var content = decodeURIComponent(escape(atob(data.content.replace(/\n/g, ""))));
+                    done(null, { sha: data.sha, payload: JSON.parse(content) });
+                } catch(e){ done(e); }
+            },
+            error: function(xhr){
+                if (xhr.status === 404) done(null, { sha: null, payload: { fakes: [] } });
+                else done(new Error("GitHub GET " + xhr.status));
+            }
+        });
+    }
+    function ghPutFakes(sha, payload, message, done) {
+        var body = {
+            message: message,
+            content: btoa(unescape(encodeURIComponent(JSON.stringify(payload, null, 2)))),
+            branch: GITHUB_BRANCH
+        };
+        if (sha) body.sha = sha;
+        $.ajax({
+            url: FAKES_API,
+            method: "PUT",
+            headers: authHeaders(),
+            contentType: "application/json",
+            data: JSON.stringify(body),
+            success: function(){ done(null); },
+            error: function(xhr){ done(new Error("GitHub PUT " + xhr.status + ": " + xhr.responseText)); }
+        });
+    }
+
+    // === Render Panel UI ===
+    function renderUI() {
+        var myVillages = getMyVillages();
+        if (myVillages.length === 0) {
+            setStatus("Keine eigenen Dörfer gefunden — kann nichts faken.", "red");
+            return;
+        }
+        var current = getCurrentVillage() || myVillages[0];
+
+        // Tribe options: only tribes that have at least one member, sorted by tag.
+        var tribeOpts = tribes
+            .filter(function(t){ return t.members > 0 && t.tag; })
+            .sort(function(a, b){ return a.tag.toLowerCase().localeCompare(b.tag.toLowerCase()); })
+            .map(function(t){
+                return "<option value='" + t.tid + "'>" + escHtml(t.tag) +
+                       " (" + escHtml(t.name) + ", " + t.members + ")</option>";
+            })
+            .join("");
+
+        // My village options (for the front-center picker).
+        var myVilOpts = myVillages
+            .sort(function(a, b){ return a.name.toLowerCase().localeCompare(b.name.toLowerCase()); })
+            .map(function(v){
+                return "<option value='" + v.vid + "'" + (v.vid === current.vid ? " selected" : "") +
+                       ">" + escHtml(v.name) + " (" + v.x + "|" + v.y + ")</option>";
+            }).join("");
+
+        var nowDate = serverDate();  // server-time-based "today"
+        var defaultStart = nowDate.toISOString().slice(0, 16);
+        var endDate = new Date(nowDate.getTime() + 12 * 3600 * 1000);
+        var defaultEnd = endDate.toISOString().slice(0, 16);
+
+        body.html(
+            "<div style='display:grid;grid-template-columns:130px 1fr;gap:6px;align-items:center;font-size:12px;'>" +
+
+                "<label>Gegner-Stamm:</label>" +
+                "<select id='fp-tribe' style='width:100%;'>" + tribeOpts + "</select>" +
+
+                "<label>Modus:</label>" +
+                "<select id='fp-mode' style='width:100%;'>" +
+                    "<option value='front' selected>Front (nahegelegen)</option>" +
+                    "<option value='random'>Zufall (gesamter Stamm)</option>" +
+                "</select>" +
+
+                "<label>Front-Zentrum:</label>" +
+                "<select id='fp-front' style='width:100%;'>" + myVilOpts + "</select>" +
+
+                "<label>Anzahl Fakes:</label>" +
+                "<input id='fp-count' type='number' min='1' max='" + myVillages.length +
+                    "' value='" + Math.min(10, myVillages.length) + "' style='width:100%;'>" +
+
+                "<label>Min/Max Punkte:</label>" +
+                "<div><input id='fp-minp' type='number' min='0' placeholder='min' style='width:48%;'> " +
+                "<input id='fp-maxp' type='number' min='0' placeholder='max' style='width:48%;'></div>" +
+
+                "<label>Vorlage:</label>" +
+                "<select id='fp-preset' style='width:100%;'>" +
+                    "<option value='spy'>1 Späher (billig, schnell)</option>" +
+                    "<option value='spear'>1 Speer (minimum)</option>" +
+                    "<option value='spy_sword'>1 Späher + 1 Schwert</option>" +
+                    "<option value='spy_ram'>1 Späher + 1 Ramme</option>" +
+                    "<option value='spy_ram_cat5'>1 Späher + 1 Ramme + 5 Katas</option>" +
+                    "<option value='custom'>Eigene Auswahl…</option>" +
+                "</select>" +
+
+                "<label>Eigene Truppen:</label>" +
+                "<div id='fp-custom' style='display:none;font-size:11px;'>" +
+                    WB_UNIT_ORDER.filter(function(u){ return u !== "militia"; }).map(function(u){
+                        return "<label style='display:inline-block;width:90px;'>" + u +
+                               ": <input data-unit='" + u +
+                               "' type='number' min='0' value='0' " +
+                               "style='width:50px;'></label>";
+                    }).join("") +
+                "</div>" +
+
+                "<label>Ankunft von:</label>" +
+                "<input id='fp-start' type='datetime-local' value='" + defaultStart + "' style='width:100%;'>" +
+
+                "<label>Ankunft bis:</label>" +
+                "<input id='fp-end' type='datetime-local' value='" + defaultEnd + "' style='width:100%;'>" +
+
+            "</div>" +
+
+            "<div style='margin-top:10px;'>" +
+                "<button id='fp-generate' style='padding:6px 12px;font-weight:bold;'>" +
+                    "▶ Fakes generieren</button>" +
+                "<span id='fp-summary' style='margin-left:10px;font-size:11px;color:#555;'></span>" +
+            "</div>" +
+
+            "<textarea id='fp-output' readonly placeholder='Generierte Workbench-Befehle erscheinen hier…' " +
+                "style='width:100%;height:120px;margin-top:8px;font-family:monospace;font-size:11px;" +
+                "box-sizing:border-box;'></textarea>" +
+
+            "<div style='margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;'>" +
+                "<button id='fp-copy' disabled style='padding:5px 10px;'>📋 Alle kopieren</button>" +
+                "<button id='fp-pushfakes' disabled style='padding:5px 10px;'>💾 In " + FAKES_FILE + " sichern</button>" +
+                "<button id='fp-pushmain' disabled style='padding:5px 10px;background:#afa;font-weight:bold;'>" +
+                    "🚀 In Launchpad-Plan (" + _playerName + ".json) übernehmen</button>" +
+            "</div>"
+        );
+
+        body.show();
+
+        // === Event handlers ===
+        $("#fp-preset").on("change", function(){
+            $("#fp-custom").toggle(this.value === "custom");
+        });
+
+        // Mode → toggle front-center visibility
+        $("#fp-mode").on("change", function(){
+            $("#fp-front").closest("select").prop("disabled", this.value !== "front");
+        });
+
+        $("#fp-generate").on("click", onGenerate);
+        $("#fp-copy").on("click", function(){
+            var $out = $("#fp-output");
+            $out[0].select();
+            try { document.execCommand("copy"); UI.SuccessMessage("Kopiert"); } catch(e){}
+        });
+        $("#fp-pushfakes").on("click", function(){ pushToFakesFile(); });
+        $("#fp-pushmain").on("click", function(){ pushToMainPlan(); });
+
+        setStatus("Bereit — " + tribeOpts.split("</option>").length + " Stämme, " +
+                  myVillages.length + " eigene Dörfer geladen.", "green");
+    }
+
+    // Holds the last generation so the buttons can use it.
+    var lastGenerated = [];  // [{originVid, targetVid, troops, arrivalMs, dist}]
+
+    function readUIValues() {
+        var customVals = {};
+        if ($("#fp-preset").val() === "custom") {
+            $("#fp-custom input").each(function(){
+                customVals[$(this).data("unit")] = parseInt($(this).val(), 10) || 0;
+            });
+        }
+        return {
+            tribeId: $("#fp-tribe").val(),
+            mode: $("#fp-mode").val(),
+            frontVid: $("#fp-front").val(),
+            count: parseInt($("#fp-count").val(), 10) || 0,
+            minPoints: parseInt($("#fp-minp").val(), 10) || 0,
+            maxPoints: parseInt($("#fp-maxp").val(), 10) || 0,
+            preset: $("#fp-preset").val(),
+            customVals: customVals,
+            startMs: new Date($("#fp-start").val()).getTime(),
+            endMs: new Date($("#fp-end").val()).getTime()
+        };
+    }
+
+    function onGenerate() {
+        var ui = readUIValues();
+        if (!ui.tribeId) { setStatus("Wähle einen Gegner-Stamm.", "red"); return; }
+        if (!ui.count || ui.count < 1) { setStatus("Anzahl muss > 0 sein.", "red"); return; }
+        if (!ui.startMs || !ui.endMs || ui.endMs <= ui.startMs) {
+            setStatus("Ankunftszeit ist ungültig.", "red"); return;
+        }
+
+        var frontVil = villageById[ui.frontVid] || getCurrentVillage();
+        var targets = pickTargetsByTribe(
+            ui.tribeId, ui.mode,
+            frontVil ? frontVil.x : 500, frontVil ? frontVil.y : 500,
+            ui.count,
+            { minPoints: ui.minPoints || 0, maxPoints: ui.maxPoints || 0 }
+        );
+        if (targets.length === 0) {
+            setStatus("Keine Ziele gefunden (Stamm leer? Punkte-Filter zu streng?).", "red");
+            return;
+        }
+
+        var myVillages = getMyVillages();
+        var assignments = assignOrigins(myVillages, targets);
+        if (assignments.length === 0) {
+            setStatus("Keine Origin-Dörfer verfügbar.", "red");
+            return;
+        }
+        if (assignments.length < targets.length) {
+            setStatus("⚠ Nur " + assignments.length + " von " + targets.length +
+                      " Fakes möglich (nicht genug eigene Dörfer für 1-pro-Dorf-Regel).", "orange");
+        }
+
+        var troops = (ui.preset === "custom")
+            ? buildTroopTemplate(ui.customVals)
+            : presetTemplate(ui.preset);
+
+        if (Object.keys(troops).length === 0) {
+            setStatus("Vorlage hat keine Einheiten — wähle mindestens eine.", "red");
+            return;
+        }
+
+        var arrivals = spreadArrivals(ui.startMs, ui.endMs, assignments.length, 60000);
+
+        lastGenerated = assignments.map(function(a, i){
+            return {
+                originVid: a.origin.vid,
+                targetVid: a.target.vid,
+                originLabel: a.origin.name + " (" + a.origin.x + "|" + a.origin.y + ")",
+                targetLabel: a.target.name + " (" + a.target.x + "|" + a.target.y + ")",
+                troops: troops,
+                arrivalMs: arrivals[i],
+                dist: a.dist
+            };
+        });
+
+        // Build workbench output.
+        var lines = lastGenerated.map(function(f){
+            return buildWorkbenchLine(f.originVid, f.targetVid, f.troops, f.arrivalMs);
+        });
+        $("#fp-output").val(lines.join("\n"));
+
+        // Travel preview.
+        var avgDist = lastGenerated.reduce(function(s, f){ return s + f.dist; }, 0) / lastGenerated.length;
+        $("#fp-summary").text(lastGenerated.length + " Fakes · ⌀ " + avgDist.toFixed(1) + " Felder");
+
+        $("#fp-copy, #fp-pushfakes, #fp-pushmain").prop("disabled", false);
+
+        if (assignments.length === targets.length) {
+            setStatus("✓ " + lines.length + " Fakes generiert.", "green");
+        }
+    }
+
+    function pushToFakesFile() {
+        if (lastGenerated.length === 0) { setStatus("Nichts zu speichern.", "orange"); return; }
+        if (!GITHUB_TOKEN) { setStatus("Kein GitHub-Token (window.LAUNCHPAD_TOKEN nicht gesetzt).", "red"); return; }
+        setStatus("Lade " + FAKES_FILE + "…");
+        ghGetFakes(function(err, current){
+            if (err) { setStatus("GitHub GET fehlgeschlagen: " + err.message, "red"); return; }
+            var entries = (current.payload && current.payload.fakes) || [];
+            var added = lastGenerated.map(function(f){
+                return fakeToLaunchpadEntry(f.originVid, f.targetVid, f.troops, f.arrivalMs);
+            });
+            // Dedupe by id.
+            var byId = {};
+            entries.forEach(function(e){ byId[e.id] = e; });
+            added.forEach(function(e){ byId[e.id] = e; });
+            var merged = Object.values(byId);
+            setStatus("Schreibe " + merged.length + " Einträge…");
+            ghPutFakes(current.sha, { fakes: merged },
+                "fakeplanner: +" + added.length + " (gesamt " + merged.length + ")",
+                function(err){
+                    if (err) setStatus("GitHub PUT fehlgeschlagen: " + err.message, "red");
+                    else setStatus("✓ " + added.length + " Fakes in " + FAKES_FILE + " gespeichert.", "green");
+                }
+            );
+        });
+    }
+
+    function pushToMainPlan() {
+        if (lastGenerated.length === 0) { setStatus("Nichts zu pushen.", "orange"); return; }
+        if (!GITHUB_TOKEN) { setStatus("Kein GitHub-Token (window.LAUNCHPAD_TOKEN nicht gesetzt).", "red"); return; }
+
+        var mainApi = "https://api.github.com/repos/" + GITHUB_OWNER + "/" + GITHUB_DATA_REPO
+                      + "/contents/" + encodeURIComponent(_playerName + ".json");
+
+        setStatus("Lade " + _playerName + ".json…");
+        $.ajax({
+            url: mainApi + "?ref=" + GITHUB_BRANCH + "&_=" + Date.now(),
+            headers: authHeaders(),
+            success: function(data){
+                var sha = data.sha;
+                var existing = { attacks: [] };
+                try {
+                    var content = decodeURIComponent(escape(atob(data.content.replace(/\n/g, ""))));
+                    existing = JSON.parse(content);
+                } catch(e){}
+                pushMerge(mainApi, sha, existing.attacks || []);
+            },
+            error: function(xhr){
+                if (xhr.status === 404) pushMerge(mainApi, null, []);
+                else setStatus("GitHub GET fehlgeschlagen: " + xhr.status, "red");
+            }
+        });
+
+        function pushMerge(api, sha, existingAttacks) {
+            var added = lastGenerated.map(function(f){
+                return fakeToLaunchpadEntry(f.originVid, f.targetVid, f.troops, f.arrivalMs);
+            });
+            // Dedupe by id; fakes don't replace existing real attacks if id collides.
+            var byId = {};
+            existingAttacks.forEach(function(e){ byId[e.id] = e; });
+            added.forEach(function(e){ if (!byId[e.id]) byId[e.id] = e; });
+            var merged = Object.values(byId);
+
+            var body = {
+                message: "fakeplanner: +" + added.length + " fakes (Plan total " + merged.length + ")",
+                content: btoa(unescape(encodeURIComponent(JSON.stringify({ attacks: merged }, null, 2)))),
+                branch: GITHUB_BRANCH
+            };
+            if (sha) body.sha = sha;
+            setStatus("Pushe " + merged.length + " Angriffe…");
+            $.ajax({
+                url: api,
+                method: "PUT",
+                headers: authHeaders(),
+                contentType: "application/json",
+                data: JSON.stringify(body),
+                success: function(){
+                    setStatus("✓ " + added.length + " Fakes in Launchpad-Plan übernommen — Bot übernimmt!", "green");
+                },
+                error: function(xhr){
+                    setStatus("GitHub PUT fehlgeschlagen: " + xhr.status + " — " + xhr.responseText, "red");
+                }
+            });
+        }
+    }
+
+    // === Utility ===
+    function escHtml(s) {
+        return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;")
+                        .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    }
+    function serverDate() {
+        // Server time from the in-page widget (#serverTime + #serverDate). Fall
+        // back to client time if the widget isn't on this screen.
+        var t = $("#serverTime").text() || "";
+        var d = $("#serverDate").text() || "";
+        if (t && d) {
+            var p = d.split("/");
+            // Date format: DD/MM/YYYY
+            return new Date(p[2] + "-" + p[1] + "-" + p[0] + "T" + t);
+        }
+        return new Date();
+    }
+
+    // === Entry point ===
+    loadWorldData(function(hadErr){
+        if (hadErr) {
+            setStatus("Fehler beim Laden der Weltdaten (village.txt / player.txt / ally.txt).", "red");
+            return;
+        }
+        if (villages.length === 0 || players.length === 0 || tribes.length === 0) {
+            setStatus("Weltdaten leer — falsches Welt-Setup?", "red");
+            return;
+        }
+        renderUI();
+    });
+
+})();
