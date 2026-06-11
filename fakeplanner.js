@@ -551,7 +551,7 @@
                 "<label>Fake-Logik:</label>" +
                 "<div style='font-size:11px;color:#555;'>" +
                     "<b>Welt-Fakelimit: " + fakeLimitPct + "%</b> der Dorf-Punkte<br>" +
-                    "Generierung: <b>" + (opts.minCats || 1) + " Kata + Auffüllen mit " +
+                    "Generierung: <b>1+ Kata + Auffüllen mit " +
                     FILLER_ORDER.join(" → ") + "</b><br>" +
                     "<span style='color:#888;'>Pro Fake wird der kleinstmögliche Mix aus " +
                     "deinen verfügbaren Truppen gewählt der das Limit knackt.</span>" +
@@ -597,10 +597,6 @@
         body.show();
 
         // === Event handlers ===
-        $("#fp-preset").on("change", function(){
-            $("#fp-custom").toggle(this.value === "custom");
-        });
-
         // Mode → toggle front-center visibility
         $("#fp-mode").on("change", function(){
             $("#fp-front").closest("select").prop("disabled", this.value !== "front");
@@ -623,12 +619,6 @@
     var lastGenerated = [];  // [{originVid, targetVid, troops, arrivalMs, dist}]
 
     function readUIValues() {
-        var customVals = {};
-        if ($("#fp-preset").val() === "custom") {
-            $("#fp-custom input").each(function(){
-                customVals[$(this).data("unit")] = parseInt($(this).val(), 10) || 0;
-            });
-        }
         return {
             tribeId: $("#fp-tribe").val(),
             mode: $("#fp-mode").val(),
@@ -636,12 +626,9 @@
             count: parseInt($("#fp-count").val(), 10) || 0,
             minPoints: parseInt($("#fp-minp").val(), 10) || 0,
             maxPoints: parseInt($("#fp-maxp").val(), 10) || 0,
-            preset: $("#fp-preset").val(),
-            customVals: customVals,
             startMs: new Date($("#fp-start").val()).getTime(),
             endMs: new Date($("#fp-end").val()).getTime(),
-            passFakeLimit: $("#fp-passfakelimit").is(":checked"),
-            catCount: parseInt($("#fp-catcount").val(), 10) || 5,
+            minCats: parseInt($("#fp-mincats").val(), 10) || 1,
             maxDist: parseFloat($("#fp-maxdist").val()) || 25
         };
     }
@@ -667,110 +654,45 @@
         }
 
         var myVillages = getMyVillages();
-        var assignments = assignOrigins(myVillages, targets);
-        if (assignments.length === 0) {
-            setStatus("Keine Origin-Dörfer verfügbar.", "red");
-            return;
-        }
-        // Drop assignments that are too far — the user defined a max-field
-        // limit and anything past that wastes troops + sits in flight for
-        // hours. The round-robin still balances load across the remaining ones.
-        var droppedFar = 0;
-        assignments = assignments.filter(function(a){
-            if (a.dist > ui.maxDist) { droppedFar++; return false; }
-            return true;
+        var result = generateAllFakes(targets, myVillages, {
+            minCats: ui.minCats,
+            maxDist: ui.maxDist
         });
-        if (assignments.length === 0) {
-            setStatus("Alle Zuweisungen weiter als " + ui.maxDist + " Felder — " +
-                      "Max-Felder erhöhen oder anderes Front-Zentrum.", "red");
-            return;
-        }
+        var droppedFar = result.droppedFar;
+        var droppedNoUnits = result.droppedNoUnits;
+        var fakes = result.fakes;
 
-        var baseTroops = (ui.preset === "custom")
-            ? buildTroopTemplate(ui.customVals)
-            : presetTemplate(ui.preset);
-
-        if (Object.keys(baseTroops).length === 0 && !ui.passFakeLimit) {
-            setStatus("Vorlage hat keine Einheiten — wähle mindestens eine oder aktiviere 'Fakelimit umgehen'.", "red");
-            return;
-        }
-
-        var arrivals = spreadArrivals(ui.startMs, ui.endMs, assignments.length, 60000);
-
-        // For each assignment, compute required troops THEN check if origin
-        // can actually afford them. If not, try a different village —
-        // re-pick the closest village that has the units. Only drop if no
-        // village can pay.
-        // Track which villages got used (for round-robin balancing) and how
-        // many units we've already "reserved" from each (for multi-fake-per-
-        // village scenarios — same village might send 2 fakes if needed).
-        var reservedByVid = {};  // { vid: { spy: 30, catapult: 5 } }
-        function canAfford(vid, need) {
-            var have = troopsByVid[vid] || {};
-            var reserved = reservedByVid[vid] || {};
-            for (var u in need) {
-                var avail = (have[u] || 0) - (reserved[u] || 0);
-                if (avail < need[u]) return false;
-            }
-            return true;
-        }
-        function reserve(vid, used) {
-            var r = reservedByVid[vid] = reservedByVid[vid] || {};
-            for (var u in used) r[u] = (r[u] || 0) + used[u];
-        }
-
-        var totalCats = 0, totalSpies = 0, maxSpies = 0;
-        var droppedNoUnits = 0;
-        var validFakes = [];
-        assignments.forEach(function(a, i){
-            var t = buildTroopsForTarget(baseTroops, a.target, {
-                catCount: ui.catCount,
-                passFakeLimit: ui.passFakeLimit
-            });
-
-            // Try originally-assigned origin first; if it can't pay, walk
-            // all other villages sorted by distance to this target.
-            var chosenOrigin = canAfford(a.origin.vid, t) ? a.origin : null;
-            if (!chosenOrigin) {
-                var candidates = myVillages
-                    .filter(function(v){ return v.vid !== a.origin.vid && canAfford(v.vid, t); })
-                    .map(function(v){ return { v: v, d: dist(v, a.target) }; })
-                    .sort(function(x, y){ return x.d - y.d; });
-                if (candidates.length > 0) {
-                    chosenOrigin = candidates[0].v;
-                    a.dist = candidates[0].d;
-                }
-            }
-            if (!chosenOrigin) {
-                droppedNoUnits++;
-                return;
-            }
-            reserve(chosenOrigin.vid, t);
-
-            if (t.catapult) totalCats += t.catapult;
-            if (t.spy) {
-                totalSpies += t.spy;
-                if (t.spy > maxSpies) maxSpies = t.spy;
-            }
-            validFakes.push({
-                originVid: chosenOrigin.vid,
-                targetVid: a.target.vid,
-                originLabel: chosenOrigin.name + " (" + chosenOrigin.x + "|" + chosenOrigin.y + ")",
-                targetLabel: a.target.name + " (" + a.target.x + "|" + a.target.y + ")",
-                troops: t,
-                arrivalMs: arrivals[i],
-                dist: a.dist
-            });
-        });
-        lastGenerated = validFakes;
-
-        if (lastGenerated.length === 0) {
-            setStatus("Keine Fakes generiert — kein eigenes Dorf hat genug Späher/Katas " +
-                      "für die Vorlage. Reduziere Katapult-Anzahl oder Anzahl Fakes.", "red");
+        if (fakes.length === 0) {
+            setStatus("Keine Fakes generiert — entweder kein eigenes Dorf hat 1 Kata + " +
+                      "genug Späher/Speer/Schwert/Axt um das " +
+                      (worldFakeLimit * 100).toFixed(1) +
+                      "% Fakelimit zu knacken, oder alle Ziele sind > " +
+                      ui.maxDist + "F entfernt.", "red");
             $("#fp-output").val("");
             $("#fp-preview").empty();
+            $("#fp-summary").text("");
             return;
         }
+
+        var arrivals = spreadArrivals(ui.startMs, ui.endMs, fakes.length, 60000);
+
+        var totalCats = 0, totalSpies = 0, totalInf = 0;
+        lastGenerated = fakes.map(function(f, i){
+            if (f.troops.catapult) totalCats += f.troops.catapult;
+            if (f.troops.spy) totalSpies += f.troops.spy;
+            ["spear","sword","axe","archer"].forEach(function(u){
+                if (f.troops[u]) totalInf += f.troops[u];
+            });
+            return {
+                originVid: f.origin.vid,
+                targetVid: f.target.vid,
+                originLabel: f.origin.name + " (" + f.origin.x + "|" + f.origin.y + ")",
+                targetLabel: f.target.name + " (" + f.target.x + "|" + f.target.y + ")",
+                troops: f.troops,
+                arrivalMs: arrivals[i],
+                dist: f.dist
+            };
+        });
 
         // Build workbench output with readable comment lines above each command.
         // launchpad's parseLine returns null for lines without 8 `&`-separated
@@ -803,9 +725,10 @@
             "⌀ " + avgDist.toFixed(1) + "F"
         ];
         if (totalCats > 0) summaryParts.push("Σ " + totalCats + " Kata");
-        if (totalSpies > 0) summaryParts.push("Σ " + totalSpies + " Späher (max " + maxSpies + "/Fake)");
-        if (droppedFar > 0) summaryParts.push(droppedFar + " zu weit weg, ignoriert");
-        if (droppedNoUnits > 0) summaryParts.push(droppedNoUnits + " ohne genug Truppen, verworfen");
+        if (totalSpies > 0) summaryParts.push("Σ " + totalSpies + " Späher");
+        if (totalInf > 0) summaryParts.push("Σ " + totalInf + " Inf");
+        if (droppedFar > 0) summaryParts.push(droppedFar + " zu weit weg");
+        if (droppedNoUnits > 0) summaryParts.push(droppedNoUnits + " ohne genug Truppen");
         $("#fp-summary").text(summaryParts.join(" · "));
 
         $("#fp-copy, #fp-pushfakes, #fp-pushmain").prop("disabled", false);
