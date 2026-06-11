@@ -999,7 +999,13 @@
 
         // 3. Counts + Optionen
         const agCount = Math.max(1, Math.min(10, +document.getElementById('rp-ag-count').value || 4));
-        const zcCount = Math.max(0, Math.min(5, +document.getElementById('rp-zc-count').value || 1));
+        // BUG-FIX: was `+x.value || 1` which evaluates `0 || 1` to 1 since 0 is
+        // falsy in JS — meaning setting ZC count to 0 silently became 1 and a
+        // Zwischencleaner got planned anyway. Parse explicitly: only fall back
+        // to 1 if the input is empty or NaN, NOT when it's exactly 0.
+        const zcRaw = document.getElementById('rp-zc-count').value;
+        const zcParsed = zcRaw === "" ? 1 : Number(zcRaw);
+        const zcCount = Math.max(0, Math.min(5, isNaN(zcParsed) ? 1 : zcParsed));
         const ag1WithOff = ag1OffBox.checked;
 
         // Escort parsen (für AG2+ wenn ag1WithOff aktiv)
