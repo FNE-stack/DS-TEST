@@ -32,10 +32,20 @@
 
     var worldSpeed = (game_data.world && +game_data.world.speed) ? +game_data.world.speed : 1;
     var unitSpeed  = (game_data.world && +game_data.world.unit_speed) ? +game_data.world.unit_speed : 1;
+    // Fake-limit ratio fetched from world config at startup. Default 0.05 (5%) —
+    // standard for most de worlds, but real value depends on world.
+    var worldFakeLimit = 0.05;
     var UNIT_SPEEDS = {
         spear: 18, sword: 22, axe: 18, archer: 18, spy: 9,
         light: 10, marcher: 10, heavy: 11, ram: 30, catapult: 30,
         knight: 10, snob: 35, militia: 18
+    };
+    // Farm space per unit — needed for fake-limit math. Catapults are the
+    // densest-fs option (8 each), so adding cats is how a fake passes the limit.
+    var UNIT_FARM_SPACE = {
+        spear: 1, sword: 1, axe: 1, archer: 1,
+        spy: 2, light: 4, marcher: 5, heavy: 6,
+        ram: 5, catapult: 8, knight: 10, snob: 100, militia: 0
     };
     // Workbench unit order — MUST match what launchpad.js parses (spear, sword,
     // axe, archer, spy, light, marcher, heavy, ram, catapult, knight, snob, militia).
@@ -67,11 +77,21 @@
 
     // === Load world data ===
     function loadWorldData(done) {
-        var calls = 3, errors = 0;
+        var calls = 4, errors = 0;
         function tick(err) {
             if (err) errors++;
             if (--calls === 0) done(errors > 0);
         }
+
+        // World config — gives us the fake-limit ratio so we can add the right
+        // number of catapults per target to pass it. Default 0.05 if missing.
+        $.get("/interface.php?func=get_config", function(xml){
+            try {
+                var fl = $(xml).find("game > fake_limit").first().text();
+                if (fl) worldFakeLimit = parseFloat(fl) || worldFakeLimit;
+            } catch(e){}
+            tick();
+        }).fail(function(){ tick(true); });
 
         $.get("/map/village.txt", function(data){
             data.split("\n").forEach(function(line){
@@ -251,24 +271,32 @@
         return candidates.slice(0, count);
     }
 
-    // === Origin assignment (round-robin, 1 fake max per origin) ===
-    // For each target (in order), pick the closest *unused* origin from myVillages.
+    // === Origin assignment (round-robin, balanced load) ===
+    // For each target, pick the closest origin that currently has the FEWEST
+    // assignments. This balances load across all villages — no village gets a
+    // second fake until every village has gotten one, no village gets a third
+    // until every village has gotten two, etc. Allows N fakes > village count.
     function assignOrigins(myVillages, targets) {
-        var usedOrigins = {};
-        var assignments = [];  // [{origin, target}]
+        var perVillageCount = {};
+        myVillages.forEach(function(v){ perVillageCount[v.vid] = 0; });
+        var assignments = [];
 
-        // Pre-sort targets by distance-to-nearest-origin? Optional — we go in
-        // the order given (which is already "closest first" for front mode).
         targets.forEach(function(target){
+            // Find minimum current assignment count across all villages.
+            var minCount = Infinity;
+            myVillages.forEach(function(v){
+                if (perVillageCount[v.vid] < minCount) minCount = perVillageCount[v.vid];
+            });
+            // Among villages tied for the min, pick the one closest to target.
             var best = null;
             var bestD = Infinity;
             myVillages.forEach(function(o){
-                if (usedOrigins[o.vid]) return;
+                if (perVillageCount[o.vid] !== minCount) return;
                 var d = dist(o, target);
                 if (d < bestD) { bestD = d; best = o; }
             });
             if (best) {
-                usedOrigins[best.vid] = true;
+                perVillageCount[best.vid]++;
                 assignments.push({ origin: best, target: target, dist: bestD });
             }
         });
@@ -296,6 +324,35 @@
             case "spy_ram_cat5": return { spy: 1, ram: 1, catapult: 5 };
             default: return { spy: 1 };
         }
+    }
+    // Compute total farm space of a troops object.
+    function farmSpaceOf(troops) {
+        var sum = 0;
+        Object.keys(troops).forEach(function(u){
+            sum += (UNIT_FARM_SPACE[u] || 0) * (troops[u] || 0);
+        });
+        return sum;
+    }
+    // Per-target template: start with the base, optionally bump catapults so
+    // total farm space passes the world's fake-limit threshold for that target.
+    // - alwaysCat: ensure at least 1 catapult so it looks like a real attack
+    // - passFakeLimit: pad with extra cats until farm_space >= target.points * world_fake_limit
+    function buildTroopsForTarget(baseTroops, target, opts) {
+        var t = {};
+        Object.keys(baseTroops).forEach(function(k){ t[k] = baseTroops[k]; });
+
+        if (opts.alwaysCat && (!t.catapult || t.catapult < 1)) t.catapult = 1;
+
+        if (opts.passFakeLimit && target && target.points > 0) {
+            var required = target.points * worldFakeLimit;
+            var current = farmSpaceOf(t);
+            if (current < required) {
+                var needFs = Math.ceil(required - current);
+                var addCats = Math.ceil(needFs / UNIT_FARM_SPACE.catapult);
+                t.catapult = (t.catapult || 0) + addCats;
+            }
+        }
+        return t;
     }
 
     // === Arrival time spread ===
@@ -383,8 +440,10 @@
         var endDate = new Date(nowDate.getTime() + 12 * 3600 * 1000);
         var defaultEnd = endDate.toISOString().slice(0, 16);
 
+        var fakeLimitPct = (worldFakeLimit * 100).toFixed(1);
         body.html(
-            "<div style='display:grid;grid-template-columns:130px 1fr;gap:6px;align-items:center;font-size:12px;'>" +
+            "<div style='display:grid;grid-template-columns:150px minmax(260px, 1fr);" +
+            "gap:6px;align-items:center;font-size:12px;'>" +
 
                 "<label>Gegner-Stamm:</label>" +
                 "<select id='fp-tribe' style='width:100%;'>" + tribeOpts + "</select>" +
@@ -399,8 +458,12 @@
                 "<select id='fp-front' style='width:100%;'>" + myVilOpts + "</select>" +
 
                 "<label>Anzahl Fakes:</label>" +
-                "<input id='fp-count' type='number' min='1' max='" + myVillages.length +
-                    "' value='" + Math.min(10, myVillages.length) + "' style='width:100%;'>" +
+                "<input id='fp-count' type='number' min='1' value='" +
+                    Math.min(20, myVillages.length * 2) + "' style='width:100%;'>" +
+
+                "<label>Max Felder:</label>" +
+                "<input id='fp-maxdist' type='number' min='1' max='200' value='25' style='width:100%;' " +
+                    "title='Ziele weiter weg werden ignoriert. Bedenke: mit Katas dauert 25F ~12h Reise.'>" +
 
                 "<label>Min/Max Punkte:</label>" +
                 "<div><input id='fp-minp' type='number' min='0' placeholder='min' style='width:48%;'> " +
@@ -426,12 +489,33 @@
                     }).join("") +
                 "</div>" +
 
-                "<label>Ankunft von:</label>" +
-                "<input id='fp-start' type='datetime-local' value='" + defaultStart + "' style='width:100%;'>" +
+                "<label>Tarn-Optionen:</label>" +
+                "<div style='font-size:11px;'>" +
+                    "<label style='display:block;margin-bottom:3px;cursor:pointer;'>" +
+                        "<input id='fp-passfakelimit' type='checkbox' checked> " +
+                        "Fakelimit umgehen (auto Katas hinzufügen — Welt: " + fakeLimitPct + "% von Dorf-Punkten)" +
+                    "</label>" +
+                    "<label style='display:block;cursor:pointer;'>" +
+                        "<input id='fp-alwayscat' type='checkbox' checked> " +
+                        "Mindestens 1 Katapult pro Fake" +
+                    "</label>" +
+                "</div>" +
 
-                "<label>Ankunft bis:</label>" +
-                "<input id='fp-end' type='datetime-local' value='" + defaultEnd + "' style='width:100%;'>" +
+            "</div>" +
 
+            // Time pickers FULL WIDTH on their own — grid was cramping them on
+            // narrow panels and the iOS native picker was getting clipped.
+            "<div style='margin-top:10px;display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px;'>" +
+                "<div>" +
+                    "<label style='display:block;font-weight:bold;margin-bottom:3px;'>Ankunft von:</label>" +
+                    "<input id='fp-start' type='datetime-local' value='" + defaultStart +
+                        "' style='width:100%;padding:5px;font-size:13px;box-sizing:border-box;'>" +
+                "</div>" +
+                "<div>" +
+                    "<label style='display:block;font-weight:bold;margin-bottom:3px;'>Ankunft bis:</label>" +
+                    "<input id='fp-end' type='datetime-local' value='" + defaultEnd +
+                        "' style='width:100%;padding:5px;font-size:13px;box-sizing:border-box;'>" +
+                "</div>" +
             "</div>" +
 
             "<div style='margin-top:10px;'>" +
@@ -440,8 +524,10 @@
                 "<span id='fp-summary' style='margin-left:10px;font-size:11px;color:#555;'></span>" +
             "</div>" +
 
+            "<div id='fp-preview'></div>" +
+
             "<textarea id='fp-output' readonly placeholder='Generierte Workbench-Befehle erscheinen hier…' " +
-                "style='width:100%;height:120px;margin-top:8px;font-family:monospace;font-size:11px;" +
+                "style='width:100%;height:160px;margin-top:8px;font-family:monospace;font-size:11px;" +
                 "box-sizing:border-box;'></textarea>" +
 
             "<div style='margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;'>" +
@@ -497,7 +583,10 @@
             preset: $("#fp-preset").val(),
             customVals: customVals,
             startMs: new Date($("#fp-start").val()).getTime(),
-            endMs: new Date($("#fp-end").val()).getTime()
+            endMs: new Date($("#fp-end").val()).getTime(),
+            alwaysCat: $("#fp-alwayscat").is(":checked"),
+            passFakeLimit: $("#fp-passfakelimit").is(":checked"),
+            maxDist: parseFloat($("#fp-maxdist").val()) || 25
         };
     }
 
@@ -527,49 +616,133 @@
             setStatus("Keine Origin-Dörfer verfügbar.", "red");
             return;
         }
-        if (assignments.length < targets.length) {
-            setStatus("⚠ Nur " + assignments.length + " von " + targets.length +
-                      " Fakes möglich (nicht genug eigene Dörfer für 1-pro-Dorf-Regel).", "orange");
+        // Drop assignments that are too far — the user defined a max-field
+        // limit and anything past that wastes troops + sits in flight for
+        // hours. The round-robin still balances load across the remaining ones.
+        var droppedFar = 0;
+        assignments = assignments.filter(function(a){
+            if (a.dist > ui.maxDist) { droppedFar++; return false; }
+            return true;
+        });
+        if (assignments.length === 0) {
+            setStatus("Alle Zuweisungen weiter als " + ui.maxDist + " Felder — " +
+                      "Max-Felder erhöhen oder anderes Front-Zentrum.", "red");
+            return;
         }
 
-        var troops = (ui.preset === "custom")
+        var baseTroops = (ui.preset === "custom")
             ? buildTroopTemplate(ui.customVals)
             : presetTemplate(ui.preset);
 
-        if (Object.keys(troops).length === 0) {
-            setStatus("Vorlage hat keine Einheiten — wähle mindestens eine.", "red");
+        if (Object.keys(baseTroops).length === 0 && !ui.alwaysCat && !ui.passFakeLimit) {
+            setStatus("Vorlage hat keine Einheiten — wähle mindestens eine oder aktiviere eine Tarn-Option.", "red");
             return;
         }
 
         var arrivals = spreadArrivals(ui.startMs, ui.endMs, assignments.length, 60000);
 
+        // Build per-target troops. With pass-fake-limit ON, each fake may have
+        // a different cat count based on the target village's points — bigger
+        // villages need more cats to look real.
+        var maxCats = 0;
+        var totalCats = 0;
         lastGenerated = assignments.map(function(a, i){
+            var t = buildTroopsForTarget(baseTroops, a.target, {
+                alwaysCat: ui.alwaysCat,
+                passFakeLimit: ui.passFakeLimit
+            });
+            if (t.catapult) { totalCats += t.catapult; if (t.catapult > maxCats) maxCats = t.catapult; }
             return {
                 originVid: a.origin.vid,
                 targetVid: a.target.vid,
                 originLabel: a.origin.name + " (" + a.origin.x + "|" + a.origin.y + ")",
                 targetLabel: a.target.name + " (" + a.target.x + "|" + a.target.y + ")",
-                troops: troops,
+                troops: t,
                 arrivalMs: arrivals[i],
                 dist: a.dist
             };
         });
 
-        // Build workbench output.
-        var lines = lastGenerated.map(function(f){
-            return buildWorkbenchLine(f.originVid, f.targetVid, f.troops, f.arrivalMs);
+        // Build workbench output with readable comment lines above each command.
+        // launchpad's parseLine returns null for lines without 8 `&`-separated
+        // parts, so the comments are silently ignored when pasted — but a human
+        // reading the textarea can see exactly what each command is for.
+        var lines = [];
+        lastGenerated.forEach(function(f, i){
+            var arrText = new Date(f.arrivalMs).toLocaleString("de-DE", {
+                day: "2-digit", month: "2-digit", hour: "2-digit",
+                minute: "2-digit", second: "2-digit"
+            });
+            var troopText = Object.keys(f.troops).filter(function(u){ return f.troops[u] > 0; })
+                .map(function(u){ return f.troops[u] + u.charAt(0).toUpperCase(); })
+                .join("+");
+            lines.push("# Fake " + (i+1) + ": " + f.originLabel + " → " + f.targetLabel +
+                       "  ·  " + f.dist.toFixed(1) + "F  ·  " + troopText +
+                       "  ·  Ankunft " + arrText);
+            lines.push(buildWorkbenchLine(f.originVid, f.targetVid, f.troops, f.arrivalMs));
+            lines.push("");
         });
         $("#fp-output").val(lines.join("\n"));
 
-        // Travel preview.
+        // Render readable preview table below the textarea.
+        renderPreviewTable(lastGenerated);
+
+        // Travel + cat preview.
         var avgDist = lastGenerated.reduce(function(s, f){ return s + f.dist; }, 0) / lastGenerated.length;
-        $("#fp-summary").text(lastGenerated.length + " Fakes · ⌀ " + avgDist.toFixed(1) + " Felder");
+        var summaryParts = [
+            lastGenerated.length + " Fakes",
+            "⌀ " + avgDist.toFixed(1) + "F"
+        ];
+        if (totalCats > 0) summaryParts.push("Σ " + totalCats + " Kata (max " + maxCats + "/Fake)");
+        if (droppedFar > 0) summaryParts.push(droppedFar + " zu weit weg, ignoriert");
+        $("#fp-summary").text(summaryParts.join(" · "));
 
         $("#fp-copy, #fp-pushfakes, #fp-pushmain").prop("disabled", false);
+        setStatus("✓ " + lines.filter(function(l){ return l && !l.startsWith("#"); }).length +
+                  " Fakes generiert.", "green");
+    }
 
-        if (assignments.length === targets.length) {
-            setStatus("✓ " + lines.length + " Fakes generiert.", "green");
-        }
+    // Render a readable HTML table of generated fakes in the preview container.
+    function renderPreviewTable(fakes) {
+        if (fakes.length === 0) { $("#fp-preview").empty(); return; }
+        var rows = fakes.map(function(f, i){
+            var troopText = Object.keys(f.troops).filter(function(u){ return f.troops[u] > 0; })
+                .map(function(u){
+                    return "<img src='/graphic/unit/unit_" + u +
+                           ".png' style='width:14px;height:14px;vertical-align:middle;' " +
+                           "title='" + u + "'> " + f.troops[u];
+                }).join(" ");
+            var arrText = new Date(f.arrivalMs).toLocaleString("de-DE", {
+                day: "2-digit", month: "2-digit",
+                hour: "2-digit", minute: "2-digit", second: "2-digit"
+            });
+            return "<tr>" +
+                "<td style='padding:3px 6px;'>" + (i+1) + "</td>" +
+                "<td style='padding:3px 6px;'>" + escHtml(f.originLabel) + "</td>" +
+                "<td style='padding:3px 6px;text-align:center;color:#a07030;'>→</td>" +
+                "<td style='padding:3px 6px;'>" + escHtml(f.targetLabel) + "</td>" +
+                "<td style='padding:3px 6px;text-align:right;'>" + f.dist.toFixed(1) + "F</td>" +
+                "<td style='padding:3px 6px;'>" + troopText + "</td>" +
+                "<td style='padding:3px 6px;font-size:10px;color:#555;white-space:nowrap;'>" +
+                    arrText + "</td>" +
+                "</tr>";
+        }).join("");
+        $("#fp-preview").html(
+            "<details open style='margin-top:8px;'><summary style='cursor:pointer;font-weight:bold;'>" +
+                "📋 Fake-Liste anzeigen/ausblenden</summary>" +
+            "<table style='width:100%;font-size:11px;border-collapse:collapse;margin-top:5px;'>" +
+                "<thead><tr style='background:#e0d4b0;'>" +
+                    "<th style='padding:3px 6px;text-align:left;'>#</th>" +
+                    "<th style='padding:3px 6px;text-align:left;'>Von</th>" +
+                    "<th></th>" +
+                    "<th style='padding:3px 6px;text-align:left;'>Nach</th>" +
+                    "<th style='padding:3px 6px;'>Dist</th>" +
+                    "<th style='padding:3px 6px;text-align:left;'>Truppen</th>" +
+                    "<th style='padding:3px 6px;text-align:left;'>Ankunft</th>" +
+                "</tr></thead>" +
+                "<tbody>" + rows + "</tbody>" +
+            "</table></details>"
+        );
     }
 
     function pushToFakesFile() {
