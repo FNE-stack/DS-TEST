@@ -88,25 +88,29 @@
 
         // World config — gives us the fake-limit ratio. TW's XML returns this
         // as a percentage VALUE (e.g. "1" = 1%, "5" = 5%), NOT a fraction.
-        // We auto-detect: if value > 1 it's percent → divide by 100; if ≤ 1
-        // it's already a fraction. Was showing 100% before because we treated
-        // "1" as fraction.
+        // Convention is: any value ≥ 1 is a percentage that must be divided
+        // by 100. Values < 1 are either already a fraction (0.05 = 5%) OR a
+        // very small percentage (0.5 = 0.5%). For TW we treat < 1 as fraction
+        // since 0.5% fake limits aren't a thing in practice.
         $.get("/interface.php?func=get_config", function(xml){
             try {
                 var fl = $(xml).find("fake_limit").first().text();
                 var v = parseFloat(fl);
                 if (!isNaN(v) && v > 0) {
-                    worldFakeLimit = v > 1 ? v / 100 : v;
+                    // value=1 means 1%, value=5 means 5% — always divide by 100
+                    // if value >= 1. (Was excluding exactly-1 before, hence "100%".)
+                    worldFakeLimit = v >= 1 ? v / 100 : v;
                 }
             } catch(e){}
             tick();
         }).fail(function(){ tick(true); });
 
-        // My at-home troops per village. We fetch the units overview (same
-        // page DS_FarmBot uses) and read the `eigene` row per village. This
-        // lets us reject any fake whose origin can't actually pay for the
-        // required troops — no more "generates 50 fakes, bot fails 30".
-        $.get("/game.php?screen=overview_villages&mode=units&type=own", function(html){
+        // My at-home troops per village. Drop the `type=own` parameter — TW
+        // defaults `mode=units` to at-home already, and adding `type=own` on
+        // de252 returns a page with no `tbody.row_marker` elements (same bug
+        // DS_FarmBot hit). Without this fix every village's troops came back
+        // empty and every fake got rejected as "ohne genug Truppen".
+        $.get("/game.php?screen=overview_villages&mode=units&group=0&page=-1", function(html){
             try {
                 var unitOrder = (typeof game_data !== "undefined" && game_data.units)
                                 ? game_data.units : ["spear","sword","axe","spy","light","heavy","ram","catapult","snob"];
@@ -133,6 +137,8 @@
                     });
                     troopsByVid[vid] = t;
                 });
+                console.log("[fakeplanner] troops parsed for " +
+                    Object.keys(troopsByVid).length + " villages");
             } catch(e) {
                 console.warn("[fakeplanner] troops parse failed", e);
             }
@@ -330,26 +336,38 @@
     // actual at-home troops. Returns the troop object on success, or null if
     // the village can't pay the fake limit even using everything it has.
     //
-    // Rules (auto-generated, no manual template):
-    //   - Always include opts.minCats catapults (default 1) — they dictate
-    //     runtime so the attack arrives in catapult-time, looking real.
-    //   - Fill remaining farm-space requirement using FILLER_ORDER, taking
-    //     ONLY what the village has available (minus already-reserved troops).
-    //   - Use the smallest unit count that reaches the threshold.
+    // Rules (auto, no manual template):
+    //   1. Use `opts.minCats` (e.g. 1) catapults as the absolute minimum —
+    //      cats dictate runtime so the attack arrives in cat-time.
+    //   2. If 1 cat is enough for fake limit, stop.
+    //   3. Otherwise add MORE cats up to `opts.maxCats` (e.g. 8) — they're
+    //      the densest fs (8 each) so each additional cat saves ~8 spies.
+    //   4. Then spies, then spears/swords/axes/archers to top off.
     function buildFakeFromVillage(origin, target, reservedHere, opts) {
         var have = troopsByVid[origin.vid] || {};
         function avail(u) { return Math.max(0, (have[u] || 0) - (reservedHere[u] || 0)); }
 
         var minCats = Math.max(1, opts.minCats || 1);
-        if (avail("catapult") < minCats) return null;  // no cats = no fake (runtime needs cat speed)
+        var maxCats = Math.max(minCats, opts.maxCats || 8);
+        if (avail("catapult") < minCats) return null;  // no cats = no fake
 
         var t = { catapult: minCats };
         var currentFs = minCats * UNIT_FARM_SPACE.catapult;
         var required = target && target.points > 0 ? target.points * worldFakeLimit : 0;
 
-        if (currentFs >= required) return t;  // 1 cat already passes for small villages
+        if (currentFs >= required) return t;
 
-        // Fill remaining required FS, walking the preferred filler list.
+        // Step 2: top up to maxCats first — cats are the densest filler.
+        var moreCatsWanted = Math.ceil((required - currentFs) / UNIT_FARM_SPACE.catapult);
+        var extraCatsLimit = maxCats - minCats;
+        var extraCats = Math.min(moreCatsWanted, extraCatsLimit, avail("catapult") - minCats);
+        if (extraCats > 0) {
+            t.catapult += extraCats;
+            currentFs += extraCats * UNIT_FARM_SPACE.catapult;
+        }
+        if (currentFs >= required) return t;
+
+        // Step 3: walk FILLER_ORDER (spy → spear → sword → axe → archer).
         for (var i = 0; i < FILLER_ORDER.length; i++) {
             var u = FILLER_ORDER[i];
             if (!UNIT_FARM_SPACE[u]) continue;
@@ -367,7 +385,6 @@
             }
             if (currentFs >= required) return t;
         }
-        // Walked all filler options, still under the limit → village can't pay.
         return null;
     }
 
@@ -542,11 +559,16 @@
                 "<div><input id='fp-minp' type='number' min='0' placeholder='min' style='width:48%;'> " +
                 "<input id='fp-maxp' type='number' min='0' placeholder='max' style='width:48%;'></div>" +
 
-                "<label>Min. Katapulte:</label>" +
-                "<input id='fp-mincats' type='number' min='1' max='10' value='1' " +
-                    "style='width:80px;' " +
-                    "title='Mindest-Anzahl Katapulte pro Fake. Dient nur der Tarnung (Cat-Runtime). " +
-                    "Höher = mehr Tarnung, aber mehr Kosten. 1 reicht meistens.'>" +
+                "<label>Katapulte (min-max):</label>" +
+                "<div style='display:flex;gap:6px;align-items:center;font-size:11px;'>" +
+                    "<input id='fp-mincats' type='number' min='1' max='10' value='1' " +
+                        "style='width:60px;' title='Mindestens — pro Fake immer mind. so viele Katas.'>" +
+                    "<span>bis</span>" +
+                    "<input id='fp-maxcats' type='number' min='1' max='20' value='8' " +
+                        "style='width:60px;' title='Maximal — wenn Fakelimit noch nicht erreicht ist, " +
+                        "werden bis zu so viele Katas zugewiesen bevor mit Spähern aufgefüllt wird. Katas sind " +
+                        "die effizientesten Filler (8 fs).'>" +
+                "</div>" +
 
                 "<label>Fake-Logik:</label>" +
                 "<div style='font-size:11px;color:#555;'>" +
@@ -629,6 +651,7 @@
             startMs: new Date($("#fp-start").val()).getTime(),
             endMs: new Date($("#fp-end").val()).getTime(),
             minCats: parseInt($("#fp-mincats").val(), 10) || 1,
+            maxCats: parseInt($("#fp-maxcats").val(), 10) || 8,
             maxDist: parseFloat($("#fp-maxdist").val()) || 25
         };
     }
@@ -656,6 +679,7 @@
         var myVillages = getMyVillages();
         var result = generateAllFakes(targets, myVillages, {
             minCats: ui.minCats,
+            maxCats: ui.maxCats,
             maxDist: ui.maxDist
         });
         var droppedFar = result.droppedFar;
