@@ -774,24 +774,11 @@
             };
         });
 
-        // Build workbench output with readable comment lines above each command.
-        // launchpad's parseLine returns null for lines without 8 `&`-separated
-        // parts, so the comments are silently ignored when pasted — but a human
-        // reading the textarea can see exactly what each command is for.
-        var lines = [];
-        lastGenerated.forEach(function(f, i){
-            var arrText = new Date(f.arrivalMs).toLocaleString("de-DE", {
-                day: "2-digit", month: "2-digit", hour: "2-digit",
-                minute: "2-digit", second: "2-digit"
-            });
-            var troopText = Object.keys(f.troops).filter(function(u){ return f.troops[u] > 0; })
-                .map(function(u){ return f.troops[u] + u.charAt(0).toUpperCase(); })
-                .join("+");
-            lines.push("# Fake " + (i+1) + ": " + f.originLabel + " → " + f.targetLabel +
-                       "  ·  " + f.dist.toFixed(1) + "F  ·  " + troopText +
-                       "  ·  Ankunft " + arrText);
-            lines.push(buildWorkbenchLine(f.originVid, f.targetVid, f.troops, f.arrivalMs));
-            lines.push("");
+        // Workbench textarea = pure commands, one per line. NO comments, no
+        // blank lines — some workbench parsers are strict about format and
+        // the readability data is already in the preview table below.
+        var lines = lastGenerated.map(function(f){
+            return buildWorkbenchLine(f.originVid, f.targetVid, f.troops, f.arrivalMs);
         });
         $("#fp-output").val(lines.join("\n"));
 
@@ -812,8 +799,7 @@
         $("#fp-summary").text(summaryParts.join(" · "));
 
         $("#fp-copy, #fp-pushfakes, #fp-pushmain").prop("disabled", false);
-        setStatus("✓ " + lines.filter(function(l){ return l && !l.startsWith("#"); }).length +
-                  " Fakes generiert.", "green");
+        setStatus("✓ " + lines.length + " Fakes generiert.", "green");
     }
 
     // Render a readable HTML table of generated fakes in the preview container.
