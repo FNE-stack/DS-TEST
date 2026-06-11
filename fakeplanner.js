@@ -3,15 +3,6 @@
 
     // === CONFIG ===
     var VERSION = "v1";
-    var GITHUB_OWNER = "FNE-stack";
-    var GITHUB_DATA_REPO = "DS-PLAN";
-    var GITHUB_BRANCH = "main";
-    var GITHUB_TOKEN = window.LAUNCHPAD_TOKEN || "";
-    var _playerName = (typeof game_data !== "undefined" && game_data.player && game_data.player.name)
-                      ? game_data.player.name : "unknown";
-    var FAKES_FILE = _playerName + "-fakes.json";
-    var FAKES_API = "https://api.github.com/repos/" + GITHUB_OWNER + "/" + GITHUB_DATA_REPO
-                    + "/contents/" + encodeURIComponent(FAKES_FILE);
 
     // === Remove any previous instance ===
     $("#fakeplanner-panel").remove();
@@ -321,25 +312,6 @@
         ].join("&");
     }
 
-    // Convert one parsed fake into launchpad's JSON entry format (mirrors parseLine).
-    function fakeToLaunchpadEntry(originVid, targetVid, troops, arrivalMs) {
-        var id = originVid + "_" + targetVid + "_" + arrivalMs;
-        return {
-            id: id,
-            originId: String(originVid),
-            targetId: String(targetVid),
-            slowest: slowestUnit(troops) || "spear",
-            arrivalMs: arrivalMs,
-            catapultTarget: "0",
-            troops: troops,
-            raw: buildWorkbenchLine(originVid, targetVid, troops, arrivalMs),
-            sent: false,
-            sentBy: null,
-            sentAt: null,
-            type: "attack"
-        };
-    }
-
     // === Target selection ===
     function pickTargetsByTribe(tribeId, mode, frontX, frontY, count, opts) {
         opts = opts || {};
@@ -552,45 +524,6 @@
         return out;
     }
 
-    // === GitHub I/O for the fakes file ===
-    function authHeaders() {
-        return { "Authorization": "Bearer " + GITHUB_TOKEN,
-                 "Accept": "application/vnd.github+json" };
-    }
-    function ghGetFakes(done) {
-        $.ajax({
-            url: FAKES_API + "?ref=" + GITHUB_BRANCH + "&_=" + Date.now(),
-            headers: authHeaders(),
-            success: function(data){
-                try {
-                    var content = decodeURIComponent(escape(atob(data.content.replace(/\n/g, ""))));
-                    done(null, { sha: data.sha, payload: JSON.parse(content) });
-                } catch(e){ done(e); }
-            },
-            error: function(xhr){
-                if (xhr.status === 404) done(null, { sha: null, payload: { fakes: [] } });
-                else done(new Error("GitHub GET " + xhr.status));
-            }
-        });
-    }
-    function ghPutFakes(sha, payload, message, done) {
-        var body = {
-            message: message,
-            content: btoa(unescape(encodeURIComponent(JSON.stringify(payload, null, 2)))),
-            branch: GITHUB_BRANCH
-        };
-        if (sha) body.sha = sha;
-        $.ajax({
-            url: FAKES_API,
-            method: "PUT",
-            headers: authHeaders(),
-            contentType: "application/json",
-            data: JSON.stringify(body),
-            success: function(){ done(null); },
-            error: function(xhr){ done(new Error("GitHub PUT " + xhr.status + ": " + xhr.responseText)); }
-        });
-    }
-
     // === Render Panel UI ===
     function renderUI() {
         var myVillages = getMyVillages();
@@ -707,11 +640,9 @@
                 "style='width:100%;height:160px;margin-top:8px;font-family:monospace;font-size:11px;" +
                 "box-sizing:border-box;'></textarea>" +
 
-            "<div style='margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;'>" +
-                "<button id='fp-copy' disabled style='padding:5px 10px;'>📋 Alle kopieren</button>" +
-                "<button id='fp-pushfakes' disabled style='padding:5px 10px;'>💾 In " + FAKES_FILE + " sichern</button>" +
-                "<button id='fp-pushmain' disabled style='padding:5px 10px;background:#afa;font-weight:bold;'>" +
-                    "🚀 In Launchpad-Plan (" + _playerName + ".json) übernehmen</button>" +
+            "<div style='margin-top:6px;'>" +
+                "<button id='fp-copy' disabled style='padding:5px 12px;font-weight:bold;'>" +
+                    "📋 Alle kopieren</button>" +
             "</div>"
         );
 
@@ -729,8 +660,6 @@
             $out[0].select();
             try { document.execCommand("copy"); UI.SuccessMessage("Kopiert"); } catch(e){}
         });
-        $("#fp-pushfakes").on("click", function(){ pushToFakesFile(); });
-        $("#fp-pushmain").on("click", function(){ pushToMainPlan(); });
 
         setStatus("Bereit — " + tribeOpts.split("</option>").length + " Stämme, " +
                   myVillages.length + " eigene Dörfer geladen.", "green");
@@ -932,91 +861,6 @@
                 "<tbody>" + rows + "</tbody>" +
             "</table></details>"
         );
-    }
-
-    function pushToFakesFile() {
-        if (lastGenerated.length === 0) { setStatus("Nichts zu speichern.", "orange"); return; }
-        if (!GITHUB_TOKEN) { setStatus("Kein GitHub-Token (window.LAUNCHPAD_TOKEN nicht gesetzt).", "red"); return; }
-        setStatus("Lade " + FAKES_FILE + "…");
-        ghGetFakes(function(err, current){
-            if (err) { setStatus("GitHub GET fehlgeschlagen: " + err.message, "red"); return; }
-            var entries = (current.payload && current.payload.fakes) || [];
-            var added = lastGenerated.map(function(f){
-                return fakeToLaunchpadEntry(f.originVid, f.targetVid, f.troops, f.arrivalMs);
-            });
-            // Dedupe by id.
-            var byId = {};
-            entries.forEach(function(e){ byId[e.id] = e; });
-            added.forEach(function(e){ byId[e.id] = e; });
-            var merged = Object.values(byId);
-            setStatus("Schreibe " + merged.length + " Einträge…");
-            ghPutFakes(current.sha, { fakes: merged },
-                "fakeplanner: +" + added.length + " (gesamt " + merged.length + ")",
-                function(err){
-                    if (err) setStatus("GitHub PUT fehlgeschlagen: " + err.message, "red");
-                    else setStatus("✓ " + added.length + " Fakes in " + FAKES_FILE + " gespeichert.", "green");
-                }
-            );
-        });
-    }
-
-    function pushToMainPlan() {
-        if (lastGenerated.length === 0) { setStatus("Nichts zu pushen.", "orange"); return; }
-        if (!GITHUB_TOKEN) { setStatus("Kein GitHub-Token (window.LAUNCHPAD_TOKEN nicht gesetzt).", "red"); return; }
-
-        var mainApi = "https://api.github.com/repos/" + GITHUB_OWNER + "/" + GITHUB_DATA_REPO
-                      + "/contents/" + encodeURIComponent(_playerName + ".json");
-
-        setStatus("Lade " + _playerName + ".json…");
-        $.ajax({
-            url: mainApi + "?ref=" + GITHUB_BRANCH + "&_=" + Date.now(),
-            headers: authHeaders(),
-            success: function(data){
-                var sha = data.sha;
-                var existing = { attacks: [] };
-                try {
-                    var content = decodeURIComponent(escape(atob(data.content.replace(/\n/g, ""))));
-                    existing = JSON.parse(content);
-                } catch(e){}
-                pushMerge(mainApi, sha, existing.attacks || []);
-            },
-            error: function(xhr){
-                if (xhr.status === 404) pushMerge(mainApi, null, []);
-                else setStatus("GitHub GET fehlgeschlagen: " + xhr.status, "red");
-            }
-        });
-
-        function pushMerge(api, sha, existingAttacks) {
-            var added = lastGenerated.map(function(f){
-                return fakeToLaunchpadEntry(f.originVid, f.targetVid, f.troops, f.arrivalMs);
-            });
-            // Dedupe by id; fakes don't replace existing real attacks if id collides.
-            var byId = {};
-            existingAttacks.forEach(function(e){ byId[e.id] = e; });
-            added.forEach(function(e){ if (!byId[e.id]) byId[e.id] = e; });
-            var merged = Object.values(byId);
-
-            var body = {
-                message: "fakeplanner: +" + added.length + " fakes (Plan total " + merged.length + ")",
-                content: btoa(unescape(encodeURIComponent(JSON.stringify({ attacks: merged }, null, 2)))),
-                branch: GITHUB_BRANCH
-            };
-            if (sha) body.sha = sha;
-            setStatus("Pushe " + merged.length + " Angriffe…");
-            $.ajax({
-                url: api,
-                method: "PUT",
-                headers: authHeaders(),
-                contentType: "application/json",
-                data: JSON.stringify(body),
-                success: function(){
-                    setStatus("✓ " + added.length + " Fakes in Launchpad-Plan übernommen — Bot übernimmt!", "green");
-                },
-                error: function(xhr){
-                    setStatus("GitHub PUT fehlgeschlagen: " + xhr.status + " — " + xhr.responseText, "red");
-                }
-            });
-        }
     }
 
     // === Utility ===
