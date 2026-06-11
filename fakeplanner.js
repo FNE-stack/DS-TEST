@@ -38,6 +38,10 @@
     // Fake-limit ratio fetched from world config at startup. Default 0.05 (5%) —
     // standard for most de worlds, but real value depends on world.
     var worldFakeLimit = 0.05;
+    // Night-bonus window (server local time). When active, attacks arriving
+    // between these hours hit a defender with +100% def — generated fakes
+    // arriving in this window are wasted. Fetched from world config too.
+    var nightBonus = { active: false, startHour: 23, endHour: 8 };
     var UNIT_SPEEDS = {
         spear: 18, sword: 22, axe: 18, archer: 18, spy: 9,
         light: 10, marcher: 10, heavy: 11, ram: 30, catapult: 30,
@@ -101,6 +105,19 @@
                     // if value >= 1. (Was excluding exactly-1 before, hence "100%".)
                     worldFakeLimit = v >= 1 ? v / 100 : v;
                 }
+                // Night bonus — XML shape is `<night><active>1</active>
+                // <start_hour>23</start_hour><end_hour>8</end_hour></night>`.
+                var $night = $(xml).find("night").first();
+                if ($night.length) {
+                    nightBonus.active = $night.find("active").first().text() === "1";
+                    var sh = parseInt($night.find("start_hour").first().text(), 10);
+                    var eh = parseInt($night.find("end_hour").first().text(), 10);
+                    if (!isNaN(sh)) nightBonus.startHour = sh;
+                    if (!isNaN(eh)) nightBonus.endHour = eh;
+                }
+                console.log("[fakeplanner] world config: fake_limit=" +
+                    (worldFakeLimit * 100).toFixed(2) + "%, night=" +
+                    (nightBonus.active ? (nightBonus.startHour + "-" + nightBonus.endHour) : "off"));
             } catch(e){}
             tick();
         }).fail(function(){ tick(true); });
@@ -493,16 +510,44 @@
         return { fakes: fakes, droppedFar: droppedFar, droppedNoUnits: droppedNoUnits };
     }
 
-    // === Arrival time spread ===
-    // Returns N timestamps spread between start and end ms, with optional jitter.
+    // === Arrival time spread (night-bonus aware) ===
+    // Returns N timestamps spread between start and end ms, with optional jitter,
+    // skipping any timestamps that would fall in the world's night-bonus window.
+    function isInNightBonus(timestamp) {
+        if (!nightBonus.active) return false;
+        var d = new Date(timestamp);
+        var hour = d.getHours() + d.getMinutes() / 60;
+        var sh = nightBonus.startHour, eh = nightBonus.endHour;
+        if (sh < eh) return hour >= sh && hour < eh;
+        // Wraps midnight, e.g. 23 → 8: in-bonus when hour >= 23 OR hour < 8.
+        return hour >= sh || hour < eh;
+    }
     function spreadArrivals(startMs, endMs, n, jitterMs) {
-        if (n === 1) return [Math.floor((startMs + endMs) / 2)];
+        if (n === 0) return [];
         var out = [];
+        if (n === 1) {
+            var mid = Math.floor((startMs + endMs) / 2);
+            if (isInNightBonus(mid)) {
+                // Shift forward to next non-bonus minute
+                var safety = 24 * 60;
+                while (safety-- > 0 && isInNightBonus(mid) && mid < endMs) {
+                    mid += 60 * 1000;
+                }
+            }
+            if (mid < endMs) out.push(mid);
+            return out;
+        }
         var step = (endMs - startMs) / (n - 1);
         for (var i = 0; i < n; i++) {
             var t = startMs + i * step;
             if (jitterMs) t += (Math.random() - 0.5) * 2 * jitterMs;
-            out.push(Math.floor(t));
+            t = Math.max(startMs, Math.min(endMs - 1, t));
+            // Shift forward in 1-min steps until out of night bonus or past end.
+            var safety2 = 24 * 60;
+            while (safety2-- > 0 && isInNightBonus(t) && t < endMs) {
+                t += 60 * 1000;
+            }
+            if (t < endMs) out.push(Math.floor(t));
         }
         return out;
     }
@@ -755,24 +800,66 @@
         }
 
         var arrivals = spreadArrivals(ui.startMs, ui.endMs, fakes.length, 60000);
-
+        if (arrivals.length < fakes.length) {
+            // Means some slots got dropped by night-bonus skip; trim fakes
+            // to match. The first N fakes get the N available arrivals.
+            fakes = fakes.slice(0, arrivals.length);
+        }
+        var nowMs = serverDate().getTime();
+        // Travel feasibility: send_ms = arrival_ms - travel_ms must be in the
+        // future (with a small safety pad so the bot has time to fire). If a
+        // fake's travel time exceeds (arrival - now), it can't physically
+        // reach the planned arrival and gets dropped.
+        var droppedUnreachable = 0;
         var totalCats = 0, totalSpies = 0, totalInf = 0;
-        lastGenerated = fakes.map(function(f, i){
+        var SAFETY_PAD_MS = 60 * 1000;  // 60s breathing room before send
+
+        lastGenerated = [];
+        fakes.forEach(function(f, i){
+            var slow = slowestUnit(f.troops);
+            var mpf = slow ? UNIT_SPEEDS[slow] : 0;
+            var travelMs = mpf
+                ? Math.round(f.dist * mpf * 60 / (worldSpeed * unitSpeed)) * 1000
+                : 0;
+            var arrival = arrivals[i];
+            var send = arrival - travelMs;
+            if (send < nowMs + SAFETY_PAD_MS) {
+                droppedUnreachable++;
+                return;
+            }
             if (f.troops.catapult) totalCats += f.troops.catapult;
             if (f.troops.spy) totalSpies += f.troops.spy;
             ["spear","sword","axe","archer"].forEach(function(u){
                 if (f.troops[u]) totalInf += f.troops[u];
             });
-            return {
+            lastGenerated.push({
                 originVid: f.origin.vid,
                 targetVid: f.target.vid,
                 originLabel: f.origin.name + " (" + f.origin.x + "|" + f.origin.y + ")",
                 targetLabel: f.target.name + " (" + f.target.x + "|" + f.target.y + ")",
                 troops: f.troops,
-                arrivalMs: arrivals[i],
+                arrivalMs: arrival,
+                sendMs: send,
                 dist: f.dist
-            };
+            });
         });
+        var droppedNightBonus = fakes.length === arrivals.length
+            ? 0
+            : (fakes.length + (fakes.length - arrivals.length)) - fakes.length;
+        // The arrival count being less than fakes.length already trimmed fakes
+        // above — record the difference as night-bonus drops for the summary.
+        droppedNightBonus = Math.max(0, (result.fakes.length) - arrivals.length);
+
+        if (lastGenerated.length === 0) {
+            var why = [];
+            if (droppedUnreachable > 0) why.push(droppedUnreachable + " außerhalb Reichweite (Reisezeit > Zeitfenster)");
+            if (droppedNightBonus > 0) why.push(droppedNightBonus + " im Nachtbonus");
+            setStatus("Keine Fakes generiert" + (why.length ? " — " + why.join(", ") : "") + ".", "red");
+            $("#fp-output").val("");
+            $("#fp-preview").empty();
+            $("#fp-summary").text("");
+            return;
+        }
 
         // Workbench textarea = pure commands, one per line. NO comments, no
         // blank lines — some workbench parsers are strict about format and
@@ -796,6 +883,8 @@
         if (totalInf > 0) summaryParts.push("Σ " + totalInf + " Inf");
         if (droppedFar > 0) summaryParts.push(droppedFar + " zu weit weg");
         if (droppedNoUnits > 0) summaryParts.push(droppedNoUnits + " ohne genug Truppen");
+        if (droppedUnreachable > 0) summaryParts.push(droppedUnreachable + " außerhalb Reisezeit");
+        if (droppedNightBonus > 0) summaryParts.push(droppedNightBonus + " im Nachtbonus übersprungen");
         $("#fp-summary").text(summaryParts.join(" · "));
 
         $("#fp-copy, #fp-pushfakes, #fp-pushmain").prop("disabled", false);
