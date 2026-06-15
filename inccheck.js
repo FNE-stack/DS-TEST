@@ -127,36 +127,40 @@
     }
 
     // ── Find attacker coords from a row ───────────────────────────────────
-    // On incomings overview: row is [defender link] [attacker link] → use LAST link
-    // On info_village: row has only attacker link → use first non-own link
+    // Incomings overview layout: [Befehl] [origin/attacker link] [target/defender link] [time] …
+    // → attacker is the FIRST info_village link that isn't our own village.
+    // info_village: row has only attacker link → skip own village, pick first.
     function getAttackerXY($row, callback) {
         var $links = $row.find('a[href*="info_village"]').filter(function () {
             return /[?&]id=\d+/.test($(this).attr('href') || '');
         });
 
         if (isIncomings) {
-            // Attacker is always the LAST info_village link in the row
-            // (layout: defender | attacker)
+            // Attacker is the FIRST info_village link that is NOT our own village.
+            // TW row layout: origin (attacker) comes before destination (defender).
             var found = null;
             $links.each(function () {
                 var m = ($(this).attr('href') || '').match(/[?&]id=(\d+)/);
-                if (m && villageMap[m[1]]) {
+                if (!m) return;
+                if (m[1] === currentVid) return; // skip own village
+                if (villageMap[m[1]]) {
                     found = { x: villageMap[m[1]].x, y: villageMap[m[1]].y, id: m[1] };
-                    // don't break — we want the LAST one
+                    return false; // break — first non-own link is the attacker
                 }
             });
             if (found) { callback(found.x, found.y, found.id); return; }
 
-            // Fallback: last coordinate pair in row text (no village ID available)
-            var coords = [];
+            // Fallback: first coordinate pair in row text that isn't our own village
+            var ownCoord = (currentVid && villageMap[currentVid])
+                ? villageMap[currentVid].x + '|' + villageMap[currentVid].y : null;
             var re = /\b(\d{1,3})\|(\d{1,3})\b/g;
             var rowText = $row.text();
             var m2;
-            while ((m2 = re.exec(rowText)) !== null) { coords.push([m2[1], m2[2]]); }
-            if (coords.length) {
-                var last = coords[coords.length - 1];
-                callback(last[0], last[1], null);
-                return;
+            while ((m2 = re.exec(rowText)) !== null) {
+                if ((m2[1] + '|' + m2[2]) !== ownCoord) {
+                    callback(m2[1], m2[2], null);
+                    return;
+                }
             }
 
         } else {
@@ -213,42 +217,63 @@
     }
 
     // ── Threat assessment ─────────────────────────────────────────────────
-    // Priority: 1) noble unit in TW table  2) noble seen in ANY report
-    // 3) building data  4) unit type fallback
-    // Report history beats stale building data — if nobles were ever seen,
-    // the village had smithy 20 at some point regardless of what buildings say now.
+    // Priority: 1) noble unit in TW Befehl column  2) noble used as attacker in report
+    // 3) fresh building data  4) stale building data (downgraded confidence)
+    // 5) unit type fallback
     function assessThreat(data, unitType) {
-        // Noble unit directly in this wave — certain
+        // Noble unit directly in this wave — certain, live game data
         if (unitType === 'snob') {
             return { label: 'ADEL!', bg: '#b00000', title: 'Adelszug in diesem Angriff!' };
         }
 
-        // Noble seen in any report — overrides everything including building data,
-        // because building data can be months old while report proves capability existed.
-        var snobSeen = (data && data.attack_report && +data.attack_report.snob > 0)
-                    || (data && data.defend_report  && +data.defend_report.snob  > 0);
-        if (snobSeen) {
-            return { label: 'ADEL!', bg: '#b00000', title: 'Adel in Berichten gesehen!' };
+        // Noble used as attacker in a report (attack_report = we scouted/attacked them,
+        // defend_report = they attacked us). Only trust defend_report.snob here — that
+        // means nobles were in the attacking army hitting us, proving active noble capability.
+        // attack_report.snob = nobles we saw garrisoned in their village (could be just 1
+        // sitting there, not proof they'll noble someone).
+        var nobleAttacked = data && data.defend_report && +data.defend_report.snob > 0
+                         && +data.defend_report.fighttime > 0;
+        if (nobleAttacked) {
+            return { label: 'ADEL!', bg: '#b00000', title: 'Adel in Angriff gesehen (Bericht)!' };
         }
 
-        // Building data — reliable when fresh
+        // Building data
         var buildings = findBuildings(data);
         if (buildings) {
+            var ts = data && (data.gdb_ts || data.updated_at || data.ts);
+            var tsMs = ts ? (+ts < 1e10 ? +ts * 1000 : +ts) : 0;
+            var daysOld = tsMs ? Math.floor((Date.now() - tsMs) / 86400000) : 999;
+            var stale = daysOld > 30;
+
             var smith = +(buildings.smith || buildings.schmiede || 0);
             var snob  = +(buildings.snob  || buildings.adelshof  || 0);
+
+            // Noble garrison seen in scout report (attack_report) — less certain than active attack,
+            // but combined with building data it's still a strong signal
+            var nobleGarrisoned = data && data.attack_report && +data.attack_report.snob > 0
+                                && +data.attack_report.fighttime > 0;
+
             if (smith >= 20 && snob > 0) {
-                return { label: 'ADEL!', bg: '#b00000', title: 'Schmiede 20 + Adelshof — adelsfähig!' };
+                var ageNote = stale ? ' (DB ' + daysOld + 'd alt ⚠)' : '';
+                return { label: 'ADEL!', bg: stale ? '#c84800' : '#b00000',
+                    title: 'Schmiede 20 + Adelshof — adelsfähig!' + ageNote };
             }
             if (smith >= 20) {
-                return { label: 'ADM?', bg: '#c84800', title: 'Schmiede 20, kein Adelshof' };
+                return { label: 'ADM?', bg: '#c84800', title: 'Schmiede 20, kein Adelshof (DB ' + daysOld + 'd alt)' };
             }
-            return { label: 'FAKE', bg: '#2a8a2a', title: 'Schmiede ' + smith + '/20 laut DB' };
+            if (nobleGarrisoned) {
+                return { label: 'ADEL?', bg: '#c84800', title: 'Adel in Dorf gesehen (Scout), aber Schmiede nur ' + smith + '/20' };
+            }
+            if (stale) {
+                return { label: 'FAKE?', bg: '#6a6a00', title: 'Schmiede ' + smith + '/20 — aber DB ' + daysOld + 'd alt, ggf. ausgebaut!' };
+            }
+            return { label: 'FAKE', bg: '#2a8a2a', title: 'Schmiede ' + smith + '/20 laut DB (' + daysOld + 'd alt)' };
         }
 
         // Nothing useful in DB
         if (!data) return { label: '?', bg: '#555', title: 'Nicht in DB' };
         if (unitType === 'ram' || unitType === 'catapult') {
-            return { label: 'RAM', bg: '#888', title: 'Ramme — keine Gebäudedaten in DB' };
+            return { label: 'RAM', bg: '#888', title: 'Ramme/Kata — keine Gebäudedaten in DB' };
         }
         return { label: '?', bg: '#666', title: 'Keine Gebäudedaten in DB' };
     }
@@ -301,8 +326,12 @@
         if (buildings) {
             var ts = data.gdb_ts || data.updated_at || data.ts || null;
             if (ts) {
-                $p.append($('<div>').css({ fontSize: '10px', color: '#888', marginBottom: '5px' })
-                    .text('Stand: ' + new Date(+ts * (ts < 1e10 ? 1000 : 1)).toLocaleDateString('de-DE')));
+                // Normalise to ms: if ts looks like seconds (< 1e10) multiply by 1000
+                var tsMs = +ts < 1e10 ? +ts * 1000 : +ts;
+                var daysOld = Math.floor((Date.now() - tsMs) / 86400000);
+                var stale = daysOld > 30;
+                $p.append($('<div>').css({ fontSize: '10px', color: stale ? '#c84800' : '#888', marginBottom: '5px' })
+                    .text('Stand: ' + new Date(tsMs).toLocaleDateString('de-DE') + ' (' + daysOld + 'd alt)' + (stale ? ' ⚠ veraltet' : '')));
             }
             var $bldgs = $('<div>').css({ display: 'flex', flexWrap: 'wrap', gap: '6px' });
             Object.keys(BUILDING_KEYS).forEach(function (k) {
@@ -360,22 +389,26 @@
         var bestTotal = 0;
         [data && data.attack_report, data && data.defend_report].forEach(function (r) {
             if (!r || !+r.fighttime) return;
-            var axe   = +r.axe   || 0;
-            var light = +r.light || 0;
-            var heavy = +r.heavy || 0;
-            var ram   = +r.ram   || 0;
-            var total = axe + light + heavy + ram;
+            var axe      = +r.axe      || 0;
+            var light    = +r.light    || 0;
+            var heavy    = +r.heavy    || 0;
+            var ram      = +r.ram      || 0;
+            var catapult = +r.catapult || 0;
+            var snob     = +r.snob     || 0;
+            var total = axe + light + heavy + ram + catapult + snob;
             if (total > bestTotal) {
                 bestTotal = total;
-                best = { axe: axe, light: light, heavy: heavy, ram: ram };
+                best = { axe: axe, light: light, heavy: heavy, ram: ram, catapult: catapult, snob: snob };
             }
         });
         if (!best) return null;
         var parts = [];
-        if (best.axe)   parts.push(best.axe   + ' Äxte');
-        if (best.light) parts.push(best.light + ' LA');
-        if (best.heavy) parts.push(best.heavy + ' SA');
-        if (best.ram)   parts.push(best.ram   + ' Rammen');
+        if (best.snob)     parts.push(best.snob     + ' Adel');
+        if (best.axe)      parts.push(best.axe      + ' Äxte');
+        if (best.light)    parts.push(best.light    + ' LA');
+        if (best.heavy)    parts.push(best.heavy    + ' SA');
+        if (best.ram)      parts.push(best.ram      + ' Rammen');
+        if (best.catapult) parts.push(best.catapult + ' Katas');
         return { total: bestTotal, parts: parts };
     }
 
@@ -417,18 +450,23 @@
     // TW shows the slowest unit icon/name in the first cell. Noble (35 mpf) is
     // slower than ram (30 mpf), so "Ramme" in Befehl = this wave cannot be noble.
     function getUnitFromRow($row) {
-        var $td  = $row.find('td').first();
-        var src  = ($td.find('img').attr('src') || '').toLowerCase();
-        var txt  = $td.text().toLowerCase();
-        if (/snob/.test(src)   || /snob|adel/.test(txt))       return 'snob';
-        if (/ram/.test(src)    || /ramme/.test(txt))            return 'ram';
-        if (/catapult/.test(src) || /katapult/.test(txt))       return 'catapult';
-        if (/heavy/.test(src)  || /schwere\s+kavallerie/.test(txt)) return 'heavy';
-        if (/light/.test(src)  || /leichte\s+kavallerie/.test(txt)) return 'light';
-        if (/axe/.test(src)    || /\baxt\b/.test(txt))          return 'axe';
-        if (/spy/.test(src)    || /sp[äa]her/.test(txt))        return 'spy';
-        if (/spear/.test(src)  || /speer/.test(txt))            return 'spear';
-        if (/sword/.test(src)  || /schwert/.test(txt))          return 'sword';
+        // Check first 2 cells — TW sometimes puts the unit image in the second cell
+        // (e.g. when a rally-point column or status icon precedes the unit icon).
+        var $tds = $row.find('td').slice(0, 2);
+        var src = '', txt = '';
+        $tds.each(function () {
+            src += ($(this).find('img').attr('src') || '').toLowerCase() + ' ';
+            txt += $(this).text().toLowerCase() + ' ';
+        });
+        if (/snob/.test(src)     || /snob|adel/.test(txt))           return 'snob';
+        if (/ram/.test(src)      || /\bramme\b/.test(txt))            return 'ram';
+        if (/catapult/.test(src) || /katapult/.test(txt))             return 'catapult';
+        if (/heavy/.test(src)    || /schwere\s+kavallerie/.test(txt)) return 'heavy';
+        if (/light/.test(src)    || /leichte\s+kavallerie/.test(txt)) return 'light';
+        if (/axe/.test(src)      || /\baxt\b/.test(txt))              return 'axe';
+        if (/spy/.test(src)      || /sp[äa]her/.test(txt))            return 'spy';
+        if (/spear/.test(src)    || /speer/.test(txt))                return 'spear';
+        if (/sword/.test(src)    || /schwert/.test(txt))              return 'sword';
         return null;
     }
 
