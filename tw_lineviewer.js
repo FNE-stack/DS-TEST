@@ -9,31 +9,49 @@
  * bundle. It hooks TWMap directly (TWMap.map.pixelByCoord / coordByPixel),
  * overlays its own canvas, and re-draws on pan/zoom.
  *
- * Plans are fetched from a GitHub index.json (e.g. your DS-PLAN repo):
+ * Plans live in the PRIVATE DS-PLAN repo and are fetched via the GitHub API
+ * with a token (same pattern as launchpad.js). DS-PLAN/index.json lists plans:
  *   index.json = [{ "name": "Front Nord", "world": "de256", "file": "plans/front_nord.txt" }, ...]
  * Each plan file is the classic "Korriskript" paste format:
  *   [[[457,520],[457,450]]]          ← a line (array of [x,y] points)
  *   [[452,500],"Stfn"]               ← a label  ([x,y], text)
  * (Comment lines / headers like "Korriskript für TW Line Drawer" are ignored.)
  *
- * USAGE: upload to DS-TEST → served at https://fne-stack.github.io/DS-TEST/
- * tw_lineviewer.js. Add a Schnellleiste button (same $.getScript style as your
- * other quickbar scripts) — see tw_lineviewer_quickbar.txt:
- *   javascript: window.TWLV_INDEX_URL='https://fne-stack.github.io/DS-PLAN/index.json';
- *   $.getScript('https://fne-stack.github.io/DS-TEST/tw_lineviewer.js');
+ * USAGE: upload THIS file to the public DS-TEST repo, then add a Schnellleiste
+ * button (same $.getScript + token style as launchpad.js) — see
+ * tw_lineviewer_quickbar.txt:
+ *   javascript: window.TWLV_TOKEN='ghp_xxx';$.getScript('https://fne-stack.github.io/DS-TEST/tw_lineviewer.js');
  */
 (function () {
   'use strict';
 
   // ── CONFIG ────────────────────────────────────────────────────────────
-  // GitHub Pages index of available plans (map data lives in the DS-PLAN repo).
-  // Override per-button via window.TWLV_INDEX_URL in the quickbar loader.
-  var INDEX_URL = (window.TWLV_INDEX_URL ||
-    'https://fne-stack.github.io/DS-PLAN/index.json');
+  // Plans live in the PRIVATE DS-PLAN repo and are fetched via the GitHub API
+  // with a token (same pattern as launchpad.js). Pass the token + repo from the
+  // quickbar loader; sensible defaults below.
+  var GH_OWNER  = window.TWLV_OWNER  || 'FNE-stack';
+  var GH_REPO   = window.TWLV_REPO   || 'DS-PLAN';   // private — holds the plans
+  var GH_BRANCH = window.TWLV_BRANCH || 'main';
+  var GH_TOKEN  = window.TWLV_TOKEN  || '';          // GitHub PAT (repo: read)
+  // Index file inside DS-PLAN listing the available plans.
+  var INDEX_FILE = window.TWLV_INDEX_FILE || 'index.json';
   // Auto-load the first plan matching the current world on map open.
   var AUTO_LOAD = (window.TWLV_AUTO_LOAD !== false);
   var LINE_WIDTH = 2;
   var DEFAULT_COLOR = '#ff0000'; // red default for lines
+
+  // GitHub API content endpoint for a file in the private DS-PLAN repo.
+  function ghContentsUrl(path) {
+    return 'https://api.github.com/repos/' + GH_OWNER + '/' + GH_REPO +
+           '/contents/' + path.split('/').map(encodeURIComponent).join('/') +
+           '?ref=' + GH_BRANCH + '&_=' + Date.now();
+  }
+  function ghHeaders() {
+    return {
+      'Authorization': 'Bearer ' + GH_TOKEN,
+      'Accept': 'application/vnd.github.raw',  // ask for raw file body directly
+    };
+  }
 
   var W = window;
   var TWMap = null; // set in boot() once the map screen is ready
@@ -286,36 +304,38 @@
     },
   };
 
-  // ── FETCH (GitHub raw; resolves a plan file relative to the index URL) ──
+  // ── FETCH a plan file from the PRIVATE DS-PLAN repo via the GitHub API ──
+  // `file` is a repo-relative path from index.json (e.g. "plans/front_nord.txt").
+  // Uses Accept: application/vnd.github.raw so the body is the file text directly.
   function fetchText(file, planMeta) {
-    var url = file;
-    // Allow absolute URLs in index; else resolve relative to index.json dir.
-    if (!/^https?:\/\//.test(file)) {
-      var base = INDEX_URL.replace(/\/[^\/]*$/, '/');
-      url = base + file;
-    }
-    // cache-bust so updated plans show without a hard refresh
-    url += (url.indexOf('?') < 0 ? '?' : '&') + 't=' + Date.now();
-    return fetch(url, { cache: 'no-store' }).then(function (r) {
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      return r.text();
-    });
+    return fetch(ghContentsUrl(file), { headers: ghHeaders(), cache: 'no-store' })
+      .then(function (r) {
+        if (!r.ok) throw new Error('GitHub ' + r.status + ' (' + file + ')');
+        return r.text();
+      });
   }
 
   // ── BOOT (runs once TWMap is ready) ─────────────────────────────────────
   W._twlv = Viewer;
   Viewer.hookMap();
 
-  fetch(INDEX_URL + (INDEX_URL.indexOf('?') < 0 ? '?' : '&') + 't=' + Date.now(),
-        { cache: 'no-store' })
-    .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+  if (!GH_TOKEN) {
+    alert('TW Line Viewer: kein GitHub-Token gesetzt.\n' +
+          'Setze window.TWLV_TOKEN im Schnellleisten-Loader (Lesezugriff auf ' +
+          GH_OWNER + '/' + GH_REPO + ').');
+    return;
+  }
+
+  // Load the plan index (index.json) from the private DS-PLAN repo via API.
+  fetchText(INDEX_FILE)
+    .then(function (txt) { return JSON.parse(txt); })
     .then(function (plans) {
-      if (!Array.isArray(plans) || !plans.length) throw new Error('index.json leer');
+      if (!Array.isArray(plans) || !plans.length) throw new Error('index leer');
       Viewer.buildPanel(plans);
     })
     .catch(function (e) {
-      alert('TW Line Viewer: index.json konnte nicht geladen werden (' + e +
-            ').\nPrüfe TWLV_INDEX_URL / dein DS-PLAN Repo.');
+      alert('TW Line Viewer: ' + INDEX_FILE + ' konnte nicht geladen werden (' + e +
+            ').\nPrüfe Token / Repo (' + GH_OWNER + '/' + GH_REPO + ').');
     });
 
   } // end boot()
