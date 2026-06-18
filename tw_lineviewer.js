@@ -439,6 +439,20 @@
       this.embedStage = stage;
       this.outerCanvas = ocanvas;
 
+      // DOM PROBE: a plain coloured DIV over the map. If even THIS doesn't show
+      // in the app, the app's native map composites above ALL webview DOM and no
+      // overlay (canvas or div) can ever appear over it — the hard wall.
+      if (TWLV_DEBUG_MARKER) {
+        var probe = document.createElement('div');
+        probe.id = 'twlv_probe';
+        probe.textContent = 'TWLV PROBE';
+        probe.style.cssText =
+          'position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);' +
+          'z-index:2147483647;background:#ff00ff;color:#fff;font:bold 16px Verdana;' +
+          'padding:10px 16px;border-radius:6px;pointer-events:none;';
+        ov.appendChild(probe);
+      }
+
       var status = document.createElement('div');
       status.id = 'twlv_estatus';
       status.style.cssText =
@@ -510,14 +524,25 @@
         if (!m || !m.pos) return null;
         var off = center ? 0.5 : 0;
         var p = m.pixelByCoord(x + off, y + off);
-        var sx = p[0] - m.pos[0], sy = p[1] - m.pos[1];
-        // Offset of the iframe's map viewport relative to the iframe top-left.
+        // Pixel inside the iframe's map VIEWPORT.
+        var vx = p[0] - m.pos[0], vy = p[1] - m.pos[1];
+        // Convert to OUTER-canvas pixels:
+        //   + map viewport's position within the iframe document
+        //   + iframe's position within the parent (== outer canvas origin, since
+        //     both the canvas and iframe share the overlay's top-left)
         var root = m.el && m.el.root;
         if (root && root.jquery) root = root[0];
-        if (root && root.getBoundingClientRect) {
-          var r = root.getBoundingClientRect();
-          sx += r.left; sy += r.top;
-        }
+        var rootRect = root && root.getBoundingClientRect
+          ? root.getBoundingClientRect() : { left: 0, top: 0 };
+        var frame = this.embedFrame;
+        var frameRect = frame && frame.getBoundingClientRect
+          ? frame.getBoundingClientRect() : { left: 0, top: 0 };
+        var canvasRect = this.outerCanvas && this.outerCanvas.getBoundingClientRect
+          ? this.outerCanvas.getBoundingClientRect() : { left: 0, top: 0 };
+        // screen-in-parent = frame.left + root.left(in-iframe) + viewportPixel
+        // then subtract the canvas's own origin so we get canvas-local coords.
+        var sx = frameRect.left + rootRect.left + vx - canvasRect.left;
+        var sy = frameRect.top + rootRect.top + vy - canvasRect.top;
         return { sx: sx, sy: sy };
       } catch (e) { return null; }
     },
