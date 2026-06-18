@@ -32,7 +32,10 @@
   var GH_OWNER  = window.TWLV_OWNER  || 'FNE-stack';
   var GH_REPO   = window.TWLV_REPO   || 'DS-PLAN';   // private — holds the plans
   var GH_BRANCH = window.TWLV_BRANCH || 'main';
-  var GH_TOKEN  = window.TWLV_TOKEN  || '';          // GitHub PAT (repo: read)
+  // GitHub PAT (repo: read). Accepts TWLV_TOKEN, or falls back to the same
+  // LAUNCHPAD_TOKEN your launchpad quickbar already sets — so one token works
+  // for both scripts.
+  var GH_TOKEN  = window.TWLV_TOKEN || window.LAUNCHPAD_TOKEN || '';
   // Index file inside DS-PLAN listing the available plans.
   var INDEX_FILE = window.TWLV_INDEX_FILE || 'index.json';
   // Auto-load the first plan matching the current world on map open.
