@@ -113,7 +113,7 @@
   // stays still while coordToScreen accounts for the pan via the container's
   // CSS offset. TWMap.map.el.root is the viewport; .el.container is the panner.
   function getMapEl() {
-    var m = TWMap.map;
+    var m = TWMap && TWMap.map;        // TWMap may be undefined (app has no TWMap)
     if (m && m.el && m.el.root) return m.el.root;
     return document.getElementById('map') ||
            document.getElementById('map_main') ||
@@ -174,8 +174,8 @@
     // TWLineDrawer (no +0.5 for lines).
     coordToScreen: function (x, y, center) {
       try {
-        var m = TWMap.map;
-        if (!m.pos) return null;
+        var m = TWMap && TWMap.map;
+        if (!m || !m.pos) return null;
         var off = center ? 0.5 : 0;
         var p = m.pixelByCoord(x + off, y + off);
         return { sx: p[0] - m.pos[0], sy: p[1] - m.pos[1] };
@@ -475,8 +475,8 @@
     // against the iframe's TWMap).
     embedCoordToScreen: function (x, y, center) {
       try {
-        var m = this.embedWin.TWMap.map;
-        if (!m.pos) return null;
+        var m = this.embedWin && this.embedWin.TWMap && this.embedWin.TWMap.map;
+        if (!m || !m.pos) return null;
         var off = center ? 0.5 : 0;
         var p = m.pixelByCoord(x + off, y + off);
         return { sx: p[0] - m.pos[0], sy: p[1] - m.pos[1] };
