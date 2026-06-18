@@ -280,10 +280,15 @@
       if (this.panelEl) { this.panelEl.remove(); this.panelEl = null; }
       var p = document.createElement('div');
       p.id = 'twlv_panel';
+      // Anchored TOP-left (not bottom): the app's nav/safe-area cuts off
+      // bottom-pinned panels so the buttons fall off-screen. Top is always
+      // visible. Uses safe-area inset so it clears any notch/status bar.
       p.style.cssText =
-        'position:fixed;left:8px;bottom:8px;z-index:6000;background:#f4e4bc;' +
+        'position:fixed;left:8px;top:calc(8px + env(safe-area-inset-top,0px));' +
+        'z-index:2147483000;background:#f4e4bc;' +
         'border:1px solid #804000;border-radius:6px;padding:6px 8px;font:12px Verdana;' +
-        'box-shadow:0 2px 8px rgba(0,0,0,.4);max-width:240px;';
+        'box-shadow:0 2px 8px rgba(0,0,0,.4);max-width:240px;' +
+        'max-height:calc(100vh - 24px);overflow:auto;';
       var world = (W.game_data && W.game_data.world) || '';
       var opts = plans.map(function (pl, i) {
         var lbl = pl.name + (pl.world ? ' (' + pl.world + ')' : '');
@@ -391,7 +396,8 @@
       // Top bar: plan dropdown + toggle + close.
       var bar = document.createElement('div');
       bar.style.cssText =
-        'flex:0 0 auto;display:flex;gap:6px;align-items:center;padding:6px 8px;' +
+        'flex:0 0 auto;display:flex;gap:6px;align-items:center;' +
+        'padding:calc(6px + env(safe-area-inset-top,0px)) 8px 6px 8px;' +
         'background:#f4e4bc;border-bottom:1px solid #804000;font:12px Verdana;';
       var opts = (this._plans || []).map(function (pl, i) {
         return '<option value="' + i + '">' + pl.name +
