@@ -161,26 +161,19 @@
 
     // World coord (x,y) → on-screen pixel inside the map viewport.
     //
-    // TWMap renders all sectors into ONE inner container (TWMap.map.el.container)
-    // and PANS by setting that container's CSS left/top to a negative offset:
-    //   container.style.left = -panX + "px"
-    // pixelByCoord(x,y) returns the ABSOLUTE map-plane pixel (= x*scale, y*scale).
-    // So the on-screen position is: absolutePixel + containerOffset.
-    // (containerOffset is negative when panned, exactly cancelling the abs pixel
-    //  for whatever coord is currently top-left of the viewport.)
+    // Derived from TWMap's OWN definition:
+    //   getCenter() = coordByPixel(pos[0] + size[0]/2, pos[1] + size[1]/2)
+    // → `this.pos` is the map-plane pixel at the viewport's TOP-LEFT corner.
+    //   pixelByCoord(x,y) = [x*scale[0], y*scale[1]]  (absolute map-plane pixel)
+    // So on-screen = absolutePixel − pos. (Earlier I used the container's CSS
+    // offset, which has TWMap's `bias` baked in → off-screen. `pos` is bias-free
+    // and is exactly what TWMap uses to map pixels↔coords.)
     coordToScreen: function (x, y) {
       try {
         var m = TWMap.map;
+        if (!m.pos) return null;
         var p = m.pixelByCoord(x + 0.5, y + 0.5); // center of the tile
-        var cont = (m.el && m.el.container) ? m.el.container : null;
-        var offL = 0, offT = 0;
-        if (cont) {
-          // Prefer the live inline style (what the pan writes); fall back to
-          // offsetLeft/Top relative to the overlay's positioning parent.
-          offL = parseFloat(cont.style.left) || cont.offsetLeft || 0;
-          offT = parseFloat(cont.style.top) || cont.offsetTop || 0;
-        }
-        return { sx: p[0] + offL, sy: p[1] + offT };
+        return { sx: p[0] - m.pos[0], sy: p[1] - m.pos[1] };
       } catch (e) { return null; }
     },
 
@@ -249,7 +242,21 @@
           TWMap.reload._twlv = true;
         }
       }
+      // SELF-HEAL: the app swaps the DOM on navigation (AJAX, no reload) — our
+      // panel/canvas get detached. The loop re-creates them whenever they've
+      // fallen out of the live document, so the panel survives screen switches.
+      function heal() {
+        // Panel gone from the document? Rebuild it from the remembered plans.
+        if (self.panelEl && !document.body.contains(self.panelEl)) {
+          self.panelEl = null;
+        }
+        if (!self.panelEl && self._plans) {
+          self.buildPanel(self._plans);
+        }
+        // Canvas detached? ensureCanvas() re-appends it (called by draw()).
+      }
       function loop() {
+        heal();
         if (mapReady()) {       // map present on this screen
           ensureReloadHook();
           if (self.visible) self.draw();
@@ -261,8 +268,10 @@
     },
 
     // ── UI PANEL (plan dropdown + toggle) ────────────────────────────────
+    _plans: null,
     buildPanel: function (plans) {
       var self = this;
+      this._plans = plans;  // remembered so the self-heal loop can rebuild
       if (this.panelEl) { this.panelEl.remove(); this.panelEl = null; }
       var p = document.createElement('div');
       p.id = 'twlv_panel';
@@ -291,9 +300,15 @@
         var pl = plans[i]; if (!pl) return;
         var st = document.getElementById('twlv_status');
         st.textContent = 'lade ' + pl.name + '…';
+        // Remember the selection so a navigation/reload re-loads the same plan
+        // automatically (panel + lines survive switching to the Karte).
+        try { sessionStorage.setItem('twlv_sel_idx', String(i)); } catch (e) {}
         fetchText(pl.file, pl).then(function (txt) {
           var plan = parsePlan(txt);
           self.setPlan(plan);
+          // Cache the parsed plan too, so even before the next fetch finishes we
+          // can redraw instantly after a screen change.
+          try { sessionStorage.setItem('twlv_plan', JSON.stringify(plan)); } catch (e) {}
           // Report what was parsed AND what actually drew — turns a silent
           // "nothing happened" into a precise reason (no map element, 0×0
           // canvas, transform off-screen, etc.).
@@ -314,12 +329,27 @@
       };
       p.querySelector('#twlv_close').onclick = function () { p.style.display = 'none'; };
 
-      // Auto-load: first plan matching this world (or the first plan).
+      // Draw any cached plan from a previous screen IMMEDIATELY (survives nav),
+      // then pick which index to (re)load.
+      try {
+        var cached = sessionStorage.getItem('twlv_plan');
+        if (cached) self.setPlan(JSON.parse(cached));
+      } catch (e) {}
+
       if (AUTO_LOAD && plans.length) {
-        var idx = 0;
-        for (var i = 0; i < plans.length; i++) {
-          if (plans[i].world && world && plans[i].world.toLowerCase() === world.toLowerCase()) {
-            idx = i; break;
+        // Prefer the plan the user last selected this session; else the first
+        // plan matching the current world; else plan 0.
+        var idx = -1;
+        try {
+          var saved = parseInt(sessionStorage.getItem('twlv_sel_idx'), 10);
+          if (!isNaN(saved) && saved >= 0 && saved < plans.length) idx = saved;
+        } catch (e) {}
+        if (idx < 0) {
+          idx = 0;
+          for (var i = 0; i < plans.length; i++) {
+            if (plans[i].world && world && plans[i].world.toLowerCase() === world.toLowerCase()) {
+              idx = i; break;
+            }
           }
         }
         document.getElementById('twlv_sel').value = idx;
