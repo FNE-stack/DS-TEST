@@ -57,20 +57,18 @@
   }
 
   var W = window;
-  var TWMap = null; // set in boot() once the map screen is ready
+  var TWMap = null; // refreshed each time we touch the map
 
-  function boot() {
-  TWMap = W.TWMap;
-  if (!TWMap || !TWMap.map) {
-    // Not on the map screen (or map not ready yet) — retry a few times.
-    W._twlvRetries = (W._twlvRetries || 0) + 1;
-    if (W._twlvRetries < 20) { setTimeout(boot, 400); return; }
-    alert('TW Line Viewer: Karte (TWMap) nicht gefunden. Öffne den Kartenbildschirm.');
-    return;
+  // Re-running the quickbar just re-opens the panel (script already alive).
+  if (W._twlv) { W._twlv.togglePanel(); return; }
+
+  // Is the map (TWMap) present RIGHT NOW?
+  function mapReady() {
+    TWMap = W.TWMap;
+    return !!(TWMap && TWMap.map && TWMap.map.el);
   }
 
-  // Singleton guard — re-running the quickbar just re-opens the panel.
-  if (W._twlv) { W._twlv.togglePanel(); return; }
+  function boot() {
 
   // ── PARSER: classic Korriskript paste → {lines:[], labels:[]} ──────────
   function parsePlan(text) {
@@ -126,9 +124,12 @@
     plan: { lines: [], labels: [] },
     canvas: null, ctx: null, container: null, panelEl: null, visible: true,
 
+    lastError: '',
     ensureCanvas: function () {
       var mapEl = getMapEl();
-      if (!mapEl) return false;
+      // getMapEl may return a jQuery object on some TW builds — unwrap it.
+      if (mapEl && mapEl.jquery) mapEl = mapEl[0];
+      if (!mapEl || !mapEl.appendChild) { this.lastError = 'kein Karten-Element'; return false; }
       this.container = mapEl;
       // The map container must be a positioning context.
       var pos = getComputedStyle(mapEl).position;
@@ -140,15 +141,21 @@
           'position:absolute;left:0;top:0;pointer-events:none;z-index:5000;';
         mapEl.appendChild(c);
         this.canvas = c; this.ctx = c.getContext('2d');
+      } else if (this.canvas.parentNode !== mapEl) {
+        // Map DOM was replaced (nav) — re-attach our canvas.
+        mapEl.appendChild(this.canvas);
       }
       // Match the canvas to the map size (DPR-aware for crisp lines on phones).
-      var w = mapEl.clientWidth, h = mapEl.clientHeight;
+      var w = mapEl.clientWidth || mapEl.offsetWidth || 0;
+      var h = mapEl.clientHeight || mapEl.offsetHeight || 0;
+      if (w === 0 || h === 0) { this.lastError = 'Karte 0×0 (noch nicht geladen)'; return false; }
       var dpr = window.devicePixelRatio || 1;
       if (this.canvas.width !== w * dpr || this.canvas.height !== h * dpr) {
         this.canvas.width = w * dpr; this.canvas.height = h * dpr;
         this.canvas.style.width = w + 'px'; this.canvas.style.height = h + 'px';
         this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       }
+      this.lastError = '';
       return true;
     },
 
@@ -177,11 +184,13 @@
       } catch (e) { return null; }
     },
 
+    lastDrawn: 0,
     draw: function () {
-      if (!this.ensureCanvas()) return;
+      if (!this.ensureCanvas()) { return; }
       var ctx = this.ctx;
       ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-      if (!this.visible) return;
+      if (!this.visible) { this.lastDrawn = 0; return; }
+      var plotted = 0;
 
       // Lines
       ctx.lineWidth = LINE_WIDTH;
@@ -194,6 +203,7 @@
           if (!s) continue;
           if (first) { ctx.moveTo(s.sx, s.sy); first = false; }
           else ctx.lineTo(s.sx, s.sy);
+          plotted++;
         }
         ctx.strokeStyle = ln.color || DEFAULT_COLOR;
         ctx.stroke();
@@ -211,31 +221,43 @@
         ctx.strokeText(lb.text, s.sx, s.sy);
         ctx.fillStyle = '#ffffff';
         ctx.fillText(lb.text, s.sx, s.sy);
+        plotted++;
       });
       ctx.lineWidth = LINE_WIDTH;
+      this.lastDrawn = plotted;
     },
 
     setPlan: function (plan) { this.plan = plan; this.draw(); },
 
-    // ── Hook TWMap pan/zoom so the overlay follows the map ───────────────
+    // ── Persistent hook: survives navigation; draws whenever the map exists ─
+    // Launched from ANY screen (e.g. Übersicht where the quickbar lives). We
+    // don't require the map at launch — a rAF loop checks each frame whether the
+    // map is present and (re-)hooks + draws when it appears. This is what lets
+    // you tap the button off-map, then open the Karte and see the lines (same
+    // survival trick as launchpad.js).
     hookMap: function () {
       var self = this;
-      // Redraw after any map reload/redraw. TWMap reloads sectors on pan/zoom;
-      // we also bind a rAF loop fallback so it stays glued during drags.
-      var origReload = TWMap.reload;
-      if (origReload && !origReload._twlv) {
-        TWMap.reload = function () {
-          var r = origReload.apply(this, arguments);
-          setTimeout(function () { self.draw(); }, 30);
-          return r;
-        };
-        TWMap.reload._twlv = true;
+      function ensureReloadHook() {
+        if (!mapReady()) return;
+        var origReload = TWMap.reload;
+        if (origReload && !origReload._twlv) {
+          TWMap.reload = function () {
+            var r = origReload.apply(this, arguments);
+            setTimeout(function () { self.draw(); }, 30);
+            return r;
+          };
+          TWMap.reload._twlv = true;
+        }
       }
-      // Continuous re-glue (cheap clear+redraw) — keeps lines aligned while
-      // panning even between reloads. Stops nothing else; ~30fps.
-      function loop() { if (self.visible) self.draw(); requestAnimationFrame(loop); }
+      function loop() {
+        if (mapReady()) {       // map present on this screen
+          ensureReloadHook();
+          if (self.visible) self.draw();
+        }
+        requestAnimationFrame(loop);
+      }
       requestAnimationFrame(loop);
-      window.addEventListener('resize', function () { self.draw(); });
+      window.addEventListener('resize', function () { if (mapReady()) self.draw(); });
     },
 
     // ── UI PANEL (plan dropdown + toggle) ────────────────────────────────
@@ -267,14 +289,20 @@
 
       function loadByIndex(i) {
         var pl = plans[i]; if (!pl) return;
-        document.getElementById('twlv_status').textContent = 'lade ' + pl.name + '…';
+        var st = document.getElementById('twlv_status');
+        st.textContent = 'lade ' + pl.name + '…';
         fetchText(pl.file, pl).then(function (txt) {
           var plan = parsePlan(txt);
           self.setPlan(plan);
-          document.getElementById('twlv_status').textContent =
-            plan.lines.length + ' Linien, ' + plan.labels.length + ' Labels';
+          // Report what was parsed AND what actually drew — turns a silent
+          // "nothing happened" into a precise reason (no map element, 0×0
+          // canvas, transform off-screen, etc.).
+          var msg = plan.lines.length + ' Linien, ' + plan.labels.length + ' Labels';
+          if (self.lastError) msg += ' · ⚠ ' + self.lastError;
+          else msg += ' · ' + self.lastDrawn + ' Punkte gezeichnet';
+          st.textContent = msg;
         }).catch(function (e) {
-          document.getElementById('twlv_status').textContent = 'Fehler: ' + e;
+          st.textContent = 'Fehler: ' + e;
         });
       }
 
