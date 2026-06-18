@@ -414,13 +414,26 @@
         '<button id="twlv_eclose">✕</button>';
       ov.appendChild(bar);
 
-      // The embedded real map.
+      // The embedded real map — wrapped so we can lay OUR canvas on top of it
+      // in the OUTER document (avoids iframe-internal clipping/stacking that
+      // hid the canvas in the app).
+      var stage = document.createElement('div');
+      stage.style.cssText = 'flex:1 1 auto;position:relative;overflow:hidden;';
       var frame = document.createElement('iframe');
       frame.id = 'twlv_eframe';
-      frame.style.cssText = 'flex:1 1 auto;width:100%;border:0;';
+      frame.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;border:0;';
       var vid = (W.game_data && W.game_data.village && W.game_data.village.id) || '';
       frame.src = '/game.php' + (vid ? '?village=' + vid + '&' : '?') + 'screen=map';
-      ov.appendChild(frame);
+      stage.appendChild(frame);
+      // Outer overlay canvas — sits ABOVE the iframe in the parent doc.
+      var ocanvas = document.createElement('canvas');
+      ocanvas.id = 'twlv_ocanvas';
+      ocanvas.style.cssText =
+        'position:absolute;inset:0;pointer-events:none;z-index:10;';
+      stage.appendChild(ocanvas);
+      ov.appendChild(stage);
+      this.embedStage = stage;
+      this.outerCanvas = ocanvas;
 
       var status = document.createElement('div');
       status.id = 'twlv_estatus';
@@ -478,49 +491,48 @@
     closeEmbed: function () {
       if (this._embedRAF) { cancelAnimationFrame(this._embedRAF); this._embedRAF = null; }
       if (this.embedEl) { this.embedEl.remove(); this.embedEl = null; }
-      this.embedFrame = null; this.embedWin = null; this.embedCanvas = null;
+      this.embedFrame = null; this.embedWin = null;
+      this.embedStage = null; this.outerCanvas = null;
     },
 
-    // World coord → on-screen pixel INSIDE the iframe's map (same math, but
-    // against the iframe's TWMap).
+    // World coord → pixel on the OUTER canvas (which overlays the iframe in the
+    // parent doc). The pixel inside the iframe's map viewport is (coordPixel −
+    // pos); we then add the iframe map viewport's OFFSET within the iframe (in
+    // case the map sits below a header), so it lines up with the outer canvas.
     embedCoordToScreen: function (x, y, center) {
       try {
-        var m = this.embedWin && this.embedWin.TWMap && this.embedWin.TWMap.map;
+        var fw = this.embedWin;
+        var m = fw && fw.TWMap && fw.TWMap.map;
         if (!m || !m.pos) return null;
         var off = center ? 0.5 : 0;
         var p = m.pixelByCoord(x + off, y + off);
-        return { sx: p[0] - m.pos[0], sy: p[1] - m.pos[1] };
+        var sx = p[0] - m.pos[0], sy = p[1] - m.pos[1];
+        // Offset of the iframe's map viewport relative to the iframe top-left.
+        var root = m.el && m.el.root;
+        if (root && root.jquery) root = root[0];
+        if (root && root.getBoundingClientRect) {
+          var r = root.getBoundingClientRect();
+          sx += r.left; sy += r.top;
+        }
+        return { sx: sx, sy: sy };
       } catch (e) { return null; }
     },
 
     embedDiag: '',
-    // Draw the current plan onto a canvas overlaid inside the iframe document.
+    // Draw onto the OUTER canvas (in the parent document) that overlays the
+    // iframe — NOT a canvas inside the iframe. Inside the app's iframe the canvas
+    // was hidden/clipped; an outer overlay can't be. We only READ pos/pixelByCoord
+    // from the iframe's TWMap for the transform.
     drawEmbed: function () {
       var fw = this.embedWin;
-      if (!fw || !fw.TWMap || !fw.TWMap.map || !fw.TWMap.map.el) { this.embedDiag = 'kein iframe-TWMap'; return; }
-      var fdoc = fw.document;
-      // Use the map's OWN container as positioning parent. el.root is the
-      // viewport (static, doesn't pan) — the canvas must sit on THAT so our
-      // -pos math is correct. Fall back through known ids.
-      var mapEl = fw.TWMap.map.el.root;
-      if (mapEl && mapEl.jquery) mapEl = mapEl[0];
-      if (!mapEl) mapEl = fdoc.getElementById('map') || fdoc.getElementById('map_main') ||
-                          fdoc.querySelector('#map_wrap');
-      if (!mapEl) { this.embedDiag = 'kein mapEl im iframe'; return; }
-      if (fw.getComputedStyle(mapEl).position === 'static') mapEl.style.position = 'relative';
+      var c = this.outerCanvas;
+      var stage = this.embedStage;
+      if (!c || !stage) { this.embedDiag = 'kein outer-canvas'; return; }
 
-      var c = this.embedCanvas;
-      if (!c || c.ownerDocument !== fdoc || c.parentNode !== mapEl) {
-        c = fdoc.createElement('canvas');
-        c.id = 'twlv_ecanvas';
-        c.style.cssText = 'position:absolute;left:0;top:0;pointer-events:none;z-index:99999;';
-        mapEl.appendChild(c);
-        this.embedCanvas = c;
-      }
-      var w = mapEl.clientWidth || mapEl.offsetWidth || 0;
-      var h = mapEl.clientHeight || mapEl.offsetHeight || 0;
-      if (!w || !h) { this.embedDiag = 'mapEl 0×0'; return; }
-      var dpr = fw.devicePixelRatio || 1;
+      // Size the outer canvas to the stage (which equals the iframe's size).
+      var w = stage.clientWidth || 0, h = stage.clientHeight || 0;
+      if (!w || !h) { this.embedDiag = 'stage 0×0'; return; }
+      var dpr = window.devicePixelRatio || 1;
       if (c.width !== w * dpr || c.height !== h * dpr) {
         c.width = w * dpr; c.height = h * dpr;
         c.style.width = w + 'px'; c.style.height = h + 'px';
@@ -530,21 +542,19 @@
       ctx.clearRect(0, 0, w, h);
       if (!this.embedVisible) { this.embedDiag = 'ausgeblendet'; return; }
 
-      // TEST MARKER (temporary): proves the canvas is visible + on top,
-      // independent of the coordinate transform. If you SEE a magenta frame +
-      // box, the canvas works and any missing lines are a coord-math issue.
-      // If you DON'T see it, the canvas is hidden/clipped/behind the map.
+      // TEST MARKER (temporary) on the OUTER canvas — must be visible now.
       if (TWLV_DEBUG_MARKER) {
         ctx.save();
         ctx.strokeStyle = '#ff00ff'; ctx.lineWidth = 4;
         ctx.strokeRect(2, 2, w - 4, h - 4);
         ctx.fillStyle = 'rgba(255,0,255,0.85)';
-        ctx.fillRect(10, 10, 60, 30);
+        ctx.fillRect(10, 10, 70, 30);
         ctx.fillStyle = '#fff'; ctx.font = '14px Verdana';
         ctx.fillText('TWLV', 16, 30);
         ctx.restore();
       }
 
+      if (!fw || !fw.TWMap || !fw.TWMap.map) { this.embedDiag = 'kein iframe-TWMap'; return; }
       var m = fw.TWMap.map;
       var posOk = !!(m.pos && m.pos[0] !== -1);
       var plotted = 0;
