@@ -450,14 +450,20 @@
         var fw;
         try { fw = frame.contentWindow; } catch (e) { fw = null; }
         var fmap = fw && fw.TWMap && fw.TWMap.map;
-        if (fmap && fmap.el) {
+        // Wait for the map to have ACTUALLY rendered (pos is [-1,-1] until the
+        // first sector spawns). Drawing before that = wrong/no coords.
+        var ready = fmap && fmap.el && fmap.pos && fmap.pos[0] !== -1;
+        if (ready) {
           clearInterval(waitMap);
           self.embedWin = fw;
           self.hookEmbed();
-          // Load the currently-selected plan into the embed.
           var sel = bar.querySelector('#twlv_esel');
           var i = sel ? +sel.value : 0;
           self.loadPlanInto(i, status);
+        } else if (fmap && fmap.el) {
+          // TWMap exists but hasn't rendered — keep the loop alive longer.
+          status.textContent = 'Karte rendert… (' + tries + ')';
+          if (tries > 120) { clearInterval(waitMap); status.textContent = '⚠ Karte rendert nicht (pos bleibt -1).'; }
         } else if (tries > 60) {
           clearInterval(waitMap);
           status.textContent = '⚠ Karte im Rahmen nicht geladen (TWMap fehlt).';
@@ -483,27 +489,33 @@
       } catch (e) { return null; }
     },
 
+    embedDiag: '',
     // Draw the current plan onto a canvas overlaid inside the iframe document.
     drawEmbed: function () {
       var fw = this.embedWin;
-      if (!fw || !fw.TWMap || !fw.TWMap.map || !fw.TWMap.map.el) return;
+      if (!fw || !fw.TWMap || !fw.TWMap.map || !fw.TWMap.map.el) { this.embedDiag = 'kein iframe-TWMap'; return; }
       var fdoc = fw.document;
+      // Use the map's OWN container as positioning parent. el.root is the
+      // viewport (static, doesn't pan) — the canvas must sit on THAT so our
+      // -pos math is correct. Fall back through known ids.
       var mapEl = fw.TWMap.map.el.root;
       if (mapEl && mapEl.jquery) mapEl = mapEl[0];
-      if (!mapEl) return;
-      if (getComputedStyle(mapEl).position === 'static') mapEl.style.position = 'relative';
+      if (!mapEl) mapEl = fdoc.getElementById('map') || fdoc.getElementById('map_main') ||
+                          fdoc.querySelector('#map_wrap');
+      if (!mapEl) { this.embedDiag = 'kein mapEl im iframe'; return; }
+      if (fw.getComputedStyle(mapEl).position === 'static') mapEl.style.position = 'relative';
 
       var c = this.embedCanvas;
       if (!c || c.ownerDocument !== fdoc || c.parentNode !== mapEl) {
         c = fdoc.createElement('canvas');
         c.id = 'twlv_ecanvas';
-        c.style.cssText = 'position:absolute;left:0;top:0;pointer-events:none;z-index:5000;';
+        c.style.cssText = 'position:absolute;left:0;top:0;pointer-events:none;z-index:99999;';
         mapEl.appendChild(c);
         this.embedCanvas = c;
       }
       var w = mapEl.clientWidth || mapEl.offsetWidth || 0;
       var h = mapEl.clientHeight || mapEl.offsetHeight || 0;
-      if (!w || !h) return;
+      if (!w || !h) { this.embedDiag = 'mapEl 0×0'; return; }
       var dpr = fw.devicePixelRatio || 1;
       if (c.width !== w * dpr || c.height !== h * dpr) {
         c.width = w * dpr; c.height = h * dpr;
@@ -512,8 +524,11 @@
       var ctx = c.getContext('2d');
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, w, h);
-      if (!this.embedVisible) return;
+      if (!this.embedVisible) { this.embedDiag = 'ausgeblendet'; return; }
 
+      var m = fw.TWMap.map;
+      var posOk = !!(m.pos && m.pos[0] !== -1);
+      var plotted = 0;
       var self = this;
       ctx.lineWidth = LINE_WIDTH; ctx.lineJoin = 'round';
       this.plan.lines.forEach(function (ln) {
@@ -522,6 +537,7 @@
           var s = self.embedCoordToScreen(ln.points[i][0], ln.points[i][1], false);
           if (!s) continue;
           if (first) { ctx.moveTo(s.sx, s.sy); first = false; } else ctx.lineTo(s.sx, s.sy);
+          plotted++;
         }
         ctx.strokeStyle = ln.color || DEFAULT_COLOR; ctx.stroke();
       });
@@ -533,7 +549,16 @@
         ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,0.85)';
         ctx.strokeText(lb.text, s.sx, s.sy);
         ctx.fillStyle = '#fff'; ctx.fillText(lb.text, s.sx, s.sy);
+        plotted++;
       });
+      // Diagnostic surfaced in the embed status bar so we see WHY nothing shows.
+      this.embedDiag = 'mapEl ' + w + '×' + h +
+        ' · pos=' + (m.pos ? m.pos[0] + ',' + m.pos[1] : 'null') +
+        ' · ' + plotted + ' Pkt' + (posOk ? '' : ' · ⚠pos nicht bereit');
+      // Push to the status bar the user can read.
+      var outerSt = document.getElementById('twlv_estatus');
+      if (outerSt) outerSt.textContent =
+        this.plan.lines.length + ' Linien, ' + this.plan.labels.length + ' Labels · ' + this.embedDiag;
     },
 
     // Keep the embed canvas glued to the iframe map (pan/zoom) via rAF.
