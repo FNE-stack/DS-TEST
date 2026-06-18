@@ -42,6 +42,10 @@
   var AUTO_LOAD = (window.TWLV_AUTO_LOAD !== false);
   var LINE_WIDTH = 2;
   var DEFAULT_COLOR = '#ff0000'; // red default for lines
+  // Debug: draw a magenta frame + box on the embed canvas to prove it's
+  // visible/on-top (separates canvas-placement issues from coord-math issues).
+  // Set window.TWLV_DEBUG_MARKER=false in the loader to turn it off later.
+  var TWLV_DEBUG_MARKER = (window.TWLV_DEBUG_MARKER !== false);
 
   // GitHub API content endpoint for a file in the private DS-PLAN repo.
   function ghContentsUrl(path) {
@@ -525,6 +529,21 @@
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, w, h);
       if (!this.embedVisible) { this.embedDiag = 'ausgeblendet'; return; }
+
+      // TEST MARKER (temporary): proves the canvas is visible + on top,
+      // independent of the coordinate transform. If you SEE a magenta frame +
+      // box, the canvas works and any missing lines are a coord-math issue.
+      // If you DON'T see it, the canvas is hidden/clipped/behind the map.
+      if (TWLV_DEBUG_MARKER) {
+        ctx.save();
+        ctx.strokeStyle = '#ff00ff'; ctx.lineWidth = 4;
+        ctx.strokeRect(2, 2, w - 4, h - 4);
+        ctx.fillStyle = 'rgba(255,0,255,0.85)';
+        ctx.fillRect(10, 10, 60, 30);
+        ctx.fillStyle = '#fff'; ctx.font = '14px Verdana';
+        ctx.fillText('TWLV', 16, 30);
+        ctx.restore();
+      }
 
       var m = fw.TWMap.map;
       var posOk = !!(m.pos && m.pos[0] !== -1);
