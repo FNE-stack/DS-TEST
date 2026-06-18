@@ -425,13 +425,17 @@
       var vid = (W.game_data && W.game_data.village && W.game_data.village.id) || '';
       frame.src = '/game.php' + (vid ? '?village=' + vid + '&' : '?') + 'screen=map';
       stage.appendChild(frame);
-      // Outer overlay canvas — sits ABOVE the iframe in the parent doc.
+      ov.appendChild(stage);
+      // Outer overlay canvas — appended to the OVERLAY ROOT (not the stage) with
+      // an extreme z-index, so even if the app's native map renders at a high
+      // layer inside/over the iframe, our canvas is above it. pointer-events off
+      // so map gestures pass through.
       var ocanvas = document.createElement('canvas');
       ocanvas.id = 'twlv_ocanvas';
       ocanvas.style.cssText =
-        'position:absolute;inset:0;pointer-events:none;z-index:10;';
-      stage.appendChild(ocanvas);
-      ov.appendChild(stage);
+        'position:absolute;left:0;top:0;right:0;bottom:0;pointer-events:none;' +
+        'z-index:2147483646;';
+      ov.appendChild(ocanvas);
       this.embedStage = stage;
       this.outerCanvas = ocanvas;
 
@@ -529,9 +533,11 @@
       var stage = this.embedStage;
       if (!c || !stage) { this.embedDiag = 'kein outer-canvas'; return; }
 
-      // Size the outer canvas to the stage (which equals the iframe's size).
-      var w = stage.clientWidth || 0, h = stage.clientHeight || 0;
-      if (!w || !h) { this.embedDiag = 'stage 0×0'; return; }
+      // Size the outer canvas to its OWN box (covers the whole overlay).
+      var rect = c.getBoundingClientRect();
+      var w = Math.round(rect.width) || stage.clientWidth || 0;
+      var h = Math.round(rect.height) || stage.clientHeight || 0;
+      if (!w || !h) { this.embedDiag = 'canvas 0×0'; return; }
       var dpr = window.devicePixelRatio || 1;
       if (c.width !== w * dpr || c.height !== h * dpr) {
         c.width = w * dpr; c.height = h * dpr;
