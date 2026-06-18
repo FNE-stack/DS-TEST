@@ -168,11 +168,16 @@
     // So on-screen = absolutePixel − pos. (Earlier I used the container's CSS
     // offset, which has TWMap's `bias` baked in → off-screen. `pos` is bias-free
     // and is exactly what TWMap uses to map pixels↔coords.)
-    coordToScreen: function (x, y) {
+    // `center` = add +0.5 to land on the tile CENTER (for labels, which sit on
+    // a village). Lines use raw coords (tile corner/grid line) so a corridor
+    // runs BETWEEN village columns, not through them — matches the original
+    // TWLineDrawer (no +0.5 for lines).
+    coordToScreen: function (x, y, center) {
       try {
         var m = TWMap.map;
         if (!m.pos) return null;
-        var p = m.pixelByCoord(x + 0.5, y + 0.5); // center of the tile
+        var off = center ? 0.5 : 0;
+        var p = m.pixelByCoord(x + off, y + off);
         return { sx: p[0] - m.pos[0], sy: p[1] - m.pos[1] };
       } catch (e) { return null; }
     },
@@ -192,7 +197,7 @@
         ctx.beginPath();
         var first = true;
         for (var i = 0; i < ln.points.length; i++) {
-          var s = Viewer.coordToScreen(ln.points[i][0], ln.points[i][1]);
+          var s = Viewer.coordToScreen(ln.points[i][0], ln.points[i][1], false);
           if (!s) continue;
           if (first) { ctx.moveTo(s.sx, s.sy); first = false; }
           else ctx.lineTo(s.sx, s.sy);
@@ -207,7 +212,7 @@
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       this.plan.labels.forEach(function (lb) {
-        var s = Viewer.coordToScreen(lb.x, lb.y);
+        var s = Viewer.coordToScreen(lb.x, lb.y, true); // center on the village
         if (!s) return;
         // dark outline for readability over the map
         ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,0.85)';
@@ -287,11 +292,13 @@
       p.innerHTML =
         '<div style="font-weight:700;margin-bottom:4px;">📐 Line Viewer</div>' +
         '<select id="twlv_sel" style="width:100%;margin-bottom:5px;">' + opts + '</select>' +
-        '<div style="display:flex;gap:4px;">' +
+        '<div style="display:flex;gap:4px;margin-bottom:4px;">' +
         '  <button id="twlv_show" style="flex:1;">Zeigen</button>' +
         '  <button id="twlv_toggle" style="flex:1;">Aus/Ein</button>' +
         '  <button id="twlv_close">✕</button>' +
         '</div>' +
+        // "Karte" opens the embedded full-screen map (the app-friendly mode).
+        '<button id="twlv_embedbtn" style="width:100%;">🗺️ Karte öffnen</button>' +
         '<div id="twlv_status" style="margin-top:4px;color:#603000;font-size:10px;"></div>';
       document.body.appendChild(p);
       this.panelEl = p;
@@ -328,6 +335,7 @@
         self.visible = !self.visible; self.draw();
       };
       p.querySelector('#twlv_close').onclick = function () { p.style.display = 'none'; };
+      p.querySelector('#twlv_embedbtn').onclick = function () { self.openEmbed(); };
 
       // Draw any cached plan from a previous screen IMMEDIATELY (survives nav),
       // then pick which index to (re)load.
@@ -362,6 +370,192 @@
         this.panelEl.style.display =
           this.panelEl.style.display === 'none' ? 'block' : 'none';
       }
+    },
+
+    // ── EMBEDDED MAP MODE (the "blanket" — for the app) ──────────────────
+    // The app tears down injected scripts when you open its NATIVE Karte. So
+    // instead we load the REAL screen=map into an <iframe> INSIDE our own
+    // full-screen overlay, on a screen where the script survives. screen=map
+    // sends X-Frame-Options: NONE (no framing block), and the iframe is
+    // same-origin → we get full access to its TWMap and draw inside it. This
+    // is the FarmGod trick: work within a surviving context, not the native one.
+    openEmbed: function () {
+      var self = this;
+      if (this.embedEl) { this.embedEl.style.display = 'block'; return; }
+
+      var ov = document.createElement('div');
+      ov.id = 'twlv_embed';
+      ov.style.cssText =
+        'position:fixed;inset:0;z-index:99999;background:#000;' +
+        'display:flex;flex-direction:column;';
+      // Top bar: plan dropdown + toggle + close.
+      var bar = document.createElement('div');
+      bar.style.cssText =
+        'flex:0 0 auto;display:flex;gap:6px;align-items:center;padding:6px 8px;' +
+        'background:#f4e4bc;border-bottom:1px solid #804000;font:12px Verdana;';
+      var opts = (this._plans || []).map(function (pl, i) {
+        return '<option value="' + i + '">' + pl.name +
+               (pl.world ? ' (' + pl.world + ')' : '') + '</option>';
+      }).join('');
+      bar.innerHTML =
+        '<b style="white-space:nowrap;">📐</b>' +
+        '<select id="twlv_esel" style="flex:1;min-width:0;">' + opts + '</select>' +
+        '<button id="twlv_etoggle">Linien aus</button>' +
+        '<button id="twlv_eclose">✕</button>';
+      ov.appendChild(bar);
+
+      // The embedded real map.
+      var frame = document.createElement('iframe');
+      frame.id = 'twlv_eframe';
+      frame.style.cssText = 'flex:1 1 auto;width:100%;border:0;';
+      var vid = (W.game_data && W.game_data.village && W.game_data.village.id) || '';
+      frame.src = '/game.php' + (vid ? '?village=' + vid + '&' : '?') + 'screen=map';
+      ov.appendChild(frame);
+
+      var status = document.createElement('div');
+      status.id = 'twlv_estatus';
+      status.style.cssText =
+        'flex:0 0 auto;padding:3px 8px;background:#f4e4bc;border-top:1px solid #804000;' +
+        'font:10px Verdana;color:#603000;';
+      status.textContent = 'lade Karte…';
+      ov.appendChild(status);
+
+      document.body.appendChild(ov);
+      this.embedEl = ov;
+      this.embedFrame = frame;
+      this.embedVisible = true;
+
+      bar.querySelector('#twlv_eclose').onclick = function () { self.closeEmbed(); };
+      bar.querySelector('#twlv_etoggle').onclick = function () {
+        self.embedVisible = !self.embedVisible;
+        this.textContent = self.embedVisible ? 'Linien aus' : 'Linien an';
+        self.drawEmbed();
+      };
+      bar.querySelector('#twlv_esel').onchange = function () {
+        var i = +this.value;
+        try { sessionStorage.setItem('twlv_sel_idx', String(i)); } catch (e) {}
+        self.loadPlanInto(i, status);
+      };
+
+      // When the iframe's map is ready, start drawing into it.
+      var tries = 0;
+      var waitMap = setInterval(function () {
+        tries++;
+        var fw;
+        try { fw = frame.contentWindow; } catch (e) { fw = null; }
+        var fmap = fw && fw.TWMap && fw.TWMap.map;
+        if (fmap && fmap.el) {
+          clearInterval(waitMap);
+          self.embedWin = fw;
+          self.hookEmbed();
+          // Load the currently-selected plan into the embed.
+          var sel = bar.querySelector('#twlv_esel');
+          var i = sel ? +sel.value : 0;
+          self.loadPlanInto(i, status);
+        } else if (tries > 60) {
+          clearInterval(waitMap);
+          status.textContent = '⚠ Karte im Rahmen nicht geladen (TWMap fehlt).';
+        }
+      }, 300);
+    },
+
+    closeEmbed: function () {
+      if (this._embedRAF) { cancelAnimationFrame(this._embedRAF); this._embedRAF = null; }
+      if (this.embedEl) { this.embedEl.remove(); this.embedEl = null; }
+      this.embedFrame = null; this.embedWin = null; this.embedCanvas = null;
+    },
+
+    // World coord → on-screen pixel INSIDE the iframe's map (same math, but
+    // against the iframe's TWMap).
+    embedCoordToScreen: function (x, y, center) {
+      try {
+        var m = this.embedWin.TWMap.map;
+        if (!m.pos) return null;
+        var off = center ? 0.5 : 0;
+        var p = m.pixelByCoord(x + off, y + off);
+        return { sx: p[0] - m.pos[0], sy: p[1] - m.pos[1] };
+      } catch (e) { return null; }
+    },
+
+    // Draw the current plan onto a canvas overlaid inside the iframe document.
+    drawEmbed: function () {
+      var fw = this.embedWin;
+      if (!fw || !fw.TWMap || !fw.TWMap.map || !fw.TWMap.map.el) return;
+      var fdoc = fw.document;
+      var mapEl = fw.TWMap.map.el.root;
+      if (mapEl && mapEl.jquery) mapEl = mapEl[0];
+      if (!mapEl) return;
+      if (getComputedStyle(mapEl).position === 'static') mapEl.style.position = 'relative';
+
+      var c = this.embedCanvas;
+      if (!c || c.ownerDocument !== fdoc || c.parentNode !== mapEl) {
+        c = fdoc.createElement('canvas');
+        c.id = 'twlv_ecanvas';
+        c.style.cssText = 'position:absolute;left:0;top:0;pointer-events:none;z-index:5000;';
+        mapEl.appendChild(c);
+        this.embedCanvas = c;
+      }
+      var w = mapEl.clientWidth || mapEl.offsetWidth || 0;
+      var h = mapEl.clientHeight || mapEl.offsetHeight || 0;
+      if (!w || !h) return;
+      var dpr = fw.devicePixelRatio || 1;
+      if (c.width !== w * dpr || c.height !== h * dpr) {
+        c.width = w * dpr; c.height = h * dpr;
+        c.style.width = w + 'px'; c.style.height = h + 'px';
+      }
+      var ctx = c.getContext('2d');
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, w, h);
+      if (!this.embedVisible) return;
+
+      var self = this;
+      ctx.lineWidth = LINE_WIDTH; ctx.lineJoin = 'round';
+      this.plan.lines.forEach(function (ln) {
+        ctx.beginPath(); var first = true;
+        for (var i = 0; i < ln.points.length; i++) {
+          var s = self.embedCoordToScreen(ln.points[i][0], ln.points[i][1], false);
+          if (!s) continue;
+          if (first) { ctx.moveTo(s.sx, s.sy); first = false; } else ctx.lineTo(s.sx, s.sy);
+        }
+        ctx.strokeStyle = ln.color || DEFAULT_COLOR; ctx.stroke();
+      });
+      ctx.font = '700 12px Verdana, sans-serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      this.plan.labels.forEach(function (lb) {
+        var s = self.embedCoordToScreen(lb.x, lb.y, true);
+        if (!s) return;
+        ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+        ctx.strokeText(lb.text, s.sx, s.sy);
+        ctx.fillStyle = '#fff'; ctx.fillText(lb.text, s.sx, s.sy);
+      });
+    },
+
+    // Keep the embed canvas glued to the iframe map (pan/zoom) via rAF.
+    hookEmbed: function () {
+      var self = this;
+      function loop() {
+        if (!self.embedEl) return; // closed
+        self.drawEmbed();
+        self._embedRAF = requestAnimationFrame(loop);
+      }
+      this._embedRAF = requestAnimationFrame(loop);
+    },
+
+    // Fetch + parse a plan and store it (used by both overlay and embed).
+    loadPlanInto: function (i, statusEl) {
+      var self = this;
+      var pl = (this._plans || [])[i]; if (!pl) return;
+      if (statusEl) statusEl.textContent = 'lade ' + pl.name + '…';
+      fetchText(pl.file, pl).then(function (txt) {
+        var plan = parsePlan(txt);
+        self.plan = plan;
+        try { sessionStorage.setItem('twlv_plan', JSON.stringify(plan)); } catch (e) {}
+        self.drawEmbed();
+        if (statusEl) statusEl.textContent =
+          plan.lines.length + ' Linien, ' + plan.labels.length + ' Labels';
+      }).catch(function (e) {
+        if (statusEl) statusEl.textContent = 'Fehler: ' + e;
+      });
     },
   };
 
