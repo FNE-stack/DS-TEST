@@ -25,7 +25,7 @@
 
   // ⚠️ false = navigate+highlight (you click the game's button). true = the
   // script sends the build (automation; the de256 ban vector). See discussion.
-  var AUTO_BUILD = false;
+  var AUTO_BUILD = true;
 
   // ── EMBEDDED TIMELINE (from noble_optimizer.py) ──────────────────────────
   // row = [type, building, level, at_h, cw,cs,ci,cpop, pop_used,pop_cap, tiers, ew,es,ei]
@@ -250,21 +250,42 @@
     return b;
   }
 
-  // ── live FETCH (read-only) for troops + scavenge tiers ───────────────────
-  function fetchTroops(){
-    return fetch("/game.php?village="+vidParam()+"&screen=place",{credentials:"include"})
-      .then(function(r){return r.text();}).then(function(h){
-        var t={},re=/units_entry_all_(\w+)"[^>]*>\s*\(?(\d+)\)?\s*</gi,m;
-        while((m=re.exec(h))) t[m[1]]=parseInt(m[2],10)||0;
-        if(Object.keys(t).length) W.__twnl_troops=t;
-      }).catch(function(){});
-  }
-  function fetchScav(){
-    return fetch("/game.php?village="+vidParam()+"&screen=place&mode=scavenge",{credentials:"include"})
-      .then(function(r){return r.text();}).then(function(h){
-        var mm=h.match(/"is_fully_unlocked":true/g); var n=mm?mm.length:0;
-        if(!n){ var opts=(h.match(/scavenge-option/g)||[]).length, lk=(h.match(/unlock-button|UnlockButton/g)||[]).length; if(opts)n=Math.max(0,opts-lk); }
-        W.__twnl_scav=n;
+  // ── live FETCH (read-only) — ONE source of truth: the scavenge screen's
+  // inline `var village = {...}` JSON. Verified live on de256 (see the bot's
+  // _fetch_scavenge_state). It carries BOTH the per-tier lock state AND troops
+  // home, so one fetch fixes scavenge-tier detection AND troop reading.
+  //   options[id].is_locked === false  → that tier is unlocked
+  //   unit_counts_home                  → troops currently home
+  function fetchScavAndTroops(){
+    return fetch("/game.php?village="+vidParam()+"&screen=place&mode=scavenge",
+                 {credentials:"include"})
+      .then(function(r){return r.text();})
+      .then(function(h){
+        // pull the inline village JSON: var village = {...};
+        var m=h.match(/var\s+village\s*=\s*(\{[\s\S]*?\})\s*;/);
+        if(!m) return;
+        var vdata; try{ vdata=JSON.parse(m[1]); }catch(e){ return; }
+
+        // troops home
+        var home=vdata.unit_counts_home||vdata.unitCountsHome||null;
+        if(home){ var t={}; Object.keys(home).forEach(function(u){t[u]=parseInt(home[u],10)||0;}); W.__twnl_troops=t; }
+
+        // scavenge tiers: count options whose is_locked is false. (ids 1..4)
+        var opts=vdata.options||{};
+        var unlocked=0;
+        Object.keys(opts).forEach(function(k){
+          var o=opts[k]; if(o && (o.is_locked===false || o.is_locked==="false")) unlocked++;
+        });
+        // tiers are sequential, so the unlocked COUNT is the highest tier.
+        W.__twnl_scav=unlocked;
+
+        // bonus: note which tiers have a squad OUT (so we don't tell you to
+        // re-send a busy tier). store as a set of busy tier ids.
+        var busy={};
+        Object.keys(opts).forEach(function(k){
+          var o=opts[k]; if(o && o.scavenging_squad) busy[k]=true;
+        });
+        W.__twnl_scav_busy=busy;
       }).catch(function(){});
   }
 
@@ -381,7 +402,7 @@
     // refresh + tier sync
     var rf=document.createElement("span"); rf.textContent="🔄 refresh troops/scavenge";
     rf.style.cssText="display:inline-block;margin:2px 0;font-size:10px;color:#36c;cursor:pointer";
-    rf.onclick=function(){ Promise.all([fetchTroops(),fetchScav()]).then(render); }; p.appendChild(rf);
+    rf.onclick=function(){ fetchScavAndTroops().then(render); }; p.appendChild(rf);
 
     var tg=document.createElement("div"); tg.style.cssText="font-size:10px;opacity:.7;margin-bottom:3px"; tg.innerHTML="tiers: ";
     [0,1,2,3].forEach(function(n){ var s=document.createElement("span"); s.textContent=n;
@@ -415,6 +436,6 @@
   }
 
   flash(); render();
-  Promise.all([fetchTroops(),fetchScav()]).then(render);  // live check + scavenge split
+  fetchScavAndTroops().then(render);   // one read-only fetch: tiers + troops
   console.log("[noble-guide] loaded, "+TL.length+" timeline steps");
 })();
