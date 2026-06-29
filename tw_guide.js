@@ -39,7 +39,7 @@
   [1,"main",3,0.25,143,127,111,7,18,240,2,170,123,127],
   [1,"main",4,0.47,180,160,140,8,26,240,2,141,114,88],
   [1,"barracks",1,0.6,200,170,90,7,33,240,2,92,95,99],
-  [1,"wood",1,1.03,50,60,40,5,38,240,2,344,337,261],
+  [1,"wood",1,1.03,50,60,40,5,38,240,2,344,337,261],a
   [1,"stone",1,1.03,65,50,40,5,43,240,2,279,287,221],
   [1,"iron",1,1.25,75,65,70,10,53,240,2,505,523,352],
   [1,"wood",2,1.25,62,75,50,6,59,240,2,443,448,302],
@@ -369,6 +369,42 @@
   function queueUsed(){ return (typeof W.__twnl_qused==="number")?W.__twnl_qused:null; }
   var BUILD_SLOTS=2;  // non-premium TW
 
+  // Read Farm Assistant TEMPLATES (A/B) + their template_ids + the AJAX
+  // send_units_link from the am_farm page (read-only). Ported from FarmBot's
+  // _parse_templates + _extract_send_units_link. Caches:
+  //   W.__twnl_farm_tpl     = {a:{id,units}, b:{id,units}}
+  //   W.__twnl_farm_sendurl = Accountmanager.send_units_link
+  function fetchFarmTemplates(){
+    return fetch("/game.php?village="+vidParam()+"&screen=am_farm",{credentials:"include"})
+      .then(function(r){return r.text();})
+      .then(function(h){
+        // send_units_link (the AJAX farm endpoint)
+        var su=h.match(/Accountmanager\.send_units_link\s*=\s*['"]([^'"]+)['"]/);
+        if(su) W.__twnl_farm_sendurl=su[1].replace(/&amp;/g,"&");
+
+        // templates: scope to loot_assistant_templates table, walk rows.
+        var tblM=h.match(/<table[^>]*class="[^"]*loot_assistant_templates[^"]*"[^>]*>([\s\S]*?)<\/table>/i);
+        var body=tblM?tblM[1]:h;
+        var tpl={}, label=null;
+        var rowRe=/<tr([^>]*)>([\s\S]*?)<\/tr>/gi, rm;
+        while((rm=rowRe.exec(body))){
+          var rb=rm[2];
+          var ic=rb.match(/farm_icon_([ab])/i);
+          if(ic){ label=ic[1].toLowerCase(); continue; }
+          // a unit-input row: name="spear[<tid>]" etc, with template[<tid>][id]
+          if(label && /name="(?:spear|sword|axe|spy|light|heavy|ram|catapult)\[\d+\]"/i.test(rb)){
+            var idm=rb.match(/name="template\[(\d+)\]\[id\]"\s+value="(\d+)"/i);
+            var tid=idm?idm[2]:null;
+            var units={}, um, ure=/name="(spear|sword|axe|archer|spy|light|heavy|marcher|ram|catapult)\[\d+\]"[^>]*value="(\d+)"/gi;
+            while((um=ure.exec(rb))){ units[um[1]]=parseInt(um[2],10)||0; }
+            if(tid){ tpl[label]={id:tid, units:units}; }
+            label=null;
+          }
+        }
+        if(Object.keys(tpl).length) W.__twnl_farm_tpl=tpl;
+      }).catch(function(){});
+  }
+
   // Read the REAL per-spear recruit time (seconds) from the barracks page, so
   // the troop-time display is exact, not formula-estimated. TW shows the unit
   // build time in the recruit row; we try several markup variants. Cached on
@@ -625,19 +661,30 @@
       });
       L2.push("<span style='font-size:10px;opacity:.6'>only these are worth farming; scavenge the rest</span>");
       fc.innerHTML=L2.join("<br>");
-      // how many spears we'd send (a small pack — point-blank, returns fast)
-      var spAvail=(th&&th.spear)||0;
-      var farmN=Math.min(spAvail, 20);   // small pack; barb refills, fast round trip
-      if(AUTO_BUILD && farmN>0){
-        var fb=document.createElement("div");
-        fb.style.cssText="margin-top:4px;text-align:center;padding:3px;background:#c89;border-radius:4px;cursor:pointer;font-weight:bold;color:#fff";
-        fb.textContent="⚡ farm "+barbs[0].x+"|"+barbs[0].y+" ("+farmN+" spears)";
-        fb.onclick=function(){ doFarm(barbs[0], farmN); };
-        fc.appendChild(fb);
+      // Send via Farm Assistant templates A/B (one clean POST each). A button
+      // per configured template, firing at the NEAREST point-blank barb.
+      var tpls=W.__twnl_farm_tpl||{};
+      var haveTpl=Object.keys(tpls).length>0;
+      if(AUTO_BUILD && haveTpl){
+        ["a","b"].forEach(function(lab){
+          if(!tpls[lab]) return;
+          var u=tpls[lab].units||{};
+          var desc=Object.keys(u).filter(function(k){return u[k]>0;}).map(function(k){return u[k]+k.slice(0,2);}).join("+")||"empty";
+          var fb=document.createElement("span");
+          fb.style.cssText="display:inline-block;margin:4px 4px 0 0;padding:3px 8px;background:#c89;border-radius:4px;cursor:pointer;font-weight:bold;color:#fff;font-size:11px";
+          fb.textContent="⚡ "+lab.toUpperCase()+" ("+desc+")";
+          fb.onclick=function(){ doFarm(barbs[0], lab); };
+          fc.appendChild(fb);
+        });
+      } else if (AUTO_BUILD && !haveTpl){
+        var warn=document.createElement("div");
+        warn.style.cssText="margin-top:3px;font-size:10px;color:#a60";
+        warn.textContent="set a Farm Assistant template (A/B) in am_farm, then 🔄";
+        fc.appendChild(warn);
       }
       var fa=document.createElement("a");
-      fa.href="/game.php?village="+vidParam()+"&screen=place&target="+(barbs[0].id||"");
-      fa.textContent="→ rally point (manual)"; fa.style.cssText="display:inline-block;margin-top:3px;font-size:11px;color:#36c";
+      fa.href="/game.php?village="+vidParam()+"&screen=am_farm";
+      fa.textContent="→ Farm Assistant"; fa.style.cssText="display:inline-block;margin-top:4px;font-size:11px;color:#36c";
       fc.appendChild(fa);
       p.appendChild(fc);
     } else if (barbs && barbs.length===0 && (lv.barracks||0)>=1){
@@ -680,7 +727,7 @@
   // the village JSON so res/levels reflect the action we just took.
   function softRefresh(){
     GD = W.game_data || GD;
-    return Promise.all([fetchScavAndTroops(), fetchQueue(), fetchBarbs(), fetchTrainTime()]).then(function(){ render(); });
+    return Promise.all([fetchScavAndTroops(), fetchQueue(), fetchBarbs(), fetchTrainTime(), fetchFarmTemplates()]).then(function(){ render(); });
   }
 
   // BUILD — sends the upgrade in the background (no navigation, panel stays).
@@ -814,49 +861,34 @@
       }).catch(function(e){ toast("scavenge send failed: "+e, false); });
   }
 
-  // FARM a point-blank barb: send `n` spears via the rally point. TW's attack
-  // is a 2-step flow (place form → confirm). We scrape the place screen's form
-  // for its hidden fields + csrf, set spear=n + the target coords, POST to get
-  // the confirm token, then POST the confirm. Same as the game's attack button.
-  function doFarm(barb, n){
+  // FARM a barb using your Farm Assistant TEMPLATE (A or B). One clean POST to
+  // Accountmanager.send_units_link with {target, template_id, source} — exactly
+  // the request FarmGod / the game's farm button makes. Needs the template_id
+  // (read from am_farm by fetchFarmTemplates) and the barb's village id.
+  function doFarm(barb, label){
+    var tpl=(W.__twnl_farm_tpl||{})[label];
+    var sendUrl=W.__twnl_farm_sendurl;
+    if(!tpl || !sendUrl){ toast("no Farm Assistant template "+(label||"A").toUpperCase()+" — set one in am_farm, then 🔄", false); return; }
+    if(!barb || !barb.id){ toast("barb has no village id", false); return; }
     var vid=vidParam();
-    var pu="/game.php?village="+vid+"&screen=place";
-    toast("farming "+barb.x+"|"+barb.y+" ("+n+" spears)…", true);
-    fetch(pu,{credentials:"include"}).then(function(r){return r.text();}).then(function(h){
-      // place command form: action contains "command" / "place"; has name="spear"
-      var fm=h.match(/<form[^>]*action="([^"]+)"[^>]*>([\s\S]*?)<\/form>/gi), body=null, action=null;
-      if(fm){ for(var i=0;i<fm.length;i++){
-        var am=fm[i].match(/action="([^"]+)"/i); var act=am?am[1].replace(/&amp;/g,"&"):"";
-        if(/place|command/i.test(act) && /name="spear"/i.test(fm[i])){ action=act; body=fm[i]; break; }
-      }}
-      if(!action){ toast("no attack form (rally point built?)", false); return; }
-      var data=new URLSearchParams(), im, re=/<input[^>]*name="([^"]+)"[^>]*value="([^"]*)"/gi;
-      while((im=re.exec(body))){ data.set(im[1], im[2]); }
-      // zero all units, set spear=n, set target coords
-      ["spear","sword","axe","archer","spy","light","heavy","marcher","ram","catapult","knight","snob"].forEach(function(u){ data.set(u, "0"); });
-      data.set("spear", String(n));
-      data.set("x", barb.x); data.set("y", barb.y);
-      data.set("attack", "Angriff");   // press the attack button
-      if(action.charAt(0)!=="/") action="/"+action.replace(/^.*game\.php/,"game.php");
-      // step 1: get the confirm screen
-      return fetch(action,{method:"POST",credentials:"include",
-        headers:{"Content-Type":"application/x-www-form-urlencoded"},body:data.toString()})
-        .then(function(r){return r.text();}).then(function(c){
-          // confirm form carries a fresh token + the troops; just resubmit it.
-          var cf=c.match(/<form[^>]*action="([^"]+)"[^>]*id="command-data-form"[\s\S]*?<\/form>/i)
-              || c.match(/<form[^>]*id="command-data-form"[^>]*action="([^"]+)"[\s\S]*?<\/form>/i)
-              || c.match(/<form[^>]*action="([^"]*confirm[^"]*)"[^>]*>([\s\S]*?)<\/form>/i);
-          if(!cf){ toast("farm: no confirm form (already sent? troops short?)", false); return; }
-          var cAction=cf[1].replace(/&amp;/g,"&");
-          var cBody=cf[0];
-          var cd=new URLSearchParams(), cm, cre=/<input[^>]*name="([^"]+)"[^>]*value="([^"]*)"/gi;
-          while((cm=cre.exec(cBody))){ cd.set(cm[1], cm[2]); }
-          if(cAction.charAt(0)!=="/") cAction="/"+cAction.replace(/^.*game\.php/,"game.php");
-          return fetch(cAction,{method:"POST",credentials:"include",
-            headers:{"Content-Type":"application/x-www-form-urlencoded"},body:cd.toString()})
-            .then(function(){ toast("✓ farm sent to "+barb.x+"|"+barb.y, true); setTimeout(softRefresh,600); });
-        });
-    }).catch(function(e){ toast("farm failed: "+e, false); });
+    // FarmGod scopes the POST to the origin village by rewriting village=<id>.
+    var url=sendUrl.replace(/village=\d+/, "village="+vid);
+    if(url.charAt(0)!=="/") url="/"+url.replace(/^.*game\.php/,"game.php");
+    var data=new URLSearchParams();
+    data.set("target", String(barb.id));
+    data.set("template_id", String(tpl.id));
+    data.set("source", String(vid));
+    toast("farming "+barb.x+"|"+barb.y+" with "+label.toUpperCase()+"…", true);
+    fetch(url,{method:"POST",credentials:"include",
+      headers:{"X-Requested-With":"XMLHttpRequest","TribalWars-Ajax":"1",
+               "Content-Type":"application/x-www-form-urlencoded; charset=UTF-8",
+               "Accept":"application/json, text/javascript, */*; q=0.01"},
+      body:data.toString()})
+      .then(function(r){return r.json().catch(function(){return null;});})
+      .then(function(j){
+        if(j && (j.error||j.errors)){ toast("farm: "+String(j.error||j.errors).slice(0,80), false); }
+        else { toast("✓ farmed "+barb.x+"|"+barb.y+" ("+label.toUpperCase()+")", true); setTimeout(softRefresh,600); }
+      }).catch(function(e){ toast("farm failed: "+e, false); });
   }
 
   function flash(){ var b; try{b=sessionStorage.getItem("twnl_flash");sessionStorage.removeItem("twnl_flash");}catch(e){}
@@ -866,6 +898,6 @@
   }
 
   flash(); render();
-  Promise.all([fetchScavAndTroops(), fetchQueue(), fetchBarbs(), fetchTrainTime()]).then(render);
+  Promise.all([fetchScavAndTroops(), fetchQueue(), fetchBarbs(), fetchTrainTime(), fetchFarmTemplates()]).then(render);
   console.log("[noble-guide] loaded, "+TL.length+" timeline steps");
 })();
