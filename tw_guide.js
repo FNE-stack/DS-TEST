@@ -292,6 +292,15 @@
   // ── scavenge split (max loot/hour, exact TW math) ─────────────────────────
   function scavDuration(c,lf){ if(c<=0)return 1; var inner=c*(100*lf)*c*lf; return (Math.pow(inner,DUR_EXP)+DUR_INITIAL)*DUR_FACTOR; }
   function scavRate(c,lf){ return c<=0?0:(c*lf)/scavDuration(c,lf); }
+  // INVERSE math (for the run-sizing modes):
+  //  carryForDuration: carry whose tier-lf run takes ~targetSec (overnight mode)
+  //  carryForLoot:     carry whose run earns ~targetLoot (unblock-build mode)
+  function carryForDuration(targetSec, lf){
+    var x=targetSec/DUR_FACTOR - DUR_INITIAL; if(x<=0) return 0;
+    var inner=Math.pow(x, 1/DUR_EXP);
+    return Math.sqrt(inner/(100*lf*lf));
+  }
+  function carryForLoot(targetLoot, lf){ return lf>0? targetLoot/lf : 0; }
   function optimalSplit(total,tiers){
     var b={}; tiers.forEach(function(t){b[t]=0;}); if(!tiers.length||total<=0)return b;
     var n=200, ch=total/n;
@@ -689,16 +698,64 @@
         });
       }
       sc.innerHTML=L.join("<br>");
-      var anyOut=Object.keys(W.__twnl_scav_busy||{}).length>0;
       if(AUTO_BUILD){
-        var send=document.createElement("div");
-        send.style.cssText="margin-top:4px;text-align:center;padding:3px;background:#9bbf7a;border-radius:4px;cursor:pointer;font-weight:bold";
-        send.textContent=anyOut?"⚡ send free tiers":"⚡ send optimal split";
-        send.onclick=function(){ doSendScavenge(); };
-        sc.appendChild(send);
+        var bestLf=Math.max.apply(null, tiers.map(function(t){return SCAV_LOOT[t];}));
+        // ── MODE 1: UNBLOCK NEXT BUILD ── shortest run earning enough for the
+        // next pending build(s). The rush is build-blocked, so this is the
+        // primary min/max move: build sooner, accept the smaller per-run loot.
+        var nbx=nextBuildIdx(lv,idx);
+        if(nbx>=0){
+          var nrow=TL[nbx];
+          // need = the per-resource shortfall × 3 (scavenge splits loot evenly),
+          // i.e. enough TOTAL loot so each resource covers the next build cost.
+          var needW=Math.max(0,nrow[T_CW]-r.wood), needS=Math.max(0,nrow[T_CS]-r.stone), needI=Math.max(0,nrow[T_CI]-r.iron);
+          var needPer=Math.max(needW,needS,needI);     // worst resource sets the bar
+          var needLoot=needPer*3;                       // loot is split /3 per res
+          if(needLoot>0){
+            var wantCarry=carryForLoot(needLoot,bestLf);
+            var sub=troopsForCarry(th, wantCarry);
+            var subCarry=0; Object.keys(sub).forEach(function(u){subCarry+=sub[u]*CARRY[u];});
+            var runH=scavDuration(subCarry,bestLf)/3600;
+            var b1=document.createElement("div");
+            b1.style.cssText="margin-top:4px;text-align:center;padding:4px;background:#7aa86a;border-radius:4px;cursor:pointer;font-weight:bold;color:#fff";
+            b1.innerHTML="⚡ unblock "+(BLABEL[nrow[T_B]]||nrow[T_B])+" "+nrow[T_LV]+
+              "<div style='font-size:10px;font-weight:normal'>"+runH.toFixed(1)+"h → +~"+Math.round(subCarry*bestLf)+" (sends ~"+Object.keys(sub).reduce(function(a,u){return a+sub[u];},0)+" troops)</div>";
+            b1.onclick=function(){ doSendScavenge({troops:sub, mode:"unblock"}); };
+            sc.appendChild(b1);
+          } else {
+            var note0=document.createElement("div");
+            note0.style.cssText="margin-top:4px;font-size:10px;color:#2a8;text-align:center";
+            note0.textContent="next build already affordable — no scavenge needed for it";
+            sc.appendChild(note0);
+          }
+        }
+        // ── MODE 2: OVERNIGHT / GAP RUN ── one long run sized to a sleep window.
+        // Troops work the whole gap, land as you return → zero idle waste.
+        var night=document.createElement("div");
+        night.style.cssText="margin-top:4px;display:flex;gap:4px;align-items:center;font-size:11px";
+        night.innerHTML="🌙 overnight: ";
+        [6,8,10].forEach(function(hrs){
+          var btn=document.createElement("span");
+          btn.style.cssText="cursor:pointer;padding:2px 6px;border:1px solid #678;border-radius:4px;background:#fff";
+          btn.textContent=hrs+"h";
+          btn.onclick=function(){
+            var wantC=carryForDuration(hrs*3600,bestLf);
+            var sub=troopsForCarry(th, wantC);   // clamps to your actual army
+            doSendScavenge({troops:sub, mode:"overnight"});
+          };
+          night.appendChild(btn);
+        });
+        sc.appendChild(night);
+        // ── MODE 3: MAX LOOT/HOUR ── all troops, optimal split (for when you're
+        // actively re-sending and no run sits idle).
+        var bmax=document.createElement("div");
+        bmax.style.cssText="margin-top:4px;text-align:center;padding:3px;background:#9bbf7a;border-radius:4px;cursor:pointer;font-size:11px";
+        bmax.textContent="⚡ max loot/h (send ALL — for active play)";
+        bmax.onclick=function(){ doSendScavenge({mode:"max"}); };
+        sc.appendChild(bmax);
       }
       var sa=document.createElement("a"); sa.href="/game.php?village="+vidParam()+"&screen=place&mode=scavenge";
-      sa.textContent="→ open Raubzug"; sa.style.cssText="display:inline-block;margin-top:3px;font-size:11px;color:#36c"; sc.appendChild(sa);
+      sa.textContent="→ open Raubzug"; sa.style.cssText="display:inline-block;margin-top:4px;font-size:11px;color:#36c"; sc.appendChild(sa);
     }
     p.appendChild(sc);
 
@@ -911,8 +968,30 @@
   // AUTO-SEND the optimal scavenge split: builds the squad_requests payload and
   // POSTs send_squads (same request the game's send button makes). One tap
   // dispatches all home troops across the unlocked tiers at max loot/hour.
-  function doSendScavenge(){
-    var th=troopsHome(); var tiers=[]; for(var t=1;t<=scavTiers();t++)tiers.push(t);
+  // Build a REDUCED troop set holding ~targetCarry worth of carry (cheapest-
+  // carry-per-pop first = spears), for the run-sizing modes. The rest of the
+  // army stays home for the next short run. Returns {unit:count}.
+  function troopsForCarry(th, targetCarry){
+    if(targetCarry<=0) return {};
+    var pool={}; Object.keys(th).forEach(function(u){ if(CARRY[u]>0) pool[u]=th[u]||0; });
+    // use lightest-carry units first so we send "just enough" granularly
+    var order=Object.keys(pool).sort(function(a,b){return CARRY[a]-CARRY[b];});
+    var picked={}, got=0;
+    order.forEach(function(u){
+      if(got>=targetCarry) return;
+      var need=Math.ceil((targetCarry-got)/CARRY[u]);
+      var n=Math.min(pool[u], need);
+      if(n>0){ picked[u]=n; got+=n*CARRY[u]; }
+    });
+    return picked;
+  }
+
+  // mode: undefined/"max" = all troops, max loot/h. "carry" = send a reduced
+  // set (~optsCarry) sized to a build need or sleep window.
+  function doSendScavenge(opts){
+    opts=opts||{};
+    var th=opts.troops || troopsHome();
+    var tiers=[]; for(var t=1;t<=scavTiers();t++)tiers.push(t);
     if(!th||!tiers.length){ toast("no troops/tiers to send", false); return; }
     var busy=W.__twnl_scav_busy||{};
     var sendTiers=tiers.filter(function(t){ return !busy[t]; });   // skip tiers already out
