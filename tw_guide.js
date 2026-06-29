@@ -299,13 +299,16 @@
     return fetch("/game.php?village="+vidParam()+"&screen=main",{credentials:"include"})
       .then(function(r){return r.text();})
       .then(function(h){
+        // Count `buildorder_<slug>` classes — one per active+queued build. Works
+        // across desktop + app skins (the class is in both). Scope to the queue
+        // table when present, else scan the whole page (the class only appears
+        // in the queue, so a global scan is safe).
         var qm=h.match(/<table[^>]*id="build_queue"[^>]*>([\s\S]*?)<\/table>/i)
             || h.match(/<tbody[^>]*id="buildqueue"[^>]*>([\s\S]*?)<\/tbody>/i);
-        var used=0, queued=[];
-        if(qm){ var mm, re=/class="[^"]*buildorder_([a-z_]+)"/gi;
-          while((mm=re.exec(qm[1]))){ queued.push(mm[1].toLowerCase()); }
-          used=queued.length;
-        }
+        var scope=qm?qm[1]:h;
+        var used=0, queued=[], mm, re=/buildorder_([a-z_]+)/gi;
+        while((mm=re.exec(scope))){ queued.push(mm[1].toLowerCase()); }
+        used=queued.length;
         W.__twnl_qused=used; W.__twnl_qbuilds=queued;
       }).catch(function(){});
   }
@@ -514,9 +517,23 @@
     var mu="/game.php?village="+vid+"&screen=main";
     toast("building "+(BLABEL[b]||b)+" "+lvl+"…", true);
     fetch(mu,{credentials:"include"}).then(function(r){return r.text();}).then(function(h){
-      var m=h.match(new RegExp('href="([^"]*action=upgrade_building[^"]*id='+b+'(?:&amp;|&)[^"]*)"','i'));
-      if(!m){ toast("can't build "+(BLABEL[b]||b)+" now (cost/prereq/queue full)", false); return; }
-      var link=m[1].replace(/&amp;/g,"&"); if(link.charAt(0)!=="/")link="/"+link.replace(/^.*game\.php/,"game.php");
+      // Robust upgrade-link finder (ported from the bot's _find_upgrade_links):
+      // param ORDER varies between desktop and the app skin, so don't assume
+      // action=...id=... order. Instead scan ALL action=upgrade* hrefs, parse
+      // each href's id= param, and pick the one whose id matches this building.
+      // Skip the +25% instant-build variants (type=premium/instant/kurzbau/buy).
+      var BAD=/\b(premium|instant|kurzbau|kurzbauanleitung|buy)\b/i;
+      var link=null, hm, hre=/href="([^"]*action=upgrade[^"]*)"/gi;
+      while((hm=hre.exec(h))){
+        var href=hm[1].replace(/&amp;/g,"&");
+        var idm=href.match(/[?&]id=([a-z_]+)/i);
+        var tym=href.match(/[?&]type=([a-z_]+)/i);
+        if(!idm || idm[1].toLowerCase()!==b) continue;
+        if(tym && BAD.test(tym[1])) continue;
+        link=href; break;
+      }
+      if(!link){ toast("can't build "+(BLABEL[b]||b)+" now — no upgrade link (cost/prereq/queue full?)", false); return; }
+      if(link.charAt(0)!=="/") link="/"+link.replace(/^.*game\.php/,"game.php");
       return fetch(link,{credentials:"include"}).then(function(){
         toast("✓ queued "+(BLABEL[b]||b)+" "+lvl, true);
         setTimeout(softRefresh, 500);   // re-read state, keep panel open
