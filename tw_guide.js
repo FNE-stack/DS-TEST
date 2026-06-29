@@ -261,8 +261,10 @@
                  {credentials:"include"})
       .then(function(r){return r.text();})
       .then(function(h){
-        // pull the inline village JSON: var village = {...};
-        var m=h.match(/var\s+village\s*=\s*(\{[\s\S]*?\})\s*;/);
+        // pull the inline village JSON: var village = {...};  The object has
+        // NESTED braces (options/squad), so a non-greedy {...} stops too early.
+        // Match up to the terminating "};" instead (verified against de256).
+        var m=h.match(/var\s+village\s*=\s*(\{[\s\S]*?\});/);
         if(!m) return;
         var vdata; try{ vdata=JSON.parse(m[1]); }catch(e){ return; }
 
@@ -288,6 +290,27 @@
         W.__twnl_scav_busy=busy;
       }).catch(function(){});
   }
+
+  // Read the live BUILD QUEUE depth from the main screen (read-only). Verified
+  // de256 markup: each active+queued build has a `buildorder_<slug>` class once;
+  // the count = slots used. TW gives 2 slots, so free = 2 - used. (game_data
+  // alone doesn't carry the queue — the bot read it off this screen too.)
+  function fetchQueue(){
+    return fetch("/game.php?village="+vidParam()+"&screen=main",{credentials:"include"})
+      .then(function(r){return r.text();})
+      .then(function(h){
+        var qm=h.match(/<table[^>]*id="build_queue"[^>]*>([\s\S]*?)<\/table>/i)
+            || h.match(/<tbody[^>]*id="buildqueue"[^>]*>([\s\S]*?)<\/tbody>/i);
+        var used=0, queued=[];
+        if(qm){ var mm, re=/class="[^"]*buildorder_([a-z_]+)"/gi;
+          while((mm=re.exec(qm[1]))){ queued.push(mm[1].toLowerCase()); }
+          used=queued.length;
+        }
+        W.__twnl_qused=used; W.__twnl_qbuilds=queued;
+      }).catch(function(){});
+  }
+  function queueUsed(){ return (typeof W.__twnl_qused==="number")?W.__twnl_qused:null; }
+  var BUILD_SLOTS=2;  // non-premium TW
 
   // ── PANEL ────────────────────────────────────────────────────────────────
   function render(){
@@ -339,24 +362,61 @@
       function nd(h,w,p){ return h>=w?0:(p<=0?Infinity:(w-h)/p*60); }
       return Math.ceil(Math.max(nd(r.wood,cw,pw),nd(r.stone,cs,ps),nd(r.iron,ci,pi))); }
 
-    // ── 1. BUILD track ──
-    var bi=done?-1:nextBuildIdx(lv,idx);
+    // ── 1. BUILD track ── TW has 2 build slots, so show the next TWO plan
+    // builds (slot 1 + slot 2) and keep BOTH queued. The optimizer's timeline
+    // already assumed 2 parallel slots, so filling both is what hits ~9.6d —
+    // leaving slot 2 idle silently slows the whole rush.
+    var used=queueUsed();                       // live queue depth (null if unread)
+    var free=(used===null)?BUILD_SLOTS:Math.max(0,BUILD_SLOTS-used);
     var bc=card("#fff7e0","#c0a060");
-    if (bi<0){ bc.innerHTML="🏗️ <b>BUILD</b> — ✅ done. Build Academy & mint coin."; }
+    bc.innerHTML="<div style='font-size:10px;opacity:.6'>🏗️ BUILD — "+
+      (used===null?"2 slots":(used+"/"+BUILD_SLOTS+" used, "+free+" free"))+
+      (AUTO_BUILD?", tap to queue ⚠️":", tap to open")+"</div>";
+    if (done){ bc.innerHTML+="✅ done — build Academy & mint coin."; }
+    else if (free===0){ bc.innerHTML+="<span style='opacity:.7'>both slots busy — next: "+
+      (function(){var bx=nextBuildIdx(lv,idx);return bx<0?"—":(BLABEL[TL[bx][T_B]]||TL[bx][T_B])+" "+TL[bx][T_LV];})()+"</span>"; }
     else {
-      var row=TL[bi], b=row[T_B], lvl=row[T_LV];
-      var cw=row[T_CW],cs=row[T_CS],ci=row[T_CI],cp=row[T_CP];
-      var popBlock=(b!=="farm"&&cp&&(r.pop+cp>r.popMax));
-      var ok=afford(cw,cs,ci);
-      bc.style.cursor="pointer";
-      bc.innerHTML="<div style='font-size:10px;opacity:.6'>🏗️ BUILD"+(AUTO_BUILD?" — tap BUILD ⚠️":" — tap to open")+"</div>"+
-        "<b>"+(BLABEL[b]||b)+" → "+lvl+"</b> "+
-        (popBlock?"<span style='color:#b00'>⚠ pop-cap, build Bauernhof</span>"
-          : ok?"<span style='color:#2a8'>✓ now</span>"
-          : "<span style='opacity:.7'>⏳ ~"+waitMin(cw,cs,ci)+"min</span>")+
-        "<div style='font-size:10px;opacity:.65'>cost "+cw+"/"+cs+"/"+ci+
-          " · refund +"+LEVEL_REWARD.wood+"/"+LEVEL_REWARD.stone+"/"+LEVEL_REWARD.iron+"</div>";
-      bc.onclick=function(){ doBuild(b,lvl); };
+      // collect the next `free` distinct pending builds (skip scav rows)
+      var picks=[]; var fromI=idx;
+      for (var sN=0; sN<free; sN++){
+        var bidx=nextBuildIdx(lv,fromI);
+        // skip past any earlier picks of the same building+level
+        while (bidx>=0 && picks.some(function(pp){return pp.idx===bidx;})) bidx=nextBuildIdx(lv,bidx+1);
+        if (bidx<0) break;
+        picks.push({idx:bidx, row:TL[bidx]});
+        fromI=bidx+1;
+      }
+      // running resource claim so slot 2's affordability accounts for slot 1
+      var rem={wood:r.wood,stone:r.stone,iron:r.iron}, popRem=r.popMax-r.pop;
+      picks.forEach(function(pk,si){
+        var row=pk.row, b=row[T_B], lvl=row[T_LV];
+        var cw=row[T_CW],cs=row[T_CS],ci=row[T_CI],cp=row[T_CP];
+        var popBlock=(b!=="farm"&&cp&&(cp>popRem));
+        var ok=(rem.wood>=cw&&rem.stone>=cs&&rem.iron>=ci);
+        if(ok&&!popBlock){ rem.wood-=cw; rem.stone-=cs; rem.iron-=ci; popRem-=cp; }
+        var rowDiv=document.createElement("div");
+        rowDiv.style.cssText="padding:4px 0;border-top:"+(si?"1px dotted #cb9":"none")+";cursor:pointer";
+        rowDiv.innerHTML="<b>slot "+(si+1)+": "+(BLABEL[b]||b)+" → "+lvl+"</b> "+
+          (popBlock?"<span style='color:#b00'>⚠ pop-cap</span>"
+            : ok?"<span style='color:#2a8'>✓ now</span>"
+            : "<span style='opacity:.7'>⏳ ~"+waitMin(cw,cs,ci)+"min</span>")+
+          "<div style='font-size:10px;opacity:.6'>cost "+cw+"/"+cs+"/"+ci+
+            " · refund +"+LEVEL_REWARD.wood+"/"+LEVEL_REWARD.stone+"/"+LEVEL_REWARD.iron+"</div>";
+        rowDiv.onclick=function(){ doBuild(b,lvl); };
+        bc.appendChild(rowDiv);
+      });
+      // one-tap "queue both" when both are affordable now
+      if (AUTO_BUILD && picks.length>=2){
+        var both=document.createElement("div");
+        both.style.cssText="margin-top:4px;text-align:center;padding:3px;background:#c0a060;border-radius:4px;cursor:pointer;font-weight:bold";
+        both.textContent="⚡ queue both slots";
+        both.onclick=function(){
+          doBuild(picks[0].row[T_B],picks[0].row[T_LV]);
+          // small stagger so the second scrape sees the first already queued
+          setTimeout(function(){ doBuild(picks[1].row[T_B],picks[1].row[T_LV]); }, 900);
+        };
+        bc.appendChild(both);
+      }
     }
     p.appendChild(bc);
 
@@ -387,22 +447,34 @@
     }
     p.appendChild(sc);
 
-    // ── 4. TROOPS track ──
+    // ── 4. TROOPS track ── (trains in-panel; doesn't gate the noble)
     if((lv.barracks||0)>=1){
       var spN=(th&&th.spear)||0, tc=card("#f6ece0","#caa882");
+      var popFull=r.pop>=r.popMax;
+      // how many spears we could afford right now (spear = 50/30/10, 1 pop)
+      var canAfford=Math.min(Math.floor(r.wood/50),Math.floor(r.stone/30),Math.floor(r.iron/10),
+                             r.popMax-r.pop, SPEAR_GOAL-spN);
       tc.innerHTML="<div style='font-size:10px;opacity:.6'>⚔️ TROOPS (surplus only, goal ~"+SPEAR_GOAL+")</div>"+
         "have "+spN+" spears — "+(spN>=SPEAR_GOAL?"<span style='color:#2a8'>enough ✓</span>"
-          : r.pop>=r.popMax?"<span style='color:#b00'>pop full</span>"
-          : "<span style='opacity:.75'>train from leftover after build/unlock</span>");
-      var ta=document.createElement("a"); ta.href="/game.php?village="+vidParam()+"&screen=barracks";
-      ta.textContent=" → barracks"; ta.style.cssText="font-size:11px;color:#36c"; tc.appendChild(ta);
+          : popFull?"<span style='color:#b00'>pop full</span>"
+          : "<span style='opacity:.75'>"+(canAfford>0?"can train ~"+canAfford+" now":"save for build first")+"</span>");
+      if(spN<SPEAR_GOAL && !popFull && canAfford>0){
+        // small batch buttons so you trickle from surplus, not dump everything
+        [Math.min(5,canAfford), Math.min(20,canAfford), canAfford].forEach(function(n,i){
+          if(n<=0) return; if(i>0 && n<=Math.min(5,canAfford)) return;  // dedupe tiny
+          var btn=document.createElement("span"); btn.textContent="+"+n;
+          btn.style.cssText="display:inline-block;margin:3px 3px 0 0;padding:2px 7px;border:1px solid #a87;border-radius:4px;background:#fff;cursor:pointer;font-size:11px";
+          btn.onclick=function(){ doTrainSpears(n); };
+          tc.appendChild(btn);
+        });
+      }
       p.appendChild(tc);
     }
 
     // refresh + tier sync
     var rf=document.createElement("span"); rf.textContent="🔄 refresh troops/scavenge";
     rf.style.cssText="display:inline-block;margin:2px 0;font-size:10px;color:#36c;cursor:pointer";
-    rf.onclick=function(){ fetchScavAndTroops().then(render); }; p.appendChild(rf);
+    rf.onclick=function(){ Promise.all([fetchScavAndTroops(),fetchQueue()]).then(render); }; p.appendChild(rf);
 
     var tg=document.createElement("div"); tg.style.cssText="font-size:10px;opacity:.7;margin-bottom:3px"; tg.innerHTML="tiers: ";
     [0,1,2,3].forEach(function(n){ var s=document.createElement("span"); s.textContent=n;
@@ -416,18 +488,70 @@
     document.body.appendChild(p);
   }
 
-  // build action
+  // toast: brief in-panel status message (no navigation, like Launchpad)
+  function toast(msg, good){
+    var el=document.getElementById("twnl_toast");
+    if(!el){ el=document.createElement("div"); el.id="twnl_toast";
+      el.style.cssText="margin:4px 0;padding:4px 6px;border-radius:4px;font-size:11px"; }
+    el.style.background=good?"#d7e9c8":"#f6d3d3";
+    el.style.color=good?"#2a6":"#a00"; el.textContent=msg;
+    var p=document.getElementById("twnl"); if(p && !el.parentNode) p.insertBefore(el, p.children[2]||null);
+  }
+
+  // refresh just the live resource/level state from game_data WITHOUT reloading
+  // the page. game_data updates on its own AJAX, but to be safe we also re-pull
+  // the village JSON so res/levels reflect the action we just took.
+  function softRefresh(){
+    GD = W.game_data || GD;
+    return Promise.all([fetchScavAndTroops(), fetchQueue()]).then(function(){ render(); });
+  }
+
+  // BUILD — sends the upgrade in the background (no navigation, panel stays).
   function doBuild(b,lvl){
     var vid=vidParam();
     if(!AUTO_BUILD){ try{sessionStorage.setItem("twnl_flash",b);}catch(e){}
       W.location.href="/game.php?village="+vid+"&screen="+bscreen(b); return; }
     var mu="/game.php?village="+vid+"&screen=main";
+    toast("building "+(BLABEL[b]||b)+" "+lvl+"…", true);
     fetch(mu,{credentials:"include"}).then(function(r){return r.text();}).then(function(h){
       var m=h.match(new RegExp('href="([^"]*action=upgrade_building[^"]*id='+b+'(?:&amp;|&)[^"]*)"','i'));
-      if(!m){ alert("Can't build "+b+" now (cost/prereq/queue). Opening screen."); W.location.href=mu; return; }
+      if(!m){ toast("can't build "+(BLABEL[b]||b)+" now (cost/prereq/queue full)", false); return; }
       var link=m[1].replace(/&amp;/g,"&"); if(link.charAt(0)!=="/")link="/"+link.replace(/^.*game\.php/,"game.php");
-      return fetch(link,{credentials:"include"}).then(function(){ setTimeout(function(){W.location.href=mu;},400); });
-    }).catch(function(e){ alert("Build failed: "+e); W.location.href=mu; });
+      return fetch(link,{credentials:"include"}).then(function(){
+        toast("✓ queued "+(BLABEL[b]||b)+" "+lvl, true);
+        setTimeout(softRefresh, 500);   // re-read state, keep panel open
+      });
+    }).catch(function(e){ toast("build failed: "+e, false); });
+  }
+
+  // TRAIN spears in the background (no navigation). Scrapes the barracks recruit
+  // form (action + hidden csrf inputs), sets spear=n, POSTs it. Same request the
+  // game's own recruit button makes.
+  function doTrainSpears(n){
+    var vid=vidParam();
+    var bu="/game.php?village="+vid+"&screen=barracks";
+    if(!AUTO_BUILD){ W.location.href=bu; return; }
+    toast("training "+n+" spears…", true);
+    fetch(bu,{credentials:"include"}).then(function(r){return r.text();}).then(function(h){
+      // find the recruit form (action contains train/recruit)
+      var fm=h.match(/<form[^>]*action="([^"]+)"[^>]*>([\s\S]*?)<\/form>/gi), body=null, action=null;
+      if(fm){ for(var i=0;i<fm.length;i++){
+        var am=fm[i].match(/action="([^"]+)"/i); var act=am?am[1].replace(/&amp;/g,"&"):"";
+        if(/train|recruit/i.test(act) && /name="spear"/i.test(fm[i])){ action=act; body=fm[i]; break; }
+      }}
+      if(!action){ toast("no recruit form (barracks built? botschutz?)", false); return; }
+      // collect hidden inputs (csrf etc.) + set spear=n
+      var data=new URLSearchParams(); var im, re=/<input[^>]*name="([^"]+)"[^>]*value="([^"]*)"/gi;
+      while((im=re.exec(body))){ data.set(im[1], im[2]); }
+      data.set("spear", String(n));
+      // zero the other units the form may carry so we only train spears
+      ["sword","axe","archer","spy","light","heavy","marcher","ram","catapult"].forEach(function(u){
+        if(new RegExp('name="'+u+'"').test(body)) data.set(u,"0"); });
+      if(action.charAt(0)!=="/") action="/"+action.replace(/^.*game\.php/,"game.php");
+      return fetch(action,{method:"POST",credentials:"include",
+        headers:{"Content-Type":"application/x-www-form-urlencoded"},body:data.toString()})
+        .then(function(){ toast("✓ queued "+n+" spears", true); setTimeout(softRefresh,500); });
+    }).catch(function(e){ toast("train failed: "+e, false); });
   }
   function flash(){ var b; try{b=sessionStorage.getItem("twnl_flash");sessionStorage.removeItem("twnl_flash");}catch(e){}
     if(!b)return; var row=document.getElementById("main_buildrow_"+b); if(!row)return;
@@ -436,6 +560,6 @@
   }
 
   flash(); render();
-  fetchScavAndTroops().then(render);   // one read-only fetch: tiers + troops
+  Promise.all([fetchScavAndTroops(), fetchQueue()]).then(render);  // tiers+troops+queue
   console.log("[noble-guide] loaded, "+TL.length+" timeline steps");
 })();
