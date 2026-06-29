@@ -1,0 +1,189 @@
+Sweeping scavenge troop investment (spear target)...
+
+  spear_target= 50: infeasible (stalled)
+  spear_target=100:  231.8h  ( 9.7d)  *best*
+  spear_target=150:  232.6h  ( 9.7d)
+  spear_target=200:  233.2h  ( 9.7d)
+  spear_target=250:  231.4h  ( 9.6d)  *best*
+  spear_target=300:  230.8h  ( 9.6d)  *best*
+  spear_target=350:  231.8h  ( 9.7d)
+  spear_target=400:  231.8h  ( 9.7d)
+  spear_target=450:  231.8h  ( 9.7d)
+  spear_target=500:  232.5h  ( 9.7d)
+  spear_target=550:  232.5h  ( 9.7d)
+  spear_target=600:  232.7h  ( 9.7d)
+  spear_target=650:  234.7h  ( 9.8d)
+
+BEST PLAN: spear_target=300 -> first noble in 230.8h = 9.6 days
+
+ORDERED STEP PLAN (timestamp · what · pop · expected res on hand):
+  +  0.0h  build     place     -> 1   pop 0/240  res 490/460/470
+  +  0.0h  build     main      -> 1   pop 5/240  res 400/380/400
+  +  0.2h  SCAV tier scavenge  -> 1   pop 5/240  res 526/501/476
+  +  0.2h  SCAV tier scavenge  -> 2   pop 5/240  res 276/201/226
+  +  0.2h  build     main      -> 2   pop 11/240  res 163/100/138
+  +  0.2h  build     hide      -> 1   pop 11/240  res 263/190/188
+  +  0.3h  build     hide      -> 2   pop 11/240  res 351/265/226
+  +  0.3h  build     wall      -> 1   pop 11/240  res 451/315/276
+  +  0.3h  build     hide      -> 3   pop 11/240  res 524/372/299
+  +  0.4h  build     wall      -> 2   pop 11/240  res 611/396/336
+  +  0.4h  build     hide      -> 4   pop 11/240  res 663/429/338
+  +  0.5h  build     storage   -> 1   pop 11/240  res 753/529/398
+  +  0.5h  build     storage   -> 2   pop 11/240  res 827/616/447
+  +  0.8h  build     main      -> 3   pop 18/240  res 836/641/438
+  +  0.8h  build     main      -> 4   pop 26/240  res 806/631/398
+  +  1.1h  build     barracks  -> 1   pop 33/240  res 758/613/410
+  +  1.2h  build     barracks  -> 2   pop 41/240  res 656/549/397
+  +  1.6h  build     wood      -> 1   pop 46/240  res 758/641/459
+  +  1.7h  build     stone     -> 1   pop 51/240  res 844/742/520
+  +  1.8h  build     iron      -> 1   pop 63/240  res 821/769/532
+  +  1.9h  build     wood      -> 2   pop 72/240  res 765/755/553
+  +  2.0h  build     wood      -> 3   pop 84/240  res 589/663/541
+  +  2.2h  build     stone     -> 2   pop 91/240  res 611/724/586
+  +  2.3h  build     stone     -> 3   pop 100/240  res 587/764/631
+  +  2.5h  build     wood      -> 4   pop 109/240  res 595/771/647
+  +  2.6h  build     wood      -> 5   pop 120/240  res 529/721/634
+  +  2.8h  build     wood      -> 6   pop 131/240  res 518/699/642
+  +  3.0h  build     stone     -> 4   pop 139/240  res 546/757/667
+  +  3.3h  build     stone     -> 5   pop 149/240  res 530/796/699
+  +  3.4h  build     iron      -> 2   pop 160/240  res 591/868/713
+  +  3.7h  build     iron      -> 3   pop 175/240  res 543/871/692
+  +  3.8h  build     stone     -> 6   pop 185/240  res 481/858/662
+  +  4.1h  build     stone     -> 7   pop 197/240  res 420/857/647
+  +  4.3h  build     iron      -> 4   pop 212/240  res 436/890/618
+  +  4.7h  build     farm      -> 1   pop 212/240  res 609/1068/747
+  +  4.7h  build     farm      -> 2   pop 214/240  res 607/1113/792
+  +  5.0h  build     storage   -> 3   pop 217/281  res 578/1162/861
+  +  5.0h  build     storage   -> 4   pop 218/330  res 561/1186/873
+  +  5.4h  build     iron      -> 5   pop 237/330  res 505/1197/853
+  +  5.5h  build     iron      -> 6   pop 256/330  res 433/1158/745
+  +  5.9h  build     iron      -> 7   pop 277/330  res 376/1144/650
+  +  6.2h  build     wood      -> 7   pop 289/330  res 351/1083/611
+  +  6.7h  build     farm      -> 3   pop 289/330  res 530/1274/761
+  +  6.8h  build     farm      -> 4   pop 289/330  res 615/1368/821
+  +  7.0h  build     wood      -> 8   pop 306/386  res 461/1226/784
+  +  7.2h  build     wood      -> 9   pop 322/453  res 327/1032/660
+  +  7.8h  build     wood      -> 10  pop 340/453  res 210/841/568
+  +  8.2h  build     stone     -> 8   pop 354/453  res 108/815/545
+  +  8.9h  build     wood      -> 11  pop 375/453  res 82/676/492
+  + 10.2h  build     stone     -> 9   pop 391/453  res 136/792/610
+  + 10.2h  build     farm      -> 5   pop 391/453  res 52/717/554
+  + 11.2h  build     stone     -> 10  pop 410/531  res 11/776/605
+  + 13.3h  build     wood      -> 12  pop 436/531  res 40/670/648
+  + 17.1h  build     farm      -> 6   pop 452/531  res 418/1260/1368
+  + 17.1h  build     farm      -> 7   pop 452/531  res 303/1157/1291
+  + 18.6h  build     storage   -> 5   pop 463/729  res 499/1534/1746
+  + 19.2h  build     storage   -> 6   pop 464/729  res 469/1534/1775
+  + 22.4h  build     storage   -> 7   pop 495/729  res 480/2075/2740
+  + 22.7h  build     storage   -> 8   pop 495/729  res 219/1853/2556
+  + 23.4h  build     wood      -> 13  pop 526/729  res 4/1522/2494
+  + 24.0h  build     iron      -> 8   pop 550/729  res 76/1621/2495
+  + 25.1h  build     stone     -> 11  pop 572/729  res 38/1722/2631
+  + 28.2h  build     storage   -> 9   pop 602/729  res 406/2584/3923
+  + 28.8h  build     storage   -> 10  pop 602/729  res 271/2506/3902
+  + 30.4h  build     farm      -> 8   pop 620/729  res 371/2905/4512
+  + 30.4h  build     farm      -> 9   pop 620/729  res 213/2765/4407
+  + 33.1h  build     storage   -> 11  pop 663/1002  res 298/3683/6051
+  + 34.2h  build     storage   -> 12  pop 670/1002  res 152/3756/6343
+  + 35.3h  build     wood      -> 14  pop 711/1002  res 25/3554/6558
+  + 36.3h  build     iron      -> 9   pop 741/1002  res 220/3804/6720
+  + 37.4h  build     iron      -> 10  pop 787/1002  res 114/4023/7097
+  + 38.1h  build     stone     -> 12  pop 818/1002  res 95/4301/7578
+  + 39.2h  SCAV tier scavenge  -> 3   pop 826/1002  res 43/4123/7680
+  + 39.7h  build     wood      -> 15  pop 864/1002  res 152/3965/7914
+  + 39.9h  build     farm      -> 10  pop 864/1002  res 3/3828/7811
+  + 41.3h  build     storage   -> 13  pop 903/1175  res 657/5348/10171
+  + 42.4h  build     storage   -> 14  pop 929/1175  res 874/6237/11082
+  + 43.8h  build     storage   -> 15  pop 929/1175  res 2257/7763/10957
+  + 45.4h  build     storage   -> 16  pop 929/1175  res 4508/10210/13410
+  + 47.3h  build     storage   -> 17  pop 929/1175  res 7568/13521/16417
+  + 49.6h  build     stone     -> 13  pop 957/1175  res 12138/18149/21078
+  + 51.4h  build     storage   -> 18  pop 957/1175  res 13235/19622/22969
+  + 52.4h  build     wood      -> 16  pop 1000/1175  res 14704/20745/24545
+  + 55.6h  build     farm      -> 11  pop 1000/1175  res 22931/28788/32373
+  + 57.3h  build     storage   -> 19  pop 1000/1377  res 23194/29561/30771
+  + 57.5h  build     iron      -> 11  pop 1035/1377  res 23957/30392/31488
+  + 59.1h  build     wood      -> 17  pop 1085/1377  res 26524/32442/34097
+  + 62.9h  build     stone     -> 14  pop 1118/1377  res 35074/40099/40323
+  + 64.6h  build     iron      -> 12  pop 1158/1377  res 38663/40597/40488
+  + 65.1h  build     iron      -> 13  pop 1204/1377  res 39119/41125/40868
+  + 66.5h  build     farm      -> 12  pop 1204/1377  res 43221/45089/44733
+  + 67.3h  build     farm      -> 13  pop 1204/1377  res 44617/46411/46023
+  + 68.5h  build     wood      -> 18  pop 1262/1614  res 45446/46650/47064
+  + 69.8h  build     stone     -> 15  pop 1300/1893  res 47926/49255/49539
+  + 72.4h  build     wood      -> 19  pop 1367/1893  res 47899/47344/48455
+  + 73.1h  build     iron      -> 14  pop 1419/1893  res 48125/47699/48625
+  + 75.7h  build     wood      -> 20  pop 1496/1893  res 47206/46512/47899
+  + 77.9h  build     stone     -> 16  pop 1539/1893  res 48331/48872/49233
+  + 81.1h  build     iron      -> 15  pop 1598/1893  res 48931/49164/49047
+  + 82.3h  build     stone     -> 17  pop 1648/1893  res 47698/48385/48843
+  + 84.3h  build     farm      -> 14  pop 1648/1893  res 50329/50367/50444
+  + 86.1h  build     farm      -> 15  pop 1648/1893  res 50270/50315/50405
+  + 87.2h  build     iron      -> 16  pop 1715/2219  res 48492/48783/48637
+  + 89.7h  build     iron      -> 17  pop 1791/2602  res 47941/48306/48124
+  + 91.0h  build     stone     -> 18  pop 1849/2602  res 46894/47767/48348
+  + 94.2h  build     stone     -> 19  pop 1916/2602  res 45873/46982/47720
+  + 95.6h  build     iron      -> 18  pop 2002/2602  res 45834/47132/47481
+  + 99.7h  build     iron      -> 19  pop 2100/2602  res 46390/46961/46676
+  +101.1h  build     stone     -> 20  pop 2177/2602  res 44577/45984/46922
+  +106.3h  build     iron      -> 20  pop 2288/2602  res 45310/46026/45668
+  +107.7h  build     farm      -> 16  pop 2288/2602  res 49469/50133/49831
+  +111.9h  build     iron      -> 21  pop 2414/3050  res 43958/44854/44406
+  +114.2h  build     market    -> 1   pop 2424/3050  res 50218/50575/50445
+  +114.8h  build     market    -> 2   pop 2436/3050  res 50549/50549/50549
+  +115.6h  build     main      -> 5   pop 2445/3050  res 50448/50473/50499
+  +116.0h  build     smith     -> 1   pop 2465/3050  res 50455/50495/50435
+  +117.3h  build     smith     -> 2   pop 2488/3050  res 50398/50448/50373
+  +118.9h  build     smith     -> 3   pop 2515/3050  res 50326/50389/50294
+  +120.8h  build     smith     -> 4   pop 2547/3050  res 50235/50315/50195
+  +121.4h  build     smith     -> 5   pop 2584/3050  res 50120/50221/50070
+  +123.0h  build     smith     -> 6   pop 2628/3050  res 49976/50103/49913
+  +124.1h  build     farm      -> 17  pop 2628/3050  res 50120/50182/50305
+  +126.3h  build     farm      -> 18  pop 2628/3050  res 50026/50098/50242
+  +128.9h  build     market    -> 3   pop 2642/3576  res 50516/50516/50516
+  +129.8h  build     main      -> 6   pop 2653/3576  res 50389/50421/50453
+  +130.3h  build     main      -> 7   pop 2666/3576  res 50315/50355/50395
+  +130.8h  build     smith     -> 7   pop 2717/3576  res 49795/49955/49715
+  +132.1h  build     smith     -> 8   pop 2777/4192  res 49566/49767/49465
+  +134.4h  build     market    -> 4   pop 2793/4192  res 50475/50475/50475
+  +135.3h  build     main      -> 8   pop 2808/4192  res 50221/50272/50322
+  +136.0h  build     smith     -> 9   pop 2878/4192  res 49277/49531/49150
+  +136.3h  build     main      -> 9   pop 2896/4192  res 50103/50167/50230
+  +137.1h  build     smith     -> 10  pop 2978/4192  res 48914/49234/48754
+  +140.8h  build     market    -> 5   pop 2997/4192  res 50423/50423/50423
+  +141.8h  build     main      -> 10  pop 3018/4192  res 49955/50035/50115
+  +142.6h  build     main      -> 11  pop 3042/4192  res 49767/49868/49969
+  +142.7h  build     main      -> 12  pop 3070/4192  res 49531/49658/49785
+  +143.6h  build     smith     -> 11  pop 3166/4192  res 48456/48860/48254
+  +143.8h  build     smith     -> 12  pop 3278/4192  res 47166/48079/46677
+  +149.7h  build     market    -> 6   pop 3300/4192  res 50357/50357/50357
+  +150.7h  build     main      -> 13  pop 3333/4192  res 49234/49394/49554
+  +150.7h  build     main      -> 14  pop 3371/4192  res 47418/47780/48142
+  +152.0h  build     smith     -> 13  pop 3503/4192  res 47152/47793/46832
+  +152.2h  build     smith     -> 14  pop 3657/4192  res 42996/44444/42244
+  +159.9h  build     farm      -> 19  pop 3657/4192  res 49915/50000/50169
+  +161.2h  build     farm      -> 20  pop 3657/4192  res 49786/49885/50083
+  +164.3h  build     market    -> 7   pop 3683/4914  res 50275/50275/50275
+  +165.5h  build     main      -> 15  pop 3728/4914  res 48387/48641/48896
+  +166.6h  build     main      -> 16  pop 3781/5760  res 47792/48113/48433
+  +167.1h  build     smith     -> 15  pop 3961/5760  res 43855/45193/43980
+  +168.6h  build     smith     -> 16  pop 4172/5760  res 41486/44106/41046
+  +177.4h  build     market    -> 8   pop 4202/5760  res 50171/50171/50171
+  +178.7h  build     smith     -> 17  pop 4449/5760  res 41796/43411/40989
+  +180.3h  build     main      -> 17  pop 4511/5760  res 42965/44983/43061
+  +182.5h  build     smith     -> 18  pop 4800/5760  res 38059/41522/37271
+  +192.8h  build     market    -> 9   pop 4835/5760  res 50040/50040/50040
+  +194.2h  build     main      -> 18  pop 4907/5760  res 46098/46607/47115
+  +196.6h  build     farm      -> 21  pop 4907/5760  res 49635/49751/49982
+  +198.6h  build     farm      -> 22  pop 4907/5760  res 49458/49594/49864
+  +201.9h  build     main      -> 19  pop 4991/6752  res 44908/45549/46190
+  +204.7h  build     smith     -> 19  pop 5329/6752  res 36579/39142/35298
+  +205.0h  build     smith     -> 20  pop 5724/7916  res 19127/24919/16208
+  +222.3h  build     market    -> 10  pop 5765/7916  res 49875/49875/49875
+  +223.8h  build     main      -> 20  pop 5864/7916  res 43409/44217/45024
+  +226.1h  build     main      -> 21  pop 5980/7916  res 40614/42439/43555
+  +227.0h  build     snob      -> 1   pop 6060/7916  res 28732/20557/36699
+
+  total steps: 166
+
+  wrote noble_plan.json (166 steps with full timeline)
