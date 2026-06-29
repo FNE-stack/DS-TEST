@@ -536,7 +536,7 @@
     var rfh=document.createElement("span"); rfh.textContent="🔄";
     rfh.title="refresh all live data";
     rfh.style.cssText="cursor:pointer;font-size:14px";
-    rfh.onclick=function(){ rfh.textContent="⏳"; softRefresh().then(function(){ /* render() inside softRefresh repaints */ }); };
+    rfh.onclick=function(){ rfh.textContent="⏳"; W.__twnl_farm_sent={}; /* manual refresh re-enables farming all barbs */ softRefresh().then(function(){ /* render() inside softRefresh repaints */ }); };
     ctl.appendChild(rfh);
     var x=document.createElement("span"); x.textContent="✕"; x.style.cssText="cursor:pointer;padding:0 3px";
     x.onclick=function(){p.remove();}; ctl.appendChild(x);
@@ -759,8 +759,12 @@
           var desc=Object.keys(u).filter(function(k){return u[k]>0;}).map(function(k){return u[k]+k.slice(0,2);}).join("+")||"empty";
           var fb=document.createElement("span");
           fb.style.cssText="display:inline-block;margin:4px 4px 0 0;padding:3px 8px;background:#c89;border-radius:4px;cursor:pointer;font-weight:bold;color:#fff;font-size:11px";
-          fb.textContent="⚡ "+lab.toUpperCase()+" ("+desc+")";
-          fb.onclick=function(){ doFarm(barbs[0], lab); };
+          // farm ALL nearby barbs with this template — ONE attack per barb,
+          // skipping ones we already hit this session (no endless spam to one).
+          var freshBarbs=barbs.filter(function(bb){ return !((W.__twnl_farm_sent||{})[bb.id]); });
+          fb.textContent="⚡ "+lab.toUpperCase()+" → "+freshBarbs.length+" barb"+(freshBarbs.length!==1?"s":"")+" ("+desc+")";
+          if(freshBarbs.length===0){ fb.style.opacity="0.5"; fb.textContent="⚡ "+lab.toUpperCase()+" (all hit — 🔄 to reset)"; }
+          fb.onclick=function(){ doFarmAll(freshBarbs, lab); };
           fc.appendChild(fb);
         });
       } else if (AUTO_BUILD && !haveTpl){
@@ -948,34 +952,52 @@
       }).catch(function(e){ toast("scavenge send failed: "+e, false); });
   }
 
-  // FARM a barb using your Farm Assistant TEMPLATE (A or B). One clean POST to
-  // Accountmanager.send_units_link with {target, template_id, source} — exactly
-  // the request FarmGod / the game's farm button makes. Needs the template_id
-  // (read from am_farm by fetchFarmTemplates) and the barb's village id.
-  function doFarm(barb, label){
+  // Send ONE template attack at ONE barb. Returns a promise resolving to true
+  // on success. Marks the barb as sent this session (W.__twnl_farm_sent) so we
+  // never spam the same barb. (Clean POST to Accountmanager.send_units_link —
+  // the same request FarmGod / the game's farm button makes.)
+  function doFarmOne(barb, label){
     var tpl=(W.__twnl_farm_tpl||{})[label];
     var sendUrl=W.__twnl_farm_sendurl;
-    if(!tpl || !sendUrl){ toast("no Farm Assistant template "+(label||"A").toUpperCase()+" — set one in am_farm, then 🔄", false); return; }
-    if(!barb || !barb.id){ toast("barb has no village id", false); return; }
+    if(!tpl || !sendUrl || !barb || !barb.id) return Promise.resolve(false);
     var vid=vidParam();
-    // FarmGod scopes the POST to the origin village by rewriting village=<id>.
     var url=sendUrl.replace(/village=\d+/, "village="+vid);
     if(url.charAt(0)!=="/") url="/"+url.replace(/^.*game\.php/,"game.php");
     var data=new URLSearchParams();
     data.set("target", String(barb.id));
     data.set("template_id", String(tpl.id));
     data.set("source", String(vid));
-    toast("farming "+barb.x+"|"+barb.y+" with "+label.toUpperCase()+"…", true);
-    fetch(url,{method:"POST",credentials:"include",
+    return fetch(url,{method:"POST",credentials:"include",
       headers:{"X-Requested-With":"XMLHttpRequest","TribalWars-Ajax":"1",
                "Content-Type":"application/x-www-form-urlencoded; charset=UTF-8",
                "Accept":"application/json, text/javascript, */*; q=0.01"},
       body:data.toString()})
       .then(function(r){return r.json().catch(function(){return null;});})
       .then(function(j){
-        if(j && (j.error||j.errors)){ toast("farm: "+String(j.error||j.errors).slice(0,80), false); }
-        else { toast("✓ farmed "+barb.x+"|"+barb.y+" ("+label.toUpperCase()+")", true); setTimeout(softRefresh,600); }
-      }).catch(function(e){ toast("farm failed: "+e, false); });
+        if(j && (j.error||j.errors)) return false;
+        // mark sent so we don't re-hit this barb (until 🔄 clears it)
+        W.__twnl_farm_sent=W.__twnl_farm_sent||{}; W.__twnl_farm_sent[barb.id]=true;
+        return true;
+      }).catch(function(){return false;});
+  }
+
+  // Farm ALL given (point-blank, not-yet-hit) barbs with template A/B — ONE
+  // attack per barb, staggered. This is the FIX for "endless troops to one
+  // barb": we spread one attack across each nearby barb instead of spamming.
+  function doFarmAll(barbList, label){
+    if(!(W.__twnl_farm_tpl||{})[label] || !W.__twnl_farm_sendurl){
+      toast("no Farm Assistant template "+label.toUpperCase()+" — set one in am_farm, then 🔄", false); return; }
+    if(!barbList || !barbList.length){ toast("no fresh barbs to farm (🔄 to reset)", false); return; }
+    toast("farming "+barbList.length+" barb"+(barbList.length>1?"s":"")+" with "+label.toUpperCase()+"…", true);
+    var ok=0, i=0;
+    (function next(){
+      if(i>=barbList.length){
+        toast("✓ farmed "+ok+"/"+barbList.length+" barbs ("+label.toUpperCase()+")", ok>0);
+        setTimeout(softRefresh, 600); return;
+      }
+      var bb=barbList[i++];
+      doFarmOne(bb, label).then(function(s){ if(s) ok++; setTimeout(next, 350); });  // small human stagger
+    })();
   }
 
   function flash(){ var b; try{b=sessionStorage.getItem("twnl_flash");sessionStorage.removeItem("twnl_flash");}catch(e){}
