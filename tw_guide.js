@@ -1,385 +1,420 @@
 /*
- * TW Noble LIVE Advisor  (Schnellleiste script)
- * ─────────────────────────────────────────────
- * Unlike the static tw_noble_guide.js (a fixed pre-computed order), THIS reads
- * your ACTUAL live game state every time it runs and computes the best next
- * move against reality:
- *   • current wood/clay/iron + storage cap + pop  (from game_data)
- *   • building levels                              (from game_data)
- *   • troops home + scavenge squad status          (read-only GET of screens)
- * and then tells you:
- *   • BUILD: the next on-plan building — affordable NOW, or "wait ~N min"
- *   • SCAVENGE: the loot/hour-MAXIMISING troop split to send right now
- *     (exact TW water-fill math, ported from the bot's _optimal_carry_split)
- *   • POP: warns when you're farm-capped (the limiter you asked about)
+ * TW Noble Guide — pre-planned timeline + live check  (Schnellleiste script)
+ * ──────────────────────────────────────────────────────────────────────────
+ * The build order, costs, pop curve, scavenge income and 150/150/100 first-to-
+ * level rewards were ALL solved offline by noble_optimizer.py. The resulting
+ * 157-step TIMELINE is baked in below (TL) — each step knows: when it happens,
+ * its cost, the pop after it, the scavenge tier active, and the resources you
+ * should have on hand at that moment. So the guide is a finished route, not a
+ * live calculator.
  *
- * It only READS the game (GETs, same as loading a page) and shows advice. The
- * build button optionally sends the build (AUTO_BUILD) — you drive every tap.
+ * Live game state is used only as a CHECK: it reads your real resources + pop
+ * and compares to the timeline's expectation at your current step → "✓ on
+ * track" / "⚠ behind on iron, scavenge more" / "ahead → pull next build
+ * forward". Read-only; the build button optionally sends the build (AUTO_BUILD).
+ *
+ * Parallel queues (build / scavenge-unlock / scavenge-send / troops) run at the
+ * same time, so the board shows the best action in EACH simultaneously.
  *
  * Quickbar: javascript:$.getScript('https://fne-stack.github.io/DS-TEST/tw_noble_live.js');
  */
 (function () {
   'use strict';
   var W = (typeof unsafeWindow !== 'undefined') ? unsafeWindow : window;
+  var GD = W.game_data || {};
 
-  // ⚠️ See tw_noble_guide.js note. false = navigate+highlight; true = send build.
+  // ⚠️ false = navigate+highlight (you click the game's button). true = the
+  // script sends the build (automation; the de256 ban vector). See discussion.
   var AUTO_BUILD = false;
 
-  // ── THE PLAN (build order from noble_optimizer.py) ───────────────────────
-  var PLAN = [
-    ["place",1],["main",1],["scav",1],["scav",2],["main",2],["main",3],
-    ["main",4],["barracks",1],["wood",1],["stone",1],["iron",1],["wood",2],
-    ["wood",3],["stone",2],["stone",3],["storage",1],["storage",2],["wood",4],
-    ["wood",5],["wood",6],["stone",4],["stone",5],["iron",2],["iron",3],
-    ["stone",6],["stone",7],["iron",4],["iron",5],["farm",1],["iron",6],
-    ["iron",7],["farm",2],["farm",3],["storage",3],["storage",4],["wood",7],
-    ["wood",8],["wood",9],["wood",10],["stone",8],["farm",4],["farm",5],
-    ["wood",11],["stone",9],["stone",10],["wood",12],["farm",6],["farm",7],
-    ["storage",5],["storage",6],["storage",7],["storage",8],["wood",13],["iron",8],
-    ["stone",11],["storage",9],["storage",10],["scav",3],["wood",14],["farm",8],
-    ["iron",9],["storage",11],["storage",12],["storage",13],["iron",10],["storage",14],
-    ["stone",12],["farm",9],["farm",10],["wood",15],["stone",13],["storage",15],
-    ["wood",16],["iron",11],["wood",17],["stone",14],["storage",16],["iron",12],
-    ["farm",11],["storage",17],["iron",13],["storage",18],["wood",18],["stone",15],
-    ["wood",19],["farm",12],["iron",14],["wood",20],["stone",16],["farm",13],
-    ["farm",14],["iron",15],["stone",17],["iron",16],["iron",17],["stone",18],
-    ["stone",19],["iron",18],["iron",19],["farm",15],["stone",20],["iron",20],
-    ["iron",21],["farm",16],["market",1],["market",2],["market",3],["main",5],
-    ["smith",1],["smith",2],["smith",3],["smith",4],["smith",5],["smith",6],
-    ["main",6],["smith",7],["main",7],["smith",8],["farm",17],["farm",18],
-    ["market",4],["main",8],["main",9],["smith",9],["smith",10],["market",5],
-    ["main",10],["main",11],["main",12],["smith",11],["smith",12],["market",6],
-    ["smith",13],["main",13],["smith",14],["market",7],["main",14],["main",15],
-    ["farm",19],["farm",20],["smith",15],["smith",16],["market",8],["main",16],
-    ["smith",17],["main",17],["smith",18],["market",9],["main",18],["smith",19],
-    ["farm",21],["main",19],["smith",20],["market",10],["main",20],["snob",1]
+  // ── EMBEDDED TIMELINE (from noble_optimizer.py) ──────────────────────────
+  // row = [type, building, level, at_h, cw,cs,ci,cpop, pop_used,pop_cap, tiers, ew,es,ei]
+  //   type: 1=build, 0=scavenge-unlock ;  e* = expected resources on hand
+  var TL = [
+  [1,"place",1,0.0,10,40,30,0,0,240,0,490,460,470],
+  [1,"main",1,0.0,90,80,70,5,5,240,0,400,380,400],
+  [0,"scavenge",1,0.17,25,30,25,0,5,240,1,526,501,476],
+  [0,"scavenge",2,0.17,250,300,250,0,5,240,2,276,201,226],
+  [1,"main",2,0.17,113,101,88,6,11,240,2,163,100,138],
+  [1,"main",3,0.25,143,127,111,7,18,240,2,170,123,127],
+  [1,"main",4,0.47,180,160,140,8,26,240,2,141,114,88],
+  [1,"barracks",1,0.6,200,170,90,7,33,240,2,92,95,99],
+  [1,"wood",1,1.03,50,60,40,5,38,240,2,344,337,261],
+  [1,"stone",1,1.03,65,50,40,5,43,240,2,279,287,221],
+  [1,"iron",1,1.25,75,65,70,10,53,240,2,505,523,352],
+  [1,"wood",2,1.25,62,75,50,6,59,240,2,443,448,302],
+  [1,"wood",3,1.5,78,94,62,7,66,240,2,673,662,442],
+  [1,"stone",2,1.5,83,64,51,6,72,240,2,590,598,391],
+  [1,"stone",3,1.75,105,81,65,7,79,240,2,644,674,433],
+  [1,"storage",1,1.8,60,50,40,0,79,240,2,735,776,495],
+  [1,"storage",2,2.05,76,63,51,0,79,240,2,820,872,551],
+  [1,"wood",4,2.08,98,117,78,8,92,240,2,629,762,530],
+  [1,"wood",5,2.38,122,146,98,9,103,240,2,569,719,521],
+  [1,"wood",6,2.45,153,183,122,10,114,240,2,519,658,491],
+  [1,"stone",4,2.82,133,102,82,8,123,240,2,520,708,527],
+  [1,"stone",5,2.97,169,130,104,9,132,240,2,509,734,527],
+  [1,"iron",2,3.18,94,81,88,11,143,240,2,598,831,565],
+  [1,"iron",3,3.4,118,102,110,13,158,240,2,544,829,541],
+  [1,"stone",6,3.48,215,165,132,10,168,240,2,484,819,512],
+  [1,"stone",7,3.77,273,210,168,12,180,240,2,402,797,477],
+  [1,"iron",4,4.0,147,128,137,15,195,240,2,420,832,449],
+  [1,"iron",5,4.38,184,160,172,17,212,240,2,434,870,416],
+  [1,"farm",1,4.43,45,40,30,0,212,240,2,542,983,488],
+  [1,"iron",6,4.72,231,200,215,19,232,281,2,452,947,399],
+  [1,"iron",7,4.9,289,250,270,21,253,281,2,325,861,238],
+  [1,"farm",2,5.33,53,47,35,0,253,281,2,474,1021,352],
+  [1,"farm",3,5.65,62,55,41,0,253,281,2,583,1139,431],
+  [1,"storage",3,5.67,96,80,64,0,253,330,2,638,1210,468],
+  [1,"storage",4,6.05,121,101,81,0,255,386,2,616,1253,520],
+  [1,"wood",7,6.07,191,229,153,12,269,386,2,476,1115,449],
+  [1,"wood",8,6.53,238,286,191,14,283,386,2,451,1047,425],
+  [1,"wood",9,6.68,298,358,238,16,299,386,2,313,850,299],
+  [1,"wood",10,7.28,373,447,298,18,317,386,2,201,664,212],
+  [1,"stone",8,7.58,346,266,213,14,331,386,2,31,570,121],
+  [1,"farm",4,8.33,72,64,48,0,331,386,2,251,778,295],
+  [1,"farm",5,8.35,84,75,56,0,331,386,2,318,855,340],
+  [1,"wood",11,8.82,466,559,373,21,352,453,2,90,519,135],
+  [1,"stone",9,9.97,440,338,271,16,368,531,2,1,497,116],
+  [1,"stone",10,11.37,559,430,344,18,386,531,2,30,594,175],
+  [1,"wood",12,14.98,582,698,466,24,417,531,2,7,508,274],
+  [1,"farm",6,22.37,99,88,66,0,453,531,2,443,1406,1546],
+  [1,"farm",7,22.37,115,103,77,0,453,531,2,328,1303,1469],
+  [1,"storage",5,23.42,154,128,102,0,461,729,2,502,1620,1827],
+  [1,"storage",6,23.43,194,162,130,0,461,729,2,311,1460,1699],
+  [1,"storage",7,26.62,246,205,164,0,489,729,2,493,2113,2715],
+  [1,"storage",8,27.15,311,259,207,0,490,729,2,416,2086,2738],
+  [1,"wood",13,27.68,728,873,582,28,520,729,2,26,1570,2479],
+  [1,"iron",8,28.22,362,313,338,24,544,729,2,103,1673,2485],
+  [1,"stone",11,29.28,709,546,437,21,567,729,2,25,1754,2621],
+  [1,"storage",9,32.48,393,328,262,0,598,729,2,385,2628,3945],
+  [1,"storage",10,33.02,498,415,332,0,598,729,2,258,2559,3932],
+  [1,"farm",8,34.67,135,120,90,0,622,729,2,398,3114,4815],
+  [1,"farm",9,34.67,158,140,105,0,622,729,2,240,2974,4710],
+  [1,"wood",14,36.28,909,1091,728,33,674,1002,2,3,2858,5156],
+  [1,"iron",9,36.83,453,392,423,28,702,1002,2,14,2903,5143],
+  [1,"iron",10,37.9,567,491,529,31,734,1002,2,105,3040,5158],
+  [1,"storage",11,39.03,630,525,420,0,748,1002,2,275,3524,5936],
+  [1,"storage",12,39.58,796,664,531,0,748,1002,2,140,3478,5961],
+  [1,"stone",12,41.23,901,693,554,24,790,1002,2,72,3849,6749],
+  [0,"scavenge",3,42.88,1000,1200,1000,0,811,1002,3,27,3898,7284],
+  [1,"wood",15,43.97,1137,1364,909,38,863,1002,3,380,4243,8320],
+  [1,"farm",10,43.97,185,164,123,0,863,1002,3,195,4079,8197],
+  [1,"storage",13,45.57,1007,840,672,0,908,1175,3,718,5580,10650],
+  [1,"storage",14,46.63,1274,1062,850,0,944,1175,3,589,6323,11082],
+  [1,"farm",11,48.02,216,192,144,0,1009,1175,3,468,7399,11615],
+  [1,"farm",12,49.58,253,225,169,0,1122,1175,3,405,9482,14234],
+  [1,"storage",15,49.83,1612,1343,1075,0,1124,1377,3,1001,10364,15364],
+  [1,"storage",16,51.97,2039,1700,1360,0,1271,1614,3,2027,14475,16677],
+  [1,"storage",17,53.37,2580,2150,1720,0,1271,1614,3,5362,16037,16417],
+  [1,"storage",18,56.2,3264,2720,2176,0,1271,1614,3,16495,19607,20101],
+  [1,"storage",19,58.45,4128,3440,2752,0,1271,1614,3,23288,23976,24614],
+  [1,"stone",13,62.3,1144,880,704,28,1299,1614,3,32529,32793,32919],
+  [1,"wood",16,64.15,1421,1705,1137,43,1342,1614,3,39796,39512,40080],
+  [1,"iron",11,65.77,710,615,662,35,1377,1614,3,40657,40752,40655],
+  [1,"farm",13,67.3,296,263,197,0,1377,1614,3,46309,46338,46154],
+  [1,"farm",14,67.33,346,308,231,0,1377,1614,3,46122,46186,46028],
+  [1,"wood",17,69.75,1776,2132,1421,50,1427,1893,3,48899,48543,49254],
+  [1,"stone",14,70.28,1453,1118,894,33,1460,2219,3,49222,49557,49781],
+  [1,"iron",12,72.5,889,770,829,40,1500,2219,3,49786,49905,49846],
+  [1,"iron",13,73.57,1113,964,1038,46,1546,2219,3,49562,49711,49637],
+  [1,"wood",18,74.35,2220,2665,1776,58,1604,2219,3,48455,48010,48899],
+  [1,"stone",15,75.78,1846,1420,1136,38,1642,2219,3,48829,49255,49539],
+  [1,"wood",19,78.43,2776,3331,2220,67,1709,2219,3,47899,47344,48455],
+  [1,"iron",14,78.92,1393,1207,1300,52,1761,2219,3,49282,49116,49375],
+  [1,"wood",20,81.57,3469,4163,2776,77,1838,2219,3,47206,46512,47899],
+  [1,"stone",16,83.92,2344,1803,1442,43,1881,2219,3,48331,48872,49233],
+  [1,"iron",15,87.1,1744,1511,1628,59,1940,2219,3,48931,49164,49047],
+  [1,"farm",15,88.15,405,360,270,0,1940,2219,3,50270,50315,50405],
+  [1,"farm",16,90.28,474,422,316,0,1940,2219,3,50201,50253,50359],
+  [1,"stone",17,91.68,2977,2290,1832,50,1990,2602,3,47698,48385,48843],
+  [1,"iron",16,94.52,2183,1892,2038,67,2057,3050,3,48492,48783,48637],
+  [1,"iron",17,95.5,2734,2369,2551,76,2133,3050,3,47941,48306,48124],
+  [1,"stone",18,98.33,3781,2908,2327,58,2191,3050,3,46894,47767,48348],
+  [1,"stone",19,100.07,4802,3693,2955,67,2258,3050,3,45873,46982,47720],
+  [1,"iron",18,102.9,3422,2966,3194,86,2344,3050,3,47253,47709,47481],
+  [1,"iron",19,105.55,4285,3714,3999,98,2442,3050,3,46390,46961,46676],
+  [1,"stone",20,108.38,6098,4691,3753,77,2519,3050,3,44577,45984,46922],
+  [1,"iron",20,112.13,5365,4649,5007,111,2630,3050,3,45310,46026,45668],
+  [1,"farm",17,114.97,555,493,370,0,2630,3050,3,50120,50182,50305],
+  [1,"farm",18,120.03,649,577,433,0,2630,3050,3,50026,50098,50242],
+  [1,"market",1,120.05,100,100,100,10,2640,3576,3,50085,50157,50251],
+  [1,"market",2,120.68,126,126,126,12,2652,3576,3,50549,50549,50549],
+  [1,"main",5,121.43,227,202,176,9,2661,3576,3,50448,50473,50499],
+  [1,"smith",1,121.87,220,180,240,20,2681,3576,3,50455,50495,50435],
+  [1,"smith",2,123.18,277,227,302,23,2704,3576,3,50398,50448,50373],
+  [1,"smith",3,124.77,349,286,381,27,2731,3576,3,50326,50389,50294],
+  [1,"smith",4,126.13,440,360,480,32,2763,4192,3,50235,50315,50195],
+  [1,"smith",5,126.65,555,454,605,37,2800,4192,3,50120,50221,50070],
+  [1,"smith",6,128.4,699,572,762,44,2844,4192,3,49976,50103,49913],
+  [1,"market",3,129.37,159,159,159,14,2858,4192,3,50516,50516,50516],
+  [1,"main",6,130.22,286,254,222,11,2869,4192,3,50389,50421,50453],
+  [1,"smith",7,130.72,880,720,960,51,2920,4192,3,49795,49955,49715],
+  [1,"main",7,131.65,360,320,280,13,2933,4192,3,50315,50355,50395],
+  [1,"smith",8,132.22,1109,908,1210,60,2993,4192,3,49566,49767,49465],
+  [1,"market",4,134.43,200,200,200,16,3009,4192,3,50475,50475,50475],
+  [1,"main",8,135.37,454,403,353,15,3024,4192,3,50221,50272,50322],
+  [1,"smith",9,136.02,1398,1144,1525,70,3094,4192,3,49277,49531,49150],
+  [1,"main",9,136.47,572,508,445,18,3112,4192,3,50103,50167,50230],
+  [1,"smith",10,137.2,1761,1441,1921,82,3194,4192,3,48914,49234,48754],
+  [1,"market",5,140.88,252,252,252,19,3213,4192,3,50423,50423,50423],
+  [1,"main",10,141.9,720,640,560,21,3234,4192,3,49955,50035,50115],
+  [1,"smith",11,142.73,2219,1815,2421,96,3330,4192,3,48456,48860,48254],
+  [1,"main",11,142.75,908,807,706,24,3354,4192,3,47707,48212,47657],
+  [1,"smith",12,143.72,2796,2287,3050,112,3466,4192,3,47879,48388,47625],
+  [1,"market",6,149.08,318,318,318,22,3488,4192,3,50357,50357,50357],
+  [1,"main",12,150.18,1144,1017,890,28,3516,4192,3,49531,49658,49785],
+  [1,"main",13,150.97,1441,1281,1121,33,3549,4192,3,49234,49394,49554],
+  [1,"main",14,151.28,1816,1614,1412,38,3587,4192,3,47736,48098,48410],
+  [1,"farm",19,152.28,760,675,506,0,3587,4192,3,49915,50000,50169],
+  [1,"farm",20,152.78,889,790,592,0,3587,4192,3,49786,49885,50083],
+  [1,"smith",13,157.0,3523,2882,3843,132,3719,4914,3,47152,47793,46832],
+  [1,"smith",14,158.17,4439,3632,4842,154,3873,5760,3,46236,47043,45833],
+  [1,"market",7,164.52,400,400,400,26,3899,5760,3,50275,50275,50275],
+  [1,"smith",15,165.65,5593,4576,6101,180,4079,5760,3,45082,46099,44574],
+  [1,"main",15,167.18,2288,2034,1779,45,4124,5760,3,48387,48641,48896],
+  [1,"smith",16,168.82,7047,5765,7687,211,4335,5760,3,43628,44910,42988],
+  [1,"market",8,176.47,504,504,504,30,4365,5760,3,50171,50171,50171],
+  [1,"main",16,177.77,2883,2562,2242,53,4418,5760,3,47792,48113,48433],
+  [1,"smith",17,179.63,8879,7264,9686,247,4665,5760,3,41796,43411,40989],
+  [1,"main",17,181.18,3632,3229,2825,62,4727,5760,3,44552,46570,44502],
+  [1,"smith",18,183.32,11187,9153,12204,289,5016,5760,3,39488,41522,38471],
+  [1,"farm",21,193.75,1040,924,693,0,5016,5760,3,49635,49751,49982],
+  [1,"market",9,199.33,635,635,635,35,5051,6752,3,50040,50040,50040],
+  [1,"market",10,199.45,800,800,800,41,5092,6752,3,49875,49875,49875],
+  [1,"main",18,200.75,4577,4068,3560,72,5164,6752,3,46098,46607,47115],
+  [1,"main",19,201.15,5767,5126,4485,84,5248,6752,3,43401,44551,45650],
+  [1,"main",20,203.18,7266,6458,5651,99,5347,6752,3,43409,44217,45024],
+  [1,"smith",19,204.07,14096,11533,15377,338,5685,6752,3,35348,38719,35298],
+  [1,"smith",20,206.52,17761,14532,19375,395,6080,6752,3,32577,36143,30863],
+  [1,"farm",22,221.63,1217,1081,811,0,6080,6752,3,49458,49594,49864],
+  [1,"snob",1,226.6,15000,25000,10000,80,6160,6752,3,35675,25675,40675]
   ];
+  // column indices
+  var T_TYPE=0,T_B=1,T_LV=2,T_AT=3,T_CW=4,T_CS=5,T_CI=6,T_CP=7,T_PU=8,T_PC=9,T_TIER=10,T_EW=11,T_ES=12,T_EI=13;
 
-  var BMETA = {
-    main:["Hauptgebäude","main"], place:["Versammlungsplatz","place"],
-    barracks:["Kaserne","main"], smith:["Schmiede","main"],
-    market:["Marktplatz","main"], wood:["Holzfäller","main"],
-    stone:["Lehmgrube","main"], iron:["Eisenmine","main"],
-    farm:["Bauernhof","main"], storage:["Speicher","main"],
-    snob:["Adelshof","main"], scav:["Raubzug","place"]
+  var LEVEL_REWARD = { wood:150, stone:150, iron:100 };
+  var SPEAR_GOAL = 150;
+  var SCAV_LOOT = {1:0.10,2:0.25,3:0.50,4:0.75};
+  var DUR_EXP=0.45, DUR_INITIAL=1800.0, DUR_FACTOR=0.7722074896557402;
+  var CARRY={spear:25,sword:15,axe:10,archer:10,light:80,marcher:50,heavy:50,spy:0,ram:0,catapult:0,knight:100};
+
+  var BLABEL = {
+    main:"Hauptgebäude", place:"Versammlungsplatz", barracks:"Kaserne",
+    smith:"Schmiede", market:"Marktplatz", wood:"Holzfäller", stone:"Lehmgrube",
+    iron:"Eisenmine", farm:"Bauernhof", storage:"Speicher", snob:"Adelshof",
+    scavenge:"Raubzug"
   };
+  function bscreen(b){ return b==="place"||b==="scavenge" ? "place" : "main"; }
 
-  // ── TW scavenge constants (verified from Scavenging.js) ──────────────────
-  var SCAV_LOOT = {1:0.10, 2:0.25, 3:0.50, 4:0.75};
-  var DUR_EXP = 0.45, DUR_INITIAL = 1800.0, DUR_FACTOR = 0.7722074896557402;
-  var CARRY = {spear:25, sword:15, axe:10, archer:10, light:80, marcher:50,
-               heavy:50, spy:0, ram:0, catapult:0, knight:100};
-
-  // exact TW run duration (seconds) for a squad of `carry` on tier loot factor lf
-  function scavDuration(carry, lf) {
-    if (carry <= 0) return 1;
-    var inner = carry * (100 * lf) * carry * lf;
-    return (Math.pow(inner, DUR_EXP) + DUR_INITIAL) * DUR_FACTOR;
+  // ── live state (read-only) ───────────────────────────────────────────────
+  function vidParam(){ return (GD.village&&GD.village.id)||""; }
+  function liveRes(){
+    var v=GD.village||{};
+    return { wood:Math.floor(v.wood||0), stone:Math.floor(v.stone||0),
+             iron:Math.floor(v.iron||0), cap:v.storage_max||0,
+             pop:Math.floor(v.pop||0), popMax:Math.floor(v.pop_max||0) };
   }
-  function scavRate(carry, lf) {           // loot per second for the squad
-    if (carry <= 0) return 0;
-    return (carry * lf) / scavDuration(carry, lf);
-  }
-  // water-fill: carry budget per tier that MAXIMISES total loot/hour
-  function optimalSplit(totalCarry, tiers) {
-    var budget = {}; tiers.forEach(function (t) { budget[t] = 0; });
-    if (!tiers.length || totalCarry <= 0) return budget;
-    var nChunks = 200, chunk = totalCarry / nChunks;
-    for (var k = 0; k < nChunks; k++) {
-      var bestT = null, bestGain = -1;
-      tiers.forEach(function (t) {
-        var lf = SCAV_LOOT[t];
-        var gain = scavRate(budget[t] + chunk, lf) - scavRate(budget[t], lf);
-        if (gain > bestGain) { bestGain = gain; bestT = t; }
-      });
-      if (bestT === null) break;
-      budget[bestT] += chunk;
-    }
-    return budget;
-  }
-
-  // ── LIVE STATE ───────────────────────────────────────────────────────────
-  var GD = W.game_data || {};
-  function res() {
-    var v = GD.village || {};
-    return { wood: Math.floor(v.wood||0), stone: Math.floor(v.stone||0),
-             iron: Math.floor(v.iron||0), cap: v.storage_max||0,
-             pop: v.pop||0, popMax: v.pop_max||0 };
-  }
-  function levels() {
-    var b = (GD.village && GD.village.buildings) || {};
-    var o = {}; Object.keys(b).forEach(function (k){ o[k]=parseInt(b[k],10)||0; });
+  function liveLevels(){
+    var b=(GD.village&&GD.village.buildings)||{}, o={};
+    Object.keys(b).forEach(function(k){o[k]=parseInt(b[k],10)||0;});
     return o;
   }
-  // production per hour (game_data exposes it on most screens)
-  function prodPerHour() {
-    var v = GD.village || {};
-    // game_data.village.*_prod is per-hour on de worlds; fall back to 0.
-    return { wood: v.wood_prod ? v.wood_prod*3600 : (v.wood_production||0),
-             stone: v.stone_prod ? v.stone_prod*3600 : (v.stone_production||0),
-             iron: v.iron_prod ? v.iron_prod*3600 : (v.iron_production||0) };
-  }
+  function scavTiers(){ return (typeof W.__twnl_scav==="number")?W.__twnl_scav:0; }
+  function troopsHome(){ return (GD.village&&GD.village.unit_counts)||W.__twnl_troops||null; }
 
-  // scavenge tiers unlocked — fetched live (see fetchScavenge), manual fallback
-  function scavTiers() {
-    if (typeof W.__twnl_scav === "number") return W.__twnl_scav;
-    return 0;
-  }
-
-  // troops home — fetched live (see fetchTroops), cached on W.__twnl_troops
-  function troopsHome() {
-    if (GD.village && GD.village.unit_counts) return GD.village.unit_counts;
-    return W.__twnl_troops || null;
-  }
-
-  // ── LIVE FETCH (read-only GETs — same request type as loading the page) ──
-  var _fetchedTroops = false, _fetchedScav = false;
-  function vidParam() { return (GD.village && GD.village.id) || ""; }
-
-  // Read troops currently HOME from the place (Versammlungsplatz) screen. The
-  // unit-input form on screen=place lists home counts per unit as the max each
-  // input can take, e.g. <a ...>(123)</a> next to each unit row.
-  function fetchTroops() {
-    if (_fetchedTroops) return Promise.resolve();
-    _fetchedTroops = true;
-    return fetch("/game.php?village=" + vidParam() + "&screen=place",
-                 { credentials: "include" })
-      .then(function (r) { return r.text(); })
-      .then(function (html) {
-        var t = {};
-        // TW lists home count per unit as: id="units_entry_all_spear">(123)<
-        var re = /units_entry_all_(\w+)"[^>]*>\s*\(?(\d+)\)?\s*</gi, m;
-        while ((m = re.exec(html))) { t[m[1]] = parseInt(m[2], 10) || 0; }
-        // fallback: unit links like unit_link_spear ... (123)
-        if (Object.keys(t).length === 0) {
-          var re2 = /name="(\w+)"[^>]*max="(\d+)"/gi;
-          while ((m = re2.exec(html))) {
-            if (CARRY[m[1]] !== undefined) t[m[1]] = parseInt(m[2], 10) || 0;
-          }
-        }
-        if (Object.keys(t).length) W.__twnl_troops = t;
-      })
-      .catch(function (e) { console.warn("[noble-live] troops fetch failed", e); });
-  }
-
-  // Read scavenge state: how many tiers unlocked + which squads are out. The
-  // scavenge screen embeds an inline JSON (ScavengeScreen) with options[].
-  function fetchScavenge() {
-    if (_fetchedScav) return Promise.resolve();
-    _fetchedScav = true;
-    return fetch("/game.php?village=" + vidParam() + "&screen=place&mode=scavenge",
-                 { credentials: "include" })
-      .then(function (r) { return r.text(); })
-      .then(function (html) {
-        // Count unlocked options: each unlocked tier lacks an "unlock" CTA and
-        // is marked is_fully_unlocked / unlocked in the inline JSON. Use a
-        // robust signal: count "scavenge_option_..." blocks whose unlock flag
-        // is true.
-        var unlocked = 0;
-        // Inline JSON often has "is_fully_unlocked":true per unlocked option.
-        var mm = html.match(/"is_fully_unlocked":true/g);
-        if (mm) unlocked = mm.length;
-        if (!unlocked) {
-          // fallback: count option rows NOT showing an "unlock" button
-          var opts = (html.match(/class="[^"]*scavenge-option[^"]*"/g) || []).length;
-          var locks = (html.match(/unlock-button|ScavengeUnlockButton/g) || []).length;
-          if (opts) unlocked = Math.max(0, opts - locks);
-        }
-        W.__twnl_scav = unlocked;
-
-        // squads currently OUT + their return time (seconds): inline JSON has
-        // "scavenging_squad":{...,"return_time" / "duration"...} per busy option.
-        var out = [];
-        var re = /"squad_id"\s*:\s*\d+[\s\S]{0,400}?"return_time"\s*:\s*"?(\d+)"?/g, m;
-        while ((m = re.exec(html))) out.push(parseInt(m[1], 10));
-        W.__twnl_scav_out = out;  // unix seconds of returns (best-effort)
-      })
-      .catch(function (e) { console.warn("[noble-live] scavenge fetch failed", e); });
-  }
-
-  // ── BUILD ADVISOR ────────────────────────────────────────────────────────
-  function nextBuild(lv) {
-    for (var i=0;i<PLAN.length;i++){
-      var b=PLAN[i][0], t=PLAN[i][1];
-      if (b==="scav"){ if (scavTiers()<t) return {i:i,b:b,t:t}; }
-      else if ((lv[b]||0)<t) return {i:i,b:b,t:t};
+  // ── find current position in the timeline ────────────────────────────────
+  // The current step = first TL row not yet satisfied by live levels/tiers.
+  function currentIndex(lv){
+    for (var i=0;i<TL.length;i++){
+      var row=TL[i];
+      if (row[T_TYPE]===0){ if (scavTiers()<row[T_LV]) return i; }
+      else if ((lv[row[T_B]]||0)<row[T_LV]) return i;
     }
-    return null;
+    return TL.length;
   }
-  // wait-time (min) until the village can afford a cost, from live income
-  function waitMinutes(cost, r, prod) {
-    function need(have, want, perHr){
-      if (have>=want) return 0;
-      if (perHr<=0) return Infinity;
-      return (want-have)/perHr*60;
-    }
-    return Math.ceil(Math.max(
-      need(r.wood, cost.wood||0, prod.wood),
-      need(r.stone, cost.stone||0, prod.stone),
-      need(r.iron, cost.iron||0, prod.iron)));
+  // next pending BUILD row (skip scav — own track)
+  function nextBuildIdx(lv,from){
+    for (var i=from;i<TL.length;i++) if (TL[i][T_TYPE]===1 && (lv[TL[i][T_B]]||0)<TL[i][T_LV]) return i;
+    return -1;
+  }
+
+  // ── scavenge split (max loot/hour, exact TW math) ─────────────────────────
+  function scavDuration(c,lf){ if(c<=0)return 1; var inner=c*(100*lf)*c*lf; return (Math.pow(inner,DUR_EXP)+DUR_INITIAL)*DUR_FACTOR; }
+  function scavRate(c,lf){ return c<=0?0:(c*lf)/scavDuration(c,lf); }
+  function optimalSplit(total,tiers){
+    var b={}; tiers.forEach(function(t){b[t]=0;}); if(!tiers.length||total<=0)return b;
+    var n=200, ch=total/n;
+    for(var k=0;k<n;k++){ var bt=null,bg=-1;
+      tiers.forEach(function(t){ var g=scavRate(b[t]+ch,SCAV_LOOT[t])-scavRate(b[t],SCAV_LOOT[t]); if(g>bg){bg=g;bt=t;} });
+      if(bt===null)break; b[bt]+=ch; }
+    return b;
+  }
+
+  // ── live FETCH (read-only) for troops + scavenge tiers ───────────────────
+  function fetchTroops(){
+    return fetch("/game.php?village="+vidParam()+"&screen=place",{credentials:"include"})
+      .then(function(r){return r.text();}).then(function(h){
+        var t={},re=/units_entry_all_(\w+)"[^>]*>\s*\(?(\d+)\)?\s*</gi,m;
+        while((m=re.exec(h))) t[m[1]]=parseInt(m[2],10)||0;
+        if(Object.keys(t).length) W.__twnl_troops=t;
+      }).catch(function(){});
+  }
+  function fetchScav(){
+    return fetch("/game.php?village="+vidParam()+"&screen=place&mode=scavenge",{credentials:"include"})
+      .then(function(r){return r.text();}).then(function(h){
+        var mm=h.match(/"is_fully_unlocked":true/g); var n=mm?mm.length:0;
+        if(!n){ var opts=(h.match(/scavenge-option/g)||[]).length, lk=(h.match(/unlock-button|UnlockButton/g)||[]).length; if(opts)n=Math.max(0,opts-lk); }
+        W.__twnl_scav=n;
+      }).catch(function(){});
   }
 
   // ── PANEL ────────────────────────────────────────────────────────────────
-  function render() {
-    var r = res(), lv = levels(), prod = prodPerHour();
-    var nb = nextBuild(lv);
-    var th = troopsHome();
+  function render(){
+    var r=liveRes(), lv=liveLevels(), th=troopsHome();
+    var idx=currentIndex(lv);
+    var done=idx>=TL.length;
 
     var old=document.getElementById("twnl"); if(old) old.remove();
     var p=document.createElement("div"); p.id="twnl";
     p.style.cssText=["position:fixed","z-index:2147483647",
-      "bottom:calc(10px + env(safe-area-inset-bottom,0px))","left:8px",
-      "width:248px","background:#f4e4bc","border:2px solid #804000",
-      "border-radius:8px","font:12px/1.35 Verdana,Arial,sans-serif","color:#000",
-      "box-shadow:0 3px 12px rgba(0,0,0,.45)","padding:8px","max-height:80vh",
-      "overflow:auto"].join(";");
+      "bottom:calc(10px + env(safe-area-inset-bottom,0px))","left:8px","width:252px",
+      "background:#f4e4bc","border:2px solid #804000","border-radius:8px",
+      "font:12px/1.35 Verdana,Arial,sans-serif","color:#000",
+      "box-shadow:0 3px 12px rgba(0,0,0,.45)","padding:8px","max-height:82vh","overflow:auto"].join(";");
 
     var head=document.createElement("div");
-    head.style.cssText="font-weight:bold;display:flex;justify-content:space-between;margin-bottom:5px";
-    var pct = nb ? Math.round(100*nb.i/PLAN.length) : 100;
-    head.innerHTML="<span>👑 Noble LIVE</span><span style='opacity:.6'>"+pct+"%</span>";
-    var x=document.createElement("span"); x.textContent="✕";
-    x.style.cssText="cursor:pointer;padding:0 3px"; x.onclick=function(){p.remove();};
-    head.appendChild(x); p.appendChild(head);
+    head.style.cssText="font-weight:bold;display:flex;justify-content:space-between;margin-bottom:4px";
+    head.innerHTML="<span>👑 Noble Guide</span><span style='opacity:.6'>"+Math.round(100*idx/TL.length)+"%</span>";
+    var x=document.createElement("span"); x.textContent="✕"; x.style.cssText="cursor:pointer;padding:0 3px";
+    x.onclick=function(){p.remove();}; head.appendChild(x); p.appendChild(head);
 
-    // resources line
-    var rl=document.createElement("div");
-    rl.style.cssText="font-size:10px;opacity:.7;margin-bottom:5px";
-    rl.textContent="🪵"+r.wood+" 🧱"+r.stone+" ⚙️"+r.iron+"  pop "+r.pop+"/"+r.popMax;
+    // resources + the timeline's expectation at this step (the CHECK)
+    var rl=document.createElement("div"); rl.style.cssText="font-size:10px;opacity:.75;margin-bottom:4px";
+    rl.innerHTML="🪵"+r.wood+" 🧱"+r.stone+" ⚙️"+r.iron+" · pop "+r.pop+"/"+r.popMax;
     p.appendChild(rl);
 
-    // ── BUILD card ──
-    var bc=document.createElement("div");
-    bc.style.cssText="background:#fff7e0;border:1px solid #c0a060;border-radius:6px;padding:7px;margin-bottom:6px;cursor:pointer";
-    if (!nb) {
-      bc.innerHTML="✅ <b>Plan done — build Academy/mint coin.</b>";
-    } else if (nb.b==="scav") {
-      bc.innerHTML="<div style='font-size:10px;opacity:.6'>NEXT BUILD</div><b>🔓 Unlock scavenge tier "+nb.t+"</b>";
-    } else {
-      var label=(BMETA[nb.b]&&BMETA[nb.b][0])||nb.b;
-      var cost = costFromDom(nb.b);   // try to read live cost off the page
-      var wait = cost ? waitMinutes(cost, r, prod) : null;
-      var afford = cost ? (r.wood>=(cost.wood||0)&&r.stone>=(cost.stone||0)&&r.iron>=(cost.iron||0)) : null;
-      // pop check
-      var popBlock = (nb.b!=="farm" && cost && cost.pop && (r.pop+cost.pop>r.popMax));
-      bc.innerHTML="<div style='font-size:10px;opacity:.6'>NEXT BUILD"+
-        (AUTO_BUILD?" — tap to BUILD ⚠️":" — tap to open")+"</div>"+
-        "<div style='font-size:14px;font-weight:bold'>"+label+" → "+nb.t+"</div>"+
-        (popBlock ? "<div style='color:#b00;font-size:11px'>⚠ pop-capped — build Bauernhof first</div>"
-          : afford===true ? "<div style='color:#2a8;font-size:11px'>✓ affordable now</div>"
-          : afford===false ? "<div style='font-size:11px;opacity:.7'>⏳ wait ~"+wait+" min</div>"
-          : "<div style='font-size:10px;opacity:.5'>open to see cost</div>");
+    if (!done){
+      var cur=TL[idx];
+      // CHECK: compare live res to this step's expected on-hand resources
+      var chk=document.createElement("div");
+      chk.style.cssText="font-size:10px;margin-bottom:5px;padding:4px;border-radius:4px;background:#fff;border:1px solid #ddd";
+      var dW=r.wood-cur[T_EW], dS=r.stone-cur[T_ES], dI=r.iron-cur[T_EI];
+      function tag(d){ return d>=-100?"✓":(d< -1000?"⚠⚠":"⚠"); }
+      var behind=[]; if(dW< -500)behind.push("wood"); if(dS< -500)behind.push("clay"); if(dI< -500)behind.push("iron");
+      chk.innerHTML="<b>plan check</b> (vs +"+cur[T_AT]+"h):<br>"+
+        "wood "+tag(dW)+" clay "+tag(dS)+" iron "+tag(dI)+
+        (behind.length?"<br><span style='color:#b00'>behind on "+behind.join(", ")+" → scavenge more / wait</span>"
+                       :"<br><span style='color:#2a8'>on track ✓</span>");
+      p.appendChild(chk);
     }
-    if (nb) bc.onclick=function(){ doBuild(nb); };
+
+    var hdr=document.createElement("div"); hdr.style.cssText="font-size:10px;font-weight:bold;opacity:.6;margin:2px 0 4px";
+    hdr.textContent="DO ALL IN PARALLEL ↓"; p.appendChild(hdr);
+    function card(bg,br){ var d=document.createElement("div");
+      d.style.cssText="background:"+bg+";border:1px solid "+br+";border-radius:6px;padding:6px;margin-bottom:5px"; return d; }
+    function afford(cw,cs,ci){ return r.wood>=cw&&r.stone>=cs&&r.iron>=ci; }
+    function waitMin(cw,cs,ci){ var v=GD.village||{};
+      var pw=(v.wood_prod||0)*3600, ps=(v.stone_prod||0)*3600, pi=(v.iron_prod||0)*3600;
+      function nd(h,w,p){ return h>=w?0:(p<=0?Infinity:(w-h)/p*60); }
+      return Math.ceil(Math.max(nd(r.wood,cw,pw),nd(r.stone,cs,ps),nd(r.iron,ci,pi))); }
+
+    // ── 1. BUILD track ──
+    var bi=done?-1:nextBuildIdx(lv,idx);
+    var bc=card("#fff7e0","#c0a060");
+    if (bi<0){ bc.innerHTML="🏗️ <b>BUILD</b> — ✅ done. Build Academy & mint coin."; }
+    else {
+      var row=TL[bi], b=row[T_B], lvl=row[T_LV];
+      var cw=row[T_CW],cs=row[T_CS],ci=row[T_CI],cp=row[T_CP];
+      var popBlock=(b!=="farm"&&cp&&(r.pop+cp>r.popMax));
+      var ok=afford(cw,cs,ci);
+      bc.style.cursor="pointer";
+      bc.innerHTML="<div style='font-size:10px;opacity:.6'>🏗️ BUILD"+(AUTO_BUILD?" — tap BUILD ⚠️":" — tap to open")+"</div>"+
+        "<b>"+(BLABEL[b]||b)+" → "+lvl+"</b> "+
+        (popBlock?"<span style='color:#b00'>⚠ pop-cap, build Bauernhof</span>"
+          : ok?"<span style='color:#2a8'>✓ now</span>"
+          : "<span style='opacity:.7'>⏳ ~"+waitMin(cw,cs,ci)+"min</span>")+
+        "<div style='font-size:10px;opacity:.65'>cost "+cw+"/"+cs+"/"+ci+
+          " · refund +"+LEVEL_REWARD.wood+"/"+LEVEL_REWARD.stone+"/"+LEVEL_REWARD.iron+"</div>";
+      bc.onclick=function(){ doBuild(b,lvl); };
+    }
     p.appendChild(bc);
 
-    // ── SCAVENGE card ──
-    var sc=document.createElement("div");
-    sc.style.cssText="background:#eaf3e0;border:1px solid #9bbf7a;border-radius:6px;padding:7px;margin-bottom:6px";
-    var tiers=[]; for(var t=1;t<=scavTiers();t++) tiers.push(t);
-    if (!tiers.length) {
-      sc.innerHTML="<div style='font-size:10px;opacity:.6'>SCAVENGE</div>"+
-        "<div style='font-size:11px'>No tiers unlocked yet — unlock tier 1 at the Raubzug.</div>";
-    } else if (!th) {
-      sc.innerHTML="<div style='font-size:10px;opacity:.6'>SCAVENGE</div>"+
-        "<div style='font-size:11px'>Open the Raubzug/Versammlungsplatz once so I can read your troops, then reopen me.</div>";
-    } else {
-      var totalCarry=0; Object.keys(th).forEach(function(u){ totalCarry+=(th[u]||0)*(CARRY[u]||0); });
-      var split=optimalSplit(totalCarry, tiers);
-      var lines=["<div style='font-size:10px;opacity:.6'>SCAVENGE — optimal split (max loot/h)</div>"];
-      var lph=0;
-      tiers.slice().reverse().forEach(function(t){
-        var c=Math.round(split[t]);
-        if (c<=0) return;
-        var dur=scavDuration(c, SCAV_LOOT[t]);
-        lph += scavRate(c, SCAV_LOOT[t])*3600;
-        lines.push("• Tier "+t+": ~"+c+" carry  ("+(Math.round(dur/60))+" min/run)");
-      });
-      lines.push("<div style='font-size:10px;opacity:.6;margin-top:3px'>≈ "+Math.round(lph)+" res/hour total</div>");
-      sc.innerHTML=lines.join("<br>");
-      var go=document.createElement("a");
-      go.href="/game.php?village="+(GD.village&&GD.village.id||"")+"&screen=place&mode=scavenge";
-      go.textContent="→ open Raubzug to send";
-      go.style.cssText="display:inline-block;margin-top:4px;font-size:11px;color:#36c";
-      sc.appendChild(go);
+    // ── 2. SCAVENGE-UNLOCK track ──
+    var nextTier=null;
+    for (var ti=idx; ti<TL.length; ti++){ if(TL[ti][T_TYPE]===0 && scavTiers()<TL[ti][T_LV]){ nextTier=TL[ti]; break; } }
+    if (nextTier){
+      var uc=card("#eef0ff","#9aa6e0"); var ok2=afford(nextTier[T_CW],nextTier[T_CS],nextTier[T_CI]);
+      uc.innerHTML="<div style='font-size:10px;opacity:.6'>🔓 SCAVENGE UNLOCK (parallel)</div>"+
+        "<b>Unlock tier "+nextTier[T_LV]+"</b> "+(ok2?"<span style='color:#2a8'>✓ now</span>":"<span style='opacity:.7'>save "+nextTier[T_CW]+"/"+nextTier[T_CS]+"/"+nextTier[T_CI]+"</span>");
+      var ua=document.createElement("a"); ua.href="/game.php?village="+vidParam()+"&screen=place&mode=scavenge";
+      ua.textContent=" → open"; ua.style.cssText="font-size:11px;color:#36c"; uc.appendChild(ua);
+      p.appendChild(uc);
+    }
+
+    // ── 3. SCAVENGE-SEND track (free) ──
+    var sc=card("#eaf3e0","#9bbf7a"); var tiers=[]; for(var t=1;t<=scavTiers();t++)tiers.push(t);
+    if(!tiers.length){ sc.innerHTML="<div style='font-size:10px;opacity:.6'>⛏️ SCAVENGE</div>No tiers yet."; }
+    else if(!th){ sc.innerHTML="<div style='font-size:10px;opacity:.6'>⛏️ SCAVENGE</div>Reading troops… tap 🔄."; }
+    else {
+      var carry=0; Object.keys(th).forEach(function(u){carry+=(th[u]||0)*(CARRY[u]||0);});
+      var split=optimalSplit(carry,tiers), L=["<div style='font-size:10px;opacity:.6'>⛏️ SCAVENGE — send (free, max loot/h)</div>"], lph=0;
+      tiers.slice().reverse().forEach(function(t){ var c=Math.round(split[t]); if(c<=0)return;
+        lph+=scavRate(c,SCAV_LOOT[t])*3600; L.push("• T"+t+": ~"+c+" carry ("+Math.round(scavDuration(c,SCAV_LOOT[t])/60)+"min)"); });
+      L.push("<span style='opacity:.6'>≈ "+Math.round(lph)+" res/h</span>"); sc.innerHTML=L.join("<br>");
+      var sa=document.createElement("a"); sa.href="/game.php?village="+vidParam()+"&screen=place&mode=scavenge";
+      sa.textContent="→ open Raubzug"; sa.style.cssText="display:inline-block;margin-top:3px;font-size:11px;color:#36c"; sc.appendChild(sa);
     }
     p.appendChild(sc);
 
-    // scavenge tier sync buttons
-    var tg=document.createElement("div");
-    tg.style.cssText="font-size:10px;opacity:.7;margin-bottom:3px";
-    tg.innerHTML="scavenge tiers unlocked: ";
-    [0,1,2,3].forEach(function(n){
-      var b=document.createElement("span"); b.textContent=n;
-      b.style.cssText="cursor:pointer;padding:1px 5px;margin:0 1px;border:1px solid #999;border-radius:3px;"+
-        (scavTiers()===n?"background:#804000;color:#fff":"background:#fff");
-      b.onclick=function(){ W.__twnl_scav=n; render(); };
-      tg.appendChild(b);
-    });
+    // ── 4. TROOPS track ──
+    if((lv.barracks||0)>=1){
+      var spN=(th&&th.spear)||0, tc=card("#f6ece0","#caa882");
+      tc.innerHTML="<div style='font-size:10px;opacity:.6'>⚔️ TROOPS (surplus only, goal ~"+SPEAR_GOAL+")</div>"+
+        "have "+spN+" spears — "+(spN>=SPEAR_GOAL?"<span style='color:#2a8'>enough ✓</span>"
+          : r.pop>=r.popMax?"<span style='color:#b00'>pop full</span>"
+          : "<span style='opacity:.75'>train from leftover after build/unlock</span>");
+      var ta=document.createElement("a"); ta.href="/game.php?village="+vidParam()+"&screen=barracks";
+      ta.textContent=" → barracks"; ta.style.cssText="font-size:11px;color:#36c"; tc.appendChild(ta);
+      p.appendChild(tc);
+    }
+
+    // refresh + tier sync
+    var rf=document.createElement("span"); rf.textContent="🔄 refresh troops/scavenge";
+    rf.style.cssText="display:inline-block;margin:2px 0;font-size:10px;color:#36c;cursor:pointer";
+    rf.onclick=function(){ Promise.all([fetchTroops(),fetchScav()]).then(render); }; p.appendChild(rf);
+
+    var tg=document.createElement("div"); tg.style.cssText="font-size:10px;opacity:.7;margin-bottom:3px"; tg.innerHTML="tiers: ";
+    [0,1,2,3].forEach(function(n){ var s=document.createElement("span"); s.textContent=n;
+      s.style.cssText="cursor:pointer;padding:1px 5px;margin:0 1px;border:1px solid #999;border-radius:3px;"+(scavTiers()===n?"background:#804000;color:#fff":"background:#fff");
+      s.onclick=function(){W.__twnl_scav=n;render();}; tg.appendChild(s); });
     p.appendChild(tg);
 
-    // refresh button — re-fetch troops + scavenge (e.g. after you send a run)
-    var rf=document.createElement("span");
-    rf.textContent="🔄 refresh troops/scavenge";
-    rf.style.cssText="display:inline-block;margin-bottom:4px;font-size:10px;color:#36c;cursor:pointer";
-    rf.onclick=function(){
-      _fetchedTroops=false; _fetchedScav=false;
-      Promise.all([fetchTroops(),fetchScavenge()]).then(function(){
-        _fetchedTroops=false; _fetchedScav=false; render();
-      });
-    };
-    p.appendChild(rf);
-
-    var note=document.createElement("div");
-    note.style.cssText="font-size:9px;opacity:.5";
-    note.textContent="Reads live state. "+(AUTO_BUILD?"⚠️ AUTO-BUILD ON.":"You click the game's buttons.");
+    var note=document.createElement("div"); note.style.cssText="font-size:9px;opacity:.5";
+    note.textContent="Pre-planned (~9.6d to noble) + live check. "+(AUTO_BUILD?"⚠️ AUTO-BUILD ON.":"You tap the game's button.");
     p.appendChild(note);
-
     document.body.appendChild(p);
   }
 
-  // read the live upgrade cost for a building from the main screen DOM (if we're
-  // on it); returns null if not visible (then we just can't show "wait N min").
-  function costFromDom(b) {
-    var tr=document.getElementById("main_buildrow_"+b);
-    if(!tr) return null;
-    function num(sel){ var e=tr.querySelector(sel); if(!e) return 0;
-      var m=(e.getAttribute("data-cost")|| e.textContent||"").replace(/\D/g,""); return parseInt(m,10)||0; }
-    return { wood:num(".cost_wood"), stone:num(".cost_stone"), iron:num(".cost_iron"), pop:0 };
+  // build action
+  function doBuild(b,lvl){
+    var vid=vidParam();
+    if(!AUTO_BUILD){ try{sessionStorage.setItem("twnl_flash",b);}catch(e){}
+      W.location.href="/game.php?village="+vid+"&screen="+bscreen(b); return; }
+    var mu="/game.php?village="+vid+"&screen=main";
+    fetch(mu,{credentials:"include"}).then(function(r){return r.text();}).then(function(h){
+      var m=h.match(new RegExp('href="([^"]*action=upgrade_building[^"]*id='+b+'(?:&amp;|&)[^"]*)"','i'));
+      if(!m){ alert("Can't build "+b+" now (cost/prereq/queue). Opening screen."); W.location.href=mu; return; }
+      var link=m[1].replace(/&amp;/g,"&"); if(link.charAt(0)!=="/")link="/"+link.replace(/^.*game\.php/,"game.php");
+      return fetch(link,{credentials:"include"}).then(function(){ setTimeout(function(){W.location.href=mu;},400); });
+    }).catch(function(e){ alert("Build failed: "+e); W.location.href=mu; });
   }
-
-  // build action: navigate+highlight (safe) OR send (AUTO_BUILD)
-  function doBuild(nb) {
-    var vid=(GD.village&&GD.village.id)||"";
-    if (nb.b==="scav" || !AUTO_BUILD) {
-      var screen=(BMETA[nb.b]&&BMETA[nb.b][1])||"main";
-      try{ sessionStorage.setItem("twnl_flash", nb.b); }catch(e){}
-      W.location.href="/game.php?village="+vid+"&screen="+screen+(nb.b==="scav"?"&mode=scavenge":"");
-      return;
-    }
-    var mainUrl="/game.php?village="+vid+"&screen=main";
-    fetch(mainUrl,{credentials:"include"}).then(function(r){return r.text();}).then(function(html){
-      var re=new RegExp('href="([^"]*action=upgrade_building[^"]*id='+nb.b+'(?:&amp;|&)[^"]*)"','i');
-      var m=html.match(re);
-      if(!m){ alert("Can't build "+nb.b+" now (cost/prereq/queue). Opening screen."); W.location.href=mainUrl; return; }
-      var link=m[1].replace(/&amp;/g,"&"); if(link.charAt(0)!=="/") link="/"+link.replace(/^.*game\.php/,"game.php");
-      return fetch(link,{credentials:"include"}).then(function(){ setTimeout(function(){W.location.href=mainUrl;},400); });
-    }).catch(function(e){ alert("Build failed: "+e); W.location.href=mainUrl; });
-  }
-
-  function flash(){
-    var b; try{ b=sessionStorage.getItem("twnl_flash"); sessionStorage.removeItem("twnl_flash"); }catch(e){}
-    if(!b) return; var row=document.getElementById("main_buildrow_"+b); if(!row) return;
-    var on=false,n=0,iv=setInterval(function(){ row.style.background=(on=!on)?"#ffe08a":""; if(++n>6){clearInterval(iv);row.style.background="";} },350);
+  function flash(){ var b; try{b=sessionStorage.getItem("twnl_flash");sessionStorage.removeItem("twnl_flash");}catch(e){}
+    if(!b)return; var row=document.getElementById("main_buildrow_"+b); if(!row)return;
+    var on=false,n=0,iv=setInterval(function(){row.style.background=(on=!on)?"#ffe08a":"";if(++n>6){clearInterval(iv);row.style.background="";}},350);
     row.scrollIntoView({block:"center"});
   }
 
-  flash();
-  render();                                  // immediate paint from game_data
-  // then fetch live troops + scavenge state (read-only) and re-render with them
-  Promise.all([fetchTroops(), fetchScavenge()]).then(function () {
-    _fetchedTroops = false; _fetchedScav = false;  // allow manual refresh later
-    render();
-  });
-  console.log("[noble-live] loaded");
+  flash(); render();
+  Promise.all([fetchTroops(),fetchScav()]).then(render);  // live check + scavenge split
+  console.log("[noble-guide] loaded, "+TL.length+" timeline steps");
 })();
