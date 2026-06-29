@@ -344,13 +344,27 @@
         // tiers are sequential, so the unlocked COUNT is the highest tier.
         W.__twnl_scav=unlocked;
 
-        // bonus: note which tiers have a squad OUT (so we don't tell you to
-        // re-send a busy tier). store as a set of busy tier ids.
-        var busy={};
+        // Per-tier OUT state: which tiers have a squad deployed, when each
+        // returns (Unix sec), and the units that are out — so we can (a) show
+        // countdowns, (b) count TOTAL army (home + out), (c) forecast loot
+        // landing. return_time is in the squad; unlock_time is on the option.
+        var busy={}, ret={}, outUnits={};
         Object.keys(opts).forEach(function(k){
-          var o=opts[k]; if(o && o.scavenging_squad) busy[k]=true;
+          var o=opts[k]; if(!o) return;
+          var sq=o.scavenging_squad;
+          if(sq){
+            busy[k]=true;
+            var rt=parseFloat(sq.return_time||0);
+            if(rt>0) ret[k]=rt;
+            var uc=sq.unit_counts||{};
+            Object.keys(uc).forEach(function(u){ outUnits[u]=(outUnits[u]||0)+(parseInt(uc[u],10)||0); });
+          }
+          var ut=parseFloat(o.unlock_time||0);
+          if(ut>0){ busy[k]=true; if(!ret[k]||ut<ret[k]) ret[k]=ut; }
         });
         W.__twnl_scav_busy=busy;
+        W.__twnl_scav_ret=ret;        // {tier: returnUnixSec}
+        W.__twnl_scav_out=outUnits;   // {unit: countOut} across scavenge squads
       }).catch(function(){});
   }
 
@@ -377,6 +391,42 @@
   }
   function queueUsed(){ return (typeof W.__twnl_qused==="number")?W.__twnl_qused:null; }
   var BUILD_SLOTS=2;  // non-premium TW
+
+  // Read OUTGOING commands (farm attacks out) from the overview/place screen so
+  // we know troops are deployed + when they return. TW shows outgoing commands
+  // with a return countdown; we read the soonest-return as a timer. (Loot from
+  // farms is NOT predictable — only the timing is.) Caches:
+  //   W.__twnl_out_count = number of outgoing commands
+  //   W.__twnl_out_next  = soonest return Unix sec (or 0)
+  function fetchOutgoing(){
+    return fetch("/game.php?village="+vidParam()+"&screen=overview_villages&mode=commands&type=return",{credentials:"include"})
+      .then(function(r){return r.text();})
+      .then(function(h){
+        // each returning command has a data-endtime (Unix ms) timer; collect them
+        var ends=[], m, re=/data-endtime="(\d+)"/g;
+        while((m=re.exec(h))){ var v=parseInt(m[1],10); if(v>1e12) v=Math.floor(v/1000); ends.push(v); }
+        var now=Math.floor(Date.now()/1000);
+        ends=ends.filter(function(t){return t>now;}).sort(function(a,b){return a-b;});
+        W.__twnl_out_count=ends.length;
+        W.__twnl_out_next=ends.length?ends[0]:0;
+      }).catch(function(){});
+  }
+  // TOTAL army = home + out-scavenging (+ we can't read out-farm unit counts
+  // cheaply, so farm troops show as a command count, not unit totals).
+  function totalArmy(){
+    var home=troopsHome()||{}, out=W.__twnl_scav_out||{}, t={};
+    Object.keys(home).forEach(function(u){ t[u]=(t[u]||0)+home[u]; });
+    Object.keys(out).forEach(function(u){ t[u]=(t[u]||0)+out[u]; });
+    return t;
+  }
+  // human countdown from a future Unix sec
+  function countdown(ts){
+    var s=Math.max(0, Math.round(ts-Date.now()/1000));
+    var m=Math.floor(s/60), h=Math.floor(m/60);
+    if(h>0) return h+"h"+(m%60)+"m";
+    if(m>0) return m+"m"+(s%60)+"s";
+    return s+"s";
+  }
 
   // Read Farm Assistant TEMPLATES (A/B) + their template_ids + the AJAX
   // send_units_link from the am_farm page (read-only). Ported from FarmBot's
@@ -618,7 +668,27 @@
       var split=optimalSplit(carry,tiers), L=["<div style='font-size:10px;opacity:.6'>⛏️ SCAVENGE — send (free, max loot/h)</div>"], lph=0;
       tiers.slice().reverse().forEach(function(t){ var c=Math.round(split[t]); if(c<=0)return;
         lph+=scavRate(c,SCAV_LOOT[t])*3600; L.push("• T"+t+": ~"+c+" carry ("+Math.round(scavDuration(c,SCAV_LOOT[t])/60)+"min)"); });
-      L.push("<span style='opacity:.6'>≈ "+Math.round(lph)+" res/h</span>"); sc.innerHTML=L.join("<br>");
+      L.push("<span style='opacity:.6'>≈ "+Math.round(lph)+" res/h</span>");
+      // SQUADS OUT: countdown + forecast loot landing (scavenge loot IS known:
+      // carry × loot_factor, split 1/3 per resource). This is the "when + how
+      // much resources arrive" the perfect guide needs — exact for scavenge.
+      var ret=W.__twnl_scav_ret||{}, out=W.__twnl_scav_out||{};
+      var outTiers=Object.keys(ret);
+      if(outTiers.length){
+        L.push("<span style='font-size:10px;opacity:.6'>— squads out —</span>");
+        // carry of all out troops (we don't know per-tier carry split post-hoc,
+        // so approximate each out tier's loot from total out-carry / #out tiers)
+        var outCarry=0; Object.keys(out).forEach(function(u){ outCarry+=(out[u]||0)*(CARRY[u]||0); });
+        outTiers.sort(function(a,b){return ret[a]-ret[b];}).forEach(function(tk){
+          var lf=SCAV_LOOT[+tk]||0;
+          // per-tier loot: best-effort = its share of out-carry × loot_factor
+          var tierCarry=outCarry/outTiers.length;
+          var loot=Math.round(tierCarry*lf);
+          var per=Math.round(loot/3);
+          L.push("• T"+tk+" back in <b>"+countdown(ret[tk])+"</b> → +"+per+"/"+per+"/"+per);
+        });
+      }
+      sc.innerHTML=L.join("<br>");
       var anyOut=Object.keys(W.__twnl_scav_busy||{}).length>0;
       if(AUTO_BUILD){
         var send=document.createElement("div");
@@ -634,7 +704,11 @@
 
     // ── 4. TROOPS track ── (trains in-panel; doesn't gate the noble)
     if((lv.barracks||0)>=1){
-      var spN=(th&&th.spear)||0, tc=card("#f6ece0","#caa882");
+      // count TOTAL spears (home + out scavenging) toward the goal, so we don't
+      // tell you to over-train when troops are just deployed.
+      var army=totalArmy(); var spN=army.spear||0; var spHome=(th&&th.spear)||0;
+      var spOut=spN-spHome;
+      var tc=card("#f6ece0","#caa882");
       var popFull=r.pop>=r.popMax;
       // how many spears we could afford right now (spear = 50/30/10, 1 pop)
       var canAfford=Math.min(Math.floor(r.wood/50),Math.floor(r.stone/30),Math.floor(r.iron/10),
@@ -642,7 +716,7 @@
       var perS=spearTrainSec(lv.barracks||1);   // exact seconds per spear
       function mmss(sec){ sec=Math.round(sec); var m=Math.floor(sec/60); return m+"m"+(sec%60<10?"0":"")+(sec%60)+"s"; }
       tc.innerHTML="<div style='font-size:10px;opacity:.6'>⚔️ TROOPS (surplus only, goal ~"+SPEAR_GOAL+")</div>"+
-        "have "+spN+" spears — "+(spN>=SPEAR_GOAL?"<span style='color:#2a8'>enough ✓</span>"
+        "have "+spN+" spears"+(spOut>0?" ("+spOut+" out)":"")+" — "+(spN>=SPEAR_GOAL?"<span style='color:#2a8'>enough ✓</span>"
           : popFull?"<span style='color:#b00'>pop full</span>"
           : "<span style='opacity:.75'>"+(canAfford>0?"can train ~"+canAfford+" now":"save for build first")+"</span>")+
         "<div style='font-size:10px;opacity:.6'>1 spear = "+mmss(perS)+" (barracks "+(lv.barracks||0)+")</div>";
@@ -669,6 +743,10 @@
         L2.push("• "+bb.x+"|"+bb.y+" ("+bb.dist.toFixed(1)+" fields)");
       });
       L2.push("<span style='font-size:10px;opacity:.6'>only these are worth farming; scavenge the rest</span>");
+      // OUT-FARM timing: show how many attacks are out + soonest return. (Loot
+      // is unknown for farms — only the timing is, so we show count + timer.)
+      var oc=W.__twnl_out_count||0, on=W.__twnl_out_next||0;
+      if(oc>0){ L2.push("<span style='font-size:10px;opacity:.7'>"+oc+" farm"+(oc>1?"s":"")+" out · next back in <b>"+(on?countdown(on):"?")+"</b></span>"); }
       fc.innerHTML=L2.join("<br>");
       // Send via Farm Assistant templates A/B (one clean POST each). A button
       // per configured template, firing at the NEAREST point-blank barb.
@@ -736,7 +814,7 @@
   // the village JSON so res/levels reflect the action we just took.
   function softRefresh(){
     GD = W.game_data || GD;
-    return Promise.all([fetchScavAndTroops(), fetchQueue(), fetchBarbs(), fetchTrainTime(), fetchFarmTemplates()]).then(function(){ render(); });
+    return Promise.all([fetchScavAndTroops(), fetchQueue(), fetchBarbs(), fetchTrainTime(), fetchFarmTemplates(), fetchOutgoing()]).then(function(){ render(); });
   }
 
   // BUILD — sends the upgrade in the background (no navigation, panel stays).
@@ -907,6 +985,6 @@
   }
 
   flash(); render();
-  Promise.all([fetchScavAndTroops(), fetchQueue(), fetchBarbs(), fetchTrainTime(), fetchFarmTemplates()]).then(render);
+  Promise.all([fetchScavAndTroops(), fetchQueue(), fetchBarbs(), fetchTrainTime(), fetchFarmTemplates(), fetchOutgoing()]).then(render);
   console.log("[noble-guide] loaded, "+TL.length+" timeline steps");
 })();
