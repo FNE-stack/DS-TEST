@@ -200,6 +200,11 @@
   // earn MORE scavenging — farming further is a net efficiency LOSS. So the
   // perfect policy is: only flag point-blank barbs; scavenge everything else.
   var FARM_CROSSOVER_FIELDS = 2.0;
+  // Spear recruit time (seconds) at world speed 1: base ~1020s at barracks 1,
+  // each barracks level cuts it ~10% (×0.9^(lvl-1)). Lets us PINPOINT troop
+  // production ("12 spears = 18 min") instead of estimating.
+  var SPEAR_BASE_TRAIN_S = 1020;
+  function spearTrainSec(barracksLvl){ return SPEAR_BASE_TRAIN_S*Math.pow(0.9, Math.max(0,(barracksLvl||1)-1)); }
   var SCAV_LOOT = {1:0.10,2:0.25,3:0.50,4:0.75};
   var DUR_EXP=0.45, DUR_INITIAL=1800.0, DUR_FACTOR=0.7722074896557402;
   var CARRY={spear:25,sword:15,axe:10,archer:10,light:80,marcher:50,heavy:50,spy:0,ram:0,catapult:0,knight:100};
@@ -211,6 +216,26 @@
     scavenge:"Raubzug"
   };
   function bscreen(b){ return b==="place"||b==="scavenge" ? "place" : "main"; }
+
+  // Total resource cost of the WHOLE plan to first noble, computed once from TL.
+  // Gross = sum of all step costs; refund = 150/150/100 per BUILD (not scav);
+  // net = what you must actually generate. Also the remaining cost from your
+  // current step onward, so the panel can show "X left to noble".
+  function planTotals(fromIdx){
+    var g={w:0,s:0,i:0}, rem={w:0,s:0,i:0}, nbuild=0, nbuildRem=0;
+    for(var k=0;k<TL.length;k++){
+      var row=TL[k]; g.w+=row[T_CW]; g.s+=row[T_CS]; g.i+=row[T_CI];
+      if(row[T_TYPE]===1) nbuild++;
+      if(k>=fromIdx){ rem.w+=row[T_CW]; rem.s+=row[T_CS]; rem.i+=row[T_CI]; if(row[T_TYPE]===1) nbuildRem++; }
+    }
+    var REW={w:150,s:150,i:100};
+    return {
+      gross:g, refund:{w:nbuild*REW.w,s:nbuild*REW.s,i:nbuild*REW.i},
+      net:{w:g.w-nbuild*REW.w,s:g.s-nbuild*REW.s,i:g.i-nbuild*REW.i},
+      remGross:rem, remRefund:{w:nbuildRem*REW.w,s:nbuildRem*REW.s,i:nbuildRem*REW.i},
+      remNet:{w:rem.w-nbuildRem*REW.w,s:rem.s-nbuildRem*REW.s,i:rem.i-nbuildRem*REW.i}
+    };
+  }
 
   // ── live state (read-only) ───────────────────────────────────────────────
   function vidParam(){ return (GD.village&&GD.village.id)||""; }
@@ -397,6 +422,23 @@
     rl.innerHTML="🪵"+r.wood+" 🧱"+r.stone+" ⚙️"+r.iron+" · pop "+r.pop+"/"+r.popMax;
     p.appendChild(rl);
 
+    // TOTAL to first noble (net of 150/150/100 refunds) + what's LEFT from here.
+    var tot=planTotals(idx);
+    function k(n){ return n>=1000?(Math.round(n/100)/10)+"k":n; }
+    var tl=document.createElement("div");
+    tl.style.cssText="font-size:10px;opacity:.7;margin-bottom:5px;cursor:pointer";
+    tl.title="net resources (after refunds) — tap for full breakdown";
+    var sumLeft=tot.remNet.w+tot.remNet.s+tot.remNet.i;
+    tl.innerHTML="🎯 to noble: <b>"+k(sumLeft)+"</b> net left "+
+      "("+k(tot.remNet.w)+"/"+k(tot.remNet.s)+"/"+k(tot.remNet.i)+")";
+    tl.onclick=function(){
+      tl.innerHTML="🎯 to noble (net of +150/150/100 refunds):<br>"+
+        "&nbsp;left: "+k(tot.remNet.w)+"/"+k(tot.remNet.s)+"/"+k(tot.remNet.i)+" = "+k(sumLeft)+"<br>"+
+        "&nbsp;full plan net: "+k(tot.net.w)+"/"+k(tot.net.s)+"/"+k(tot.net.i)+" = "+k(tot.net.w+tot.net.s+tot.net.i)+"<br>"+
+        "&nbsp;gross "+k(tot.gross.w+tot.gross.s+tot.gross.i)+" − refunds "+k(tot.refund.w+tot.refund.s+tot.refund.i);
+    };
+    p.appendChild(tl);
+
     if (!done){
       var cur=TL[idx];
       // CHECK: compare live res to this step's expected on-hand resources
@@ -522,15 +564,18 @@
       // how many spears we could afford right now (spear = 50/30/10, 1 pop)
       var canAfford=Math.min(Math.floor(r.wood/50),Math.floor(r.stone/30),Math.floor(r.iron/10),
                              r.popMax-r.pop, SPEAR_GOAL-spN);
+      var perS=spearTrainSec(lv.barracks||1);   // exact seconds per spear
+      function mmss(sec){ sec=Math.round(sec); var m=Math.floor(sec/60); return m+"m"+(sec%60<10?"0":"")+(sec%60)+"s"; }
       tc.innerHTML="<div style='font-size:10px;opacity:.6'>⚔️ TROOPS (surplus only, goal ~"+SPEAR_GOAL+")</div>"+
         "have "+spN+" spears — "+(spN>=SPEAR_GOAL?"<span style='color:#2a8'>enough ✓</span>"
           : popFull?"<span style='color:#b00'>pop full</span>"
-          : "<span style='opacity:.75'>"+(canAfford>0?"can train ~"+canAfford+" now":"save for build first")+"</span>");
+          : "<span style='opacity:.75'>"+(canAfford>0?"can train ~"+canAfford+" now":"save for build first")+"</span>")+
+        "<div style='font-size:10px;opacity:.6'>1 spear = "+mmss(perS)+" (barracks "+(lv.barracks||0)+")</div>";
       if(spN<SPEAR_GOAL && !popFull && canAfford>0){
-        // small batch buttons so you trickle from surplus, not dump everything
+        // small batch buttons — each shows the EXACT train time for that batch
         [Math.min(5,canAfford), Math.min(20,canAfford), canAfford].forEach(function(n,i){
           if(n<=0) return; if(i>0 && n<=Math.min(5,canAfford)) return;  // dedupe tiny
-          var btn=document.createElement("span"); btn.textContent="+"+n;
+          var btn=document.createElement("span"); btn.textContent="+"+n+" ("+mmss(n*perS)+")";
           btn.style.cssText="display:inline-block;margin:3px 3px 0 0;padding:2px 7px;border:1px solid #a87;border-radius:4px;background:#fff;cursor:pointer;font-size:11px";
           btn.onclick=function(){ doTrainSpears(n); };
           tc.appendChild(btn);
