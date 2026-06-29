@@ -204,7 +204,13 @@
   // each barracks level cuts it ~10% (×0.9^(lvl-1)). Lets us PINPOINT troop
   // production ("12 spears = 18 min") instead of estimating.
   var SPEAR_BASE_TRAIN_S = 1020;
-  function spearTrainSec(barracksLvl){ return SPEAR_BASE_TRAIN_S*Math.pow(0.9, Math.max(0,(barracksLvl||1)-1)); }
+  // Prefer the REAL per-spear time read live from the barracks page (cached on
+  // W.__twnl_spearsec); fall back to the formula only until we've read it once.
+  // (The formula's decay factor is approximate; the live value is authoritative.)
+  function spearTrainSec(barracksLvl){
+    if(typeof W.__twnl_spearsec==="number" && W.__twnl_spearsec>0) return W.__twnl_spearsec;
+    return SPEAR_BASE_TRAIN_S*Math.pow(0.9, Math.max(0,(barracksLvl||1)-1));
+  }
   var SCAV_LOOT = {1:0.10,2:0.25,3:0.50,4:0.75};
   var DUR_EXP=0.45, DUR_INITIAL=1800.0, DUR_FACTOR=0.7722074896557402;
   var CARRY={spear:25,sword:15,axe:10,archer:10,light:80,marcher:50,heavy:50,spy:0,ram:0,catapult:0,knight:100};
@@ -362,6 +368,30 @@
   }
   function queueUsed(){ return (typeof W.__twnl_qused==="number")?W.__twnl_qused:null; }
   var BUILD_SLOTS=2;  // non-premium TW
+
+  // Read the REAL per-spear recruit time (seconds) from the barracks page, so
+  // the troop-time display is exact, not formula-estimated. TW shows the unit
+  // build time in the recruit row; we try several markup variants. Cached on
+  // W.__twnl_spearsec. (If all parses miss, the formula fallback stays in use —
+  // paste the barracks console dump and I'll lock the exact selector.)
+  function fetchTrainTime(){
+    return fetch("/game.php?village="+vidParam()+"&screen=barracks",{credentials:"include"})
+      .then(function(r){return r.text();})
+      .then(function(h){
+        var sec=null;
+        // variant A: inline unit JSON  "spear":{..."build_time":1020...}
+        var a=h.match(/"spear"\s*:\s*\{[^}]*?build_time"?\s*:\s*"?(\d+)/i);
+        if(a) sec=parseInt(a[1],10);
+        // variant B: data-build_time / data-build-time on a spear element
+        if(!sec){ var b=h.match(/spear[^>]*data-build[_-]?time="(\d+)"/i)
+                     || h.match(/data-unit="spear"[^>]*data-build[_-]?time="(\d+)"/i);
+                  if(b) sec=parseInt(b[1],10); }
+        // variant C: H:MM:SS duration text in the spear recruit row
+        if(!sec){ var c=h.match(/spear[\s\S]{0,300}?(\d+):(\d{2}):(\d{2})/i);
+                  if(c) sec=(+c[1])*3600+(+c[2])*60+(+c[3]); }
+        if(sec && sec>0 && sec<100000) W.__twnl_spearsec=sec;
+      }).catch(function(){});
+  }
 
   // Find POINT-BLANK barbs (owner 0) within the farm-vs-scavenge crossover —
   // the only barbs the math says are worth farming over scavenging. Reads the
@@ -595,9 +625,19 @@
       });
       L2.push("<span style='font-size:10px;opacity:.6'>only these are worth farming; scavenge the rest</span>");
       fc.innerHTML=L2.join("<br>");
+      // how many spears we'd send (a small pack — point-blank, returns fast)
+      var spAvail=(th&&th.spear)||0;
+      var farmN=Math.min(spAvail, 20);   // small pack; barb refills, fast round trip
+      if(AUTO_BUILD && farmN>0){
+        var fb=document.createElement("div");
+        fb.style.cssText="margin-top:4px;text-align:center;padding:3px;background:#c89;border-radius:4px;cursor:pointer;font-weight:bold;color:#fff";
+        fb.textContent="⚡ farm "+barbs[0].x+"|"+barbs[0].y+" ("+farmN+" spears)";
+        fb.onclick=function(){ doFarm(barbs[0], farmN); };
+        fc.appendChild(fb);
+      }
       var fa=document.createElement("a");
       fa.href="/game.php?village="+vidParam()+"&screen=place&target="+(barbs[0].id||"");
-      fa.textContent="→ rally point (nearest)"; fa.style.cssText="display:inline-block;margin-top:3px;font-size:11px;color:#36c";
+      fa.textContent="→ rally point (manual)"; fa.style.cssText="display:inline-block;margin-top:3px;font-size:11px;color:#36c";
       fc.appendChild(fa);
       p.appendChild(fc);
     } else if (barbs && barbs.length===0 && (lv.barracks||0)>=1){
@@ -640,7 +680,7 @@
   // the village JSON so res/levels reflect the action we just took.
   function softRefresh(){
     GD = W.game_data || GD;
-    return Promise.all([fetchScavAndTroops(), fetchQueue(), fetchBarbs()]).then(function(){ render(); });
+    return Promise.all([fetchScavAndTroops(), fetchQueue(), fetchBarbs(), fetchTrainTime()]).then(function(){ render(); });
   }
 
   // BUILD — sends the upgrade in the background (no navigation, panel stays).
@@ -774,6 +814,51 @@
       }).catch(function(e){ toast("scavenge send failed: "+e, false); });
   }
 
+  // FARM a point-blank barb: send `n` spears via the rally point. TW's attack
+  // is a 2-step flow (place form → confirm). We scrape the place screen's form
+  // for its hidden fields + csrf, set spear=n + the target coords, POST to get
+  // the confirm token, then POST the confirm. Same as the game's attack button.
+  function doFarm(barb, n){
+    var vid=vidParam();
+    var pu="/game.php?village="+vid+"&screen=place";
+    toast("farming "+barb.x+"|"+barb.y+" ("+n+" spears)…", true);
+    fetch(pu,{credentials:"include"}).then(function(r){return r.text();}).then(function(h){
+      // place command form: action contains "command" / "place"; has name="spear"
+      var fm=h.match(/<form[^>]*action="([^"]+)"[^>]*>([\s\S]*?)<\/form>/gi), body=null, action=null;
+      if(fm){ for(var i=0;i<fm.length;i++){
+        var am=fm[i].match(/action="([^"]+)"/i); var act=am?am[1].replace(/&amp;/g,"&"):"";
+        if(/place|command/i.test(act) && /name="spear"/i.test(fm[i])){ action=act; body=fm[i]; break; }
+      }}
+      if(!action){ toast("no attack form (rally point built?)", false); return; }
+      var data=new URLSearchParams(), im, re=/<input[^>]*name="([^"]+)"[^>]*value="([^"]*)"/gi;
+      while((im=re.exec(body))){ data.set(im[1], im[2]); }
+      // zero all units, set spear=n, set target coords
+      ["spear","sword","axe","archer","spy","light","heavy","marcher","ram","catapult","knight","snob"].forEach(function(u){ data.set(u, "0"); });
+      data.set("spear", String(n));
+      data.set("x", barb.x); data.set("y", barb.y);
+      data.set("attack", "Angriff");   // press the attack button
+      if(action.charAt(0)!=="/") action="/"+action.replace(/^.*game\.php/,"game.php");
+      // step 1: get the confirm screen
+      return fetch(action,{method:"POST",credentials:"include",
+        headers:{"Content-Type":"application/x-www-form-urlencoded"},body:data.toString()})
+        .then(function(r){return r.text();}).then(function(c){
+          // confirm form carries a fresh token + the troops; just resubmit it.
+          var cf=c.match(/<form[^>]*action="([^"]+)"[^>]*id="command-data-form"[\s\S]*?<\/form>/i)
+              || c.match(/<form[^>]*id="command-data-form"[^>]*action="([^"]+)"[\s\S]*?<\/form>/i)
+              || c.match(/<form[^>]*action="([^"]*confirm[^"]*)"[^>]*>([\s\S]*?)<\/form>/i);
+          if(!cf){ toast("farm: no confirm form (already sent? troops short?)", false); return; }
+          var cAction=cf[1].replace(/&amp;/g,"&");
+          var cBody=cf[0];
+          var cd=new URLSearchParams(), cm, cre=/<input[^>]*name="([^"]+)"[^>]*value="([^"]*)"/gi;
+          while((cm=cre.exec(cBody))){ cd.set(cm[1], cm[2]); }
+          if(cAction.charAt(0)!=="/") cAction="/"+cAction.replace(/^.*game\.php/,"game.php");
+          return fetch(cAction,{method:"POST",credentials:"include",
+            headers:{"Content-Type":"application/x-www-form-urlencoded"},body:cd.toString()})
+            .then(function(){ toast("✓ farm sent to "+barb.x+"|"+barb.y, true); setTimeout(softRefresh,600); });
+        });
+    }).catch(function(e){ toast("farm failed: "+e, false); });
+  }
+
   function flash(){ var b; try{b=sessionStorage.getItem("twnl_flash");sessionStorage.removeItem("twnl_flash");}catch(e){}
     if(!b)return; var row=document.getElementById("main_buildrow_"+b); if(!row)return;
     var on=false,n=0,iv=setInterval(function(){row.style.background=(on=!on)?"#ffe08a":"";if(++n>6){clearInterval(iv);row.style.background="";}},350);
@@ -781,6 +866,6 @@
   }
 
   flash(); render();
-  Promise.all([fetchScavAndTroops(), fetchQueue(), fetchBarbs()]).then(render);  // tiers+troops+queue+barbs
+  Promise.all([fetchScavAndTroops(), fetchQueue(), fetchBarbs(), fetchTrainTime()]).then(render);
   console.log("[noble-guide] loaded, "+TL.length+" timeline steps");
 })();
