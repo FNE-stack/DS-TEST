@@ -570,6 +570,13 @@
       go3.textContent=AUTO_BUILD?(canNow>0?"⚡ RECRUIT "+canNow:"recruit (not ready)"):"→ open barracks";
       go3.onclick=function(){ if(canNow>0) doRecruit(haveSp+canNow); };
       step.appendChild(go3);
+      // DEBUG: show exactly what the count is built from, so troop-count bugs
+      // are visible, not black-box. owned = "Insgesamt" total; q = barracks queue.
+      var dbg=document.createElement("div"); dbg.style.cssText="margin-top:4px;font-size:9px;opacity:.55";
+      dbg.textContent="count: owned "+(W.__twnl_spear_owned!=null?W.__twnl_spear_owned:"?")+
+        " + queue "+(W.__twnl_spear_q||0)+" + JSONhome "+((troopsHome()||{}).spear||0)+
+        " /out "+((W.__twnl_scav_out||{}).spear||0)+" → total "+haveSp;
+      step.appendChild(dbg);
     }
     p.appendChild(step);
 
