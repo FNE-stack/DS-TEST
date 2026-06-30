@@ -220,23 +220,24 @@
   function liveLevels(){ var b=(GD.village&&GD.village.buildings)||{}, o={}; Object.keys(b).forEach(function(k){o[k]=parseInt(b[k],10)||0;}); return o; }
   function scavTiers(){ return (typeof W.__twnl_scav==="number")?W.__twnl_scav:0; }
   function troopsHome(){ return (GD.village&&GD.village.unit_counts)||W.__twnl_troops||null; }
-  // TOTAL spears = home + out scavenging + IN-TRAINING. In-training comes from
-  // two sources, whichever is higher: (a) the barracks-queue parse (fetchBarracksQ,
-  // markup-dependent), and (b) an OPTIMISTIC local counter we bump the instant
-  // YOU recruit (so the guide never double-asks even if the queue read fails).
-  // The optimistic count is cleared once those spears show up home/out/queue.
-  // TOTAL spears = home (scavenge JSON unit_counts_home, verified correct)
-  //              + out scavenging (scavenge JSON squads)
-  //              + training in the barracks queue (parsed "N Speerträger")
-  // There is NO single "total" line on the barracks page (the earlier /68 parse
-  // matched a date, not a count), so we sum the three real sources. A recruit
-  // TARGET (set when you tap recruit) acts as an optimistic floor so the step
-  // doesn't re-ask before the new spears show up in home/queue.
+  // TOTAL spears for goal-checking = INSGESAMT (already-trained) + QUEUE (still
+  // training). The barracks recruit row shows "<home>/<Insgesamt>" e.g. 4/84 →
+  // 84 already-trained spears (home + out farming/scavenging). The 12 in the
+  // training queue are NOT in that 84 yet — but they're COMING, so the guide
+  // counts them toward the goal (84 + 12 = 96) so it doesn't tell you to
+  // re-recruit spears that are already on the way. Insgesamt already includes
+  // out-troops, so we do NOT add home/out separately (that double-counted).
+  // Fallback if the barracks read failed (total null): sum home + out + queue.
   function totalSpears(){
-    var home=(troopsHome()||{}).spear||0;            // scavenge JSON home count
-    var out=(W.__twnl_scav_out||{}).spear||0;        // out scavenging
-    var q=W.__twnl_spear_q||0;                        // training queue
-    var real=home+out+q;
+    var real;
+    if(typeof W.__twnl_spear_total==="number" && W.__twnl_spear_total!==null){
+      real=W.__twnl_spear_total + (W.__twnl_spear_q||0);   // Insgesamt + queue
+    } else {
+      var home=(troopsHome()||{}).spear||0;           // scavenge JSON home count
+      var out=(W.__twnl_scav_out||{}).spear||0;       // out scavenging
+      var q=W.__twnl_spear_q||0;                       // training queue
+      real=home+out+q;                                 // fallback sum
+    }
     var tgt=W.__twnl_spear_target||0;
     return Math.max(real, tgt);
   }
@@ -368,22 +369,43 @@
         if(Object.keys(tpl).length)W.__twnl_farm_tpl=tpl;
       }).catch(function(){});
   }
-  // Count spears CURRENTLY TRAINING in the barracks queue, so totalSpears()
-  // includes them and the recruit step doesn't double-ask. The train queue rows
-  // carry a unit sprite + a count; we sum the spear rows. (Markup varies; we try
-  // the common patterns and fall back to 0.)
+  // Read the AUTHORITATIVE spear total from the barracks recruit table. That
+  // table has one row per unit ending in the "Im Dorf/Insgesamt" cell, e.g.
+  // "Speerträger … 4/84" → 4 at home, 84 = INSGESAMT = every spear that exists
+  // (home + out farming/scavenging + in training). 84 IS the total; we don't
+  // sum buckets ourselves (that double-counted the queue and missed out-troops).
+  // We store it in __twnl_spear_total; totalSpears() uses it as the truth.
+  // We ALSO still parse the queue ("N Speerträger" in the training list) just so
+  // the recruit step can show "(N in training)" — but it is NOT added to total.
   function fetchBarracksQ(){
-    if((liveLevels().barracks||0)<1){ W.__twnl_spear_q=0; return Promise.resolve(); }
+    if((liveLevels().barracks||0)<1){ W.__twnl_spear_q=0; W.__twnl_spear_total=null; return Promise.resolve(); }
     return fetch("/game.php?village="+vid()+"&screen=barracks",{credentials:"include"})
       .then(function(r){return r.text();}).then(function(h){
-        // Training queue renders each order as "<N> Speerträger" (verified live).
-        // Sum them = spears currently in training. (There is NO reliable single
-        // "total" line on this page — the old /68 parse matched a DATE, not a
-        // count — so home+out come from the scavenge JSON instead, in totalSpears.)
-        var q=0, re=/(\d+)\s*Speertr(?:ä|&auml;)ger/gi, m;
-        while((m=re.exec(h))) q+=parseInt(m[1],10)||0;
+        // INSGESAMT total: in the recruit table the spear row's "Im Dorf/Insgesamt"
+        // cell reads "<home>/<total>", e.g. 4/84 → 84 already-trained spears.
+        // The robust anchor is the unit's recruit LINK (spear → unit_spear): the
+        // row is built around <a ... id="..._0_spear" ...> / class with "spear",
+        // and the N/M pair lives in that row. We find each "spear" occurrence that
+        // is NOT a queue row (queue rows say "<N> Speerträger" with the count
+        // BEFORE the name) and take the first "<digits>/<digits>" after it.
+        // To avoid the queue rows entirely, search from the recruit table on:
+        // everything after the "Im Dorf/Insgesamt" header is the recruit table.
+        W.__twnl_spear_total=null;
+        var hdr=/Im Dorf.{0,40}Insgesamt|name="unit_spear"|data-unit="spear"|recruit_unit_spear/i.exec(h);
+        var region=hdr ? h.slice(hdr.index) : h;
+        // within the recruit region, find the spear row, then its N/M pair
+        var spearAt=/(?:unit_spear|Speertr(?:ä|&auml;)ger)/i.exec(region);
+        if(spearAt){
+          var slice=region.slice(spearAt.index, spearAt.index+600);
+          var pair=/(\d+)\s*\/\s*(\d+)/.exec(slice);
+          if(pair){ W.__twnl_spear_total=parseInt(pair[2],10)||0; }
+        }
+        // queue count (display only): sum "<N> Speerträger" rows in the training
+        // list. These are a SUBSET of Insgesamt, so never added to the total.
+        var q=0, re=/(\d+)\s*Speertr(?:ä|&auml;)ger/gi, mq;
+        while((mq=re.exec(h))) q+=parseInt(mq[1],10)||0;
         W.__twnl_spear_q=q;
-      }).catch(function(){ W.__twnl_spear_q=0; });
+      }).catch(function(){ W.__twnl_spear_q=0; W.__twnl_spear_total=null; });
   }
   function refreshAll(){ GD=W.game_data||GD; W.__twnl_farm_sent={}; return Promise.all([fetchScav(),fetchQueue(),fetchBarbs(),fetchFarmTpl(),fetchBarracksQ()]).then(render); }
 
@@ -557,7 +579,10 @@
       var popFull=popRoom<=0;
       step.innerHTML="<div style='font-size:10px;opacity:.6'>"+stepN+" · NEXT</div>"+
         "<div style='font-size:16px;font-weight:bold;margin:2px 0'>⚔️ Recruit spears → "+lvl+"</div>"+
-        "<div style='font-size:11px;opacity:.7'>have "+haveSp+", plan wants "+lvl+" · feeds scavenge carry</div>"+
+        "<div style='font-size:11px;opacity:.7'>have "+haveSp+
+          ((typeof W.__twnl_spear_total==="number"&&W.__twnl_spear_total!==null&&(W.__twnl_spear_q||0)>0)
+            ?" ("+W.__twnl_spear_total+" trained + "+(W.__twnl_spear_q||0)+" in queue)":"")+
+          ", plan wants "+lvl+" · feeds scavenge carry</div>"+
         (popFull?"<div style='color:#b00;font-size:12px;margin-top:3px'>⚠ pop full — build a Bauernhof first</div>"
           :canNow>0?"<div style='color:#2a8;font-size:12px;margin-top:3px;font-weight:bold'>✓ recruit "+canNow+" now"+(canNow<nNeed?" ("+(nNeed-canNow)+" more once affordable)":"")+"</div>"
               :"<div style='font-size:12px;margin-top:3px;opacity:.8'>⏳ save "+(nNeed*spearCost.w)+"/"+(nNeed*spearCost.s)+"/"+(nNeed*spearCost.i)+" — keep scavenging</div>");
