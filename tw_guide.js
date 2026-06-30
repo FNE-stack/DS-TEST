@@ -1,35 +1,29 @@
 /*
- * TW Noble Guide — pre-planned timeline + live check  (Schnellleiste script)
+ * TW Noble Guide — RestedXP-style single-step guide  (Schnellleiste script)
  * ──────────────────────────────────────────────────────────────────────────
- * The build order, costs, pop curve, scavenge income and 150/150/100 first-to-
- * level rewards were ALL solved offline by noble_optimizer.py. The resulting
- * 157-step TIMELINE is baked in below (TL) — each step knows: when it happens,
- * its cost, the pop after it, the scavenge tier active, and the resources you
- * should have on hand at that moment. So the guide is a finished route, not a
- * live calculator.
+ * ONE linear, mathematically-optimal sequence (noble_optimizer.py) to your
+ * first noble in ~9.6 days. The guide shows the SINGLE next action — build /
+ * unlock-scavenge / recruit — and a button that does it. When done (auto-
+ * detected from live state) the next step appears. Follow it without thinking.
  *
- * Live game state is used only as a CHECK: it reads your real resources + pop
- * and compares to the timeline's expectation at your current step → "✓ on
- * track" / "⚠ behind on iron, scavenge more" / "ahead → pull next build
- * forward". Read-only; the build button optionally sends the build (AUTO_BUILD).
+ * Scavenging is a CONTINUOUS background income (re-send every ~30min), not a
+ * discrete step — so it lives in a small standing "keep scavenging" line with
+ * the optimal-send button, separate from the linear sequence.
  *
- * Parallel queues (build / scavenge-unlock / scavenge-send / troops) run at the
- * same time, so the board shows the best action in EACH simultaneously.
+ * Read-only except the build/recruit/scavenge POSTs (AUTO_BUILD). Each is the
+ * same request the game's own button makes; works on desktop + app.
  *
- * Quickbar: javascript:$.getScript('https://fne-stack.github.io/DS-TEST/tw_noble_live.js');
+ * Quickbar: javascript:$.getScript('https://fne-stack.github.io/DS-TEST/tw_noble_live.js?v='+Date.now());
  */
 (function () {
   'use strict';
   var W = (typeof unsafeWindow !== 'undefined') ? unsafeWindow : window;
   var GD = W.game_data || {};
+  var AUTO_BUILD = true;   // false = navigate-only (you tap the game's button)
 
-  // ⚠️ false = navigate+highlight (you click the game's button). true = the
-  // script sends the build (automation; the de256 ban vector). See discussion.
-  var AUTO_BUILD = true;
-
-  // ── EMBEDDED TIMELINE (from noble_optimizer.py) ──────────────────────────
-  // row = [type, building, level, at_h, cw,cs,ci,cpop, pop_used,pop_cap, tiers, ew,es,ei]
-  //   type: 1=build, 0=scavenge-unlock ;  e* = expected resources on hand
+  // ── LINEAR TIMELINE (noble_optimizer.py) ─────────────────────────────────
+  // row = [type, name, level, at_h, cw,cs,ci,cpop, pop_used,pop_cap, tiers, ew,es,ei]
+  //   type: 1=build · 0=scavenge-unlock · 2=recruit(spears to N)
   var TL = [
   [1,"place",1,0.0,10,40,30,0,0,240,0,490,460,470],
   [1,"main",1,0.0,90,80,70,5,5,240,0,400,380,400],
@@ -50,257 +44,205 @@
   [1,"barracks",2,1.23,252,214,113,8,41,240,2,656,549,397],
   [1,"wood",1,1.55,50,60,40,5,46,240,2,758,641,459],
   [1,"stone",1,1.73,65,50,40,5,51,240,2,844,742,520],
-  [1,"iron",1,1.77,75,65,70,10,63,240,2,821,769,532],
-  [1,"wood",2,1.95,62,75,50,6,72,240,2,765,755,553],
-  [1,"wood",3,2.02,78,94,62,7,84,240,2,589,663,541],
-  [1,"stone",2,2.2,83,64,51,6,91,240,2,611,724,586],
-  [1,"stone",3,2.32,105,81,65,7,100,240,2,587,764,631],
-  [1,"wood",4,2.45,98,117,78,8,109,240,2,595,771,647],
-  [1,"wood",5,2.62,122,146,98,9,120,240,2,529,721,634],
-  [1,"wood",6,2.82,153,183,122,10,131,240,2,518,699,642],
-  [1,"stone",4,3.05,133,102,82,8,139,240,2,546,757,667],
-  [1,"stone",5,3.33,169,130,104,9,149,240,2,530,796,699],
-  [1,"iron",2,3.42,94,81,88,11,160,240,2,591,868,713],
-  [1,"iron",3,3.72,118,102,110,13,175,240,2,543,871,692],
-  [1,"stone",6,3.77,215,165,132,10,185,240,2,481,858,662],
-  [1,"stone",7,4.08,273,210,168,12,197,240,2,420,857,647],
-  [1,"iron",4,4.28,147,128,137,15,212,240,2,436,890,618],
-  [1,"farm",1,4.7,45,40,30,0,212,240,2,609,1068,747],
-  [1,"farm",2,4.72,53,47,35,0,214,240,2,607,1113,792],
-  [1,"storage",3,4.98,96,80,64,0,217,281,2,578,1162,861],
-  [1,"storage",4,5.05,121,101,81,0,218,330,2,561,1186,873],
-  [1,"iron",5,5.38,184,160,172,17,237,330,2,505,1197,853],
-  [1,"iron",6,5.53,231,200,215,19,256,330,2,433,1158,745],
-  [1,"iron",7,5.9,289,250,270,21,277,330,2,376,1144,650],
-  [1,"wood",7,6.15,191,229,153,12,289,330,2,351,1083,611],
-  [1,"farm",3,6.65,62,55,41,0,289,330,2,530,1274,761],
-  [1,"farm",4,6.77,72,64,48,0,289,330,2,615,1368,821],
-  [1,"wood",8,7.05,238,286,191,14,306,386,2,461,1226,784],
-  [1,"wood",9,7.25,298,358,238,16,322,453,2,327,1032,660],
-  [1,"wood",10,7.8,373,447,298,18,340,453,2,210,841,568],
-  [1,"stone",8,8.15,346,266,213,14,354,453,2,108,815,545],
-  [1,"wood",11,8.9,466,559,373,21,375,453,2,82,676,492],
-  [1,"stone",9,10.18,440,338,271,16,391,453,2,136,792,610],
-  [1,"farm",5,10.18,84,75,56,0,391,453,2,52,717,554],
-  [1,"stone",10,11.18,559,430,344,18,410,531,2,11,776,605],
-  [1,"wood",12,13.32,582,698,466,24,436,531,2,40,670,648],
-  [1,"farm",6,17.07,99,88,66,0,452,531,2,418,1260,1368],
-  [1,"farm",7,17.07,115,103,77,0,452,531,2,303,1157,1291],
-  [1,"storage",5,18.65,154,128,102,0,463,729,2,499,1534,1746],
-  [1,"storage",6,19.18,194,162,130,0,464,729,2,469,1534,1775],
-  [1,"storage",7,22.38,246,205,164,0,495,729,2,480,2075,2740],
-  [1,"storage",8,22.7,311,259,207,0,495,729,2,219,1853,2556],
-  [1,"wood",13,23.45,728,873,582,28,526,729,2,4,1522,2494],
-  [1,"iron",8,23.98,362,313,338,24,550,729,2,76,1621,2495],
-  [1,"stone",11,25.05,709,546,437,21,572,729,2,38,1722,2631],
-  [1,"storage",9,28.25,393,328,262,0,602,729,2,406,2584,3923],
-  [1,"storage",10,28.78,498,415,332,0,602,729,2,271,2506,3902],
-  [1,"farm",8,30.37,135,120,90,0,620,729,2,371,2905,4512],
-  [1,"farm",9,30.37,158,140,105,0,620,729,2,213,2765,4407],
-  [1,"storage",11,33.13,630,525,420,0,663,1002,2,298,3683,6051],
-  [1,"storage",12,34.23,796,664,531,0,670,1002,2,152,3756,6343],
-  [1,"wood",14,35.33,909,1091,728,33,711,1002,2,25,3554,6558],
-  [1,"iron",9,36.28,453,392,423,28,741,1002,2,220,3804,6720],
-  [1,"iron",10,37.35,567,491,529,31,787,1002,2,114,4023,7097],
-  [1,"stone",12,38.08,901,693,554,24,818,1002,2,95,4301,7578],
-  [0,"scavenge",3,39.18,1000,1200,1000,0,826,1002,3,43,4123,7680],
-  [1,"wood",15,39.73,1137,1364,909,38,864,1002,3,152,3965,7914],
-  [1,"farm",10,39.9,185,164,123,0,864,1002,3,3,3828,7811],
-  [1,"storage",13,41.33,1007,840,672,0,903,1175,3,657,5348,10171],
-  [1,"storage",14,42.4,1274,1062,850,0,929,1175,3,874,6237,11082],
-  [1,"storage",15,43.78,1612,1343,1075,0,929,1175,3,2257,7763,10957],
-  [1,"storage",16,45.35,2039,1700,1360,0,929,1175,3,4508,10210,13410],
-  [1,"storage",17,47.32,2580,2150,1720,0,929,1175,3,7568,13521,16417],
-  [1,"stone",13,49.58,1144,880,704,28,957,1175,3,12138,18149,21078],
-  [1,"storage",18,51.43,3264,2720,2176,0,957,1175,3,13235,19622,22969],
-  [1,"wood",16,52.4,1421,1705,1137,43,1000,1175,3,14704,20745,24545],
-  [1,"farm",11,55.58,216,192,144,0,1000,1175,3,22931,28788,32373],
-  [1,"storage",19,57.28,4128,3440,2752,0,1000,1377,3,23194,29561,30771],
-  [1,"iron",11,57.53,710,615,662,35,1035,1377,3,23957,30392,31488],
-  [1,"wood",17,59.07,1776,2132,1421,50,1085,1377,3,26524,32442,34097],
-  [1,"stone",14,62.88,1453,1118,894,33,1118,1377,3,35074,40099,40323],
-  [1,"iron",12,64.6,889,770,829,40,1158,1377,3,38663,40597,40488],
-  [1,"iron",13,65.1,1113,964,1038,46,1204,1377,3,39119,41125,40868],
-  [1,"farm",12,66.45,253,225,169,0,1204,1377,3,43221,45089,44733],
-  [1,"farm",13,67.32,296,263,197,0,1204,1377,3,44617,46411,46023],
-  [1,"wood",18,68.5,2220,2665,1776,58,1262,1614,3,45446,46650,47064],
-  [1,"stone",15,69.77,1846,1420,1136,38,1300,1893,3,47926,49255,49539],
-  [1,"wood",19,72.42,2776,3331,2220,67,1367,1893,3,47899,47344,48455],
-  [1,"iron",14,73.07,1393,1207,1300,52,1419,1893,3,48125,47699,48625],
-  [1,"wood",20,75.72,3469,4163,2776,77,1496,1893,3,47206,46512,47899],
-  [1,"stone",16,77.9,2344,1803,1442,43,1539,1893,3,48331,48872,49233],
-  [1,"iron",15,81.08,1744,1511,1628,59,1598,1893,3,48931,49164,49047],
-  [1,"stone",17,82.3,2977,2290,1832,50,1648,1893,3,47698,48385,48843],
-  [1,"farm",14,84.27,346,308,231,0,1648,1893,3,50329,50367,50444],
-  [1,"farm",15,86.12,405,360,270,0,1648,1893,3,50270,50315,50405],
-  [1,"iron",16,87.22,2183,1892,2038,67,1715,2219,3,48492,48783,48637],
-  [1,"iron",17,89.65,2734,2369,2551,76,1791,2602,3,47941,48306,48124],
-  [1,"stone",18,91.03,3781,2908,2327,58,1849,2602,3,46894,47767,48348],
-  [1,"stone",19,94.22,4802,3693,2955,67,1916,2602,3,45873,46982,47720],
-  [1,"iron",18,95.6,3422,2966,3194,86,2002,2602,3,45834,47132,47481],
-  [1,"iron",19,99.7,4285,3714,3999,98,2100,2602,3,46390,46961,46676],
-  [1,"stone",20,101.08,6098,4691,3753,77,2177,2602,3,44577,45984,46922],
-  [1,"iron",20,106.28,5365,4649,5007,111,2288,2602,3,45310,46026,45668],
-  [1,"farm",16,107.67,474,422,316,0,2288,2602,3,49469,50133,49831],
-  [1,"iron",21,111.9,6717,5821,6269,126,2414,3050,3,43958,44854,44406],
-  [1,"market",1,114.18,100,100,100,10,2424,3050,3,50218,50575,50445],
-  [1,"market",2,114.82,126,126,126,12,2436,3050,3,50549,50549,50549],
-  [1,"main",5,115.57,227,202,176,9,2445,3050,3,50448,50473,50499],
-  [1,"smith",1,116.0,220,180,240,20,2465,3050,3,50455,50495,50435],
-  [1,"smith",2,117.32,277,227,302,23,2488,3050,3,50398,50448,50373],
-  [1,"smith",3,118.9,349,286,381,27,2515,3050,3,50326,50389,50294],
-  [1,"smith",4,120.78,440,360,480,32,2547,3050,3,50235,50315,50195],
-  [1,"smith",5,121.37,555,454,605,37,2584,3050,3,50120,50221,50070],
-  [1,"smith",6,123.05,699,572,762,44,2628,3050,3,49976,50103,49913],
-  [1,"farm",17,124.08,555,493,370,0,2628,3050,3,50120,50182,50305],
-  [1,"farm",18,126.3,649,577,433,0,2628,3050,3,50026,50098,50242],
-  [1,"market",3,128.92,159,159,159,14,2642,3576,3,50516,50516,50516],
-  [1,"main",6,129.77,286,254,222,11,2653,3576,3,50389,50421,50453],
-  [1,"main",7,130.27,360,320,280,13,2666,3576,3,50315,50355,50395],
-  [1,"smith",7,130.83,880,720,960,51,2717,3576,3,49795,49955,49715],
-  [1,"smith",8,132.1,1109,908,1210,60,2777,4192,3,49566,49767,49465],
-  [1,"market",4,134.38,200,200,200,16,2793,4192,3,50475,50475,50475],
-  [1,"main",8,135.32,454,403,353,15,2808,4192,3,50221,50272,50322],
-  [1,"smith",9,135.97,1398,1144,1525,70,2878,4192,3,49277,49531,49150],
-  [1,"main",9,136.35,572,508,445,18,2896,4192,3,50103,50167,50230],
-  [1,"smith",10,137.08,1761,1441,1921,82,2978,4192,3,48914,49234,48754],
-  [1,"market",5,140.83,252,252,252,19,2997,4192,3,50423,50423,50423],
-  [1,"main",10,141.85,720,640,560,21,3018,4192,3,49955,50035,50115],
-  [1,"main",11,142.63,908,807,706,24,3042,4192,3,49767,49868,49969],
-  [1,"main",12,142.68,1144,1017,890,28,3070,4192,3,49531,49658,49785],
-  [1,"smith",11,143.63,2219,1815,2421,96,3166,4192,3,48456,48860,48254],
-  [1,"smith",12,143.83,2796,2287,3050,112,3278,4192,3,47166,48079,46677],
-  [1,"market",6,149.68,318,318,318,22,3300,4192,3,50357,50357,50357],
-  [1,"main",13,150.73,1441,1281,1121,33,3333,4192,3,49234,49394,49554],
-  [1,"main",14,150.73,1816,1614,1412,38,3371,4192,3,47418,47780,48142],
-  [1,"smith",13,151.98,3523,2882,3843,132,3503,4192,3,47152,47793,46832],
-  [1,"smith",14,152.23,4439,3632,4842,154,3657,4192,3,42996,44444,42244],
-  [1,"farm",19,159.87,760,675,506,0,3657,4192,3,49915,50000,50169],
-  [1,"farm",20,161.25,889,790,592,0,3657,4192,3,49786,49885,50083],
-  [1,"market",7,164.35,400,400,400,26,3683,4914,3,50275,50275,50275],
-  [1,"main",15,165.48,2288,2034,1779,45,3728,4914,3,48387,48641,48896],
-  [1,"main",16,166.63,2883,2562,2242,53,3781,5760,3,47792,48113,48433],
-  [1,"smith",15,167.12,5593,4576,6101,180,3961,5760,3,43855,45193,43980],
-  [1,"smith",16,168.58,7047,5765,7687,211,4172,5760,3,41486,44106,41046],
-  [1,"market",8,177.42,504,504,504,30,4202,5760,3,50171,50171,50171],
-  [1,"smith",17,178.65,8879,7264,9686,247,4449,5760,3,41796,43411,40989],
-  [1,"main",17,180.35,3632,3229,2825,62,4511,5760,3,42965,44983,43061],
-  [1,"smith",18,182.48,11187,9153,12204,289,4800,5760,3,38059,41522,37271],
-  [1,"market",9,192.77,635,635,635,35,4835,5760,3,50040,50040,50040],
-  [1,"main",18,194.18,4577,4068,3560,72,4907,5760,3,46098,46607,47115],
-  [1,"farm",21,196.62,1040,924,693,0,4907,5760,3,49635,49751,49982],
-  [1,"farm",22,198.62,1217,1081,811,0,4907,5760,3,49458,49594,49864],
-  [1,"main",19,201.93,5767,5126,4485,84,4991,6752,3,44908,45549,46190],
-  [1,"smith",19,204.7,14096,11533,15377,338,5329,6752,3,36579,39142,35298],
-  [1,"smith",20,205.0,17761,14532,19375,395,5724,7916,3,19127,24919,16208],
-  [1,"market",10,222.27,800,800,800,41,5765,7916,3,49875,49875,49875],
-  [1,"main",20,223.8,7266,6458,5651,99,5864,7916,3,43409,44217,45024],
-  [1,"main",21,226.08,9155,8138,7120,116,5980,7916,3,40614,42439,43555],
-  [1,"snob",1,226.97,15000,25000,10000,80,6060,7916,3,28732,20557,36699]
+  [1,"iron",1,1.77,75,65,70,10,62,240,2,869,797,540],
+  [1,"wood",2,1.95,62,75,50,6,72,240,2,762,753,551],
+  [1,"wood",3,2.02,78,94,62,7,84,240,2,586,661,539],
+  [1,"stone",2,2.2,83,64,51,6,91,240,2,609,722,584],
+  [1,"stone",3,2.32,105,81,65,7,100,240,2,560,737,604],
+  [1,"wood",4,2.45,98,117,78,8,109,240,2,568,744,620],
+  [1,"wood",5,2.62,122,146,98,9,119,240,2,552,724,617],
+  [1,"wood",6,2.82,153,183,122,10,130,240,2,535,696,618],
+  [1,"stone",4,3.05,133,102,82,8,138,240,2,563,754,643],
+  [1,"stone",5,3.33,169,130,104,9,149,240,2,493,759,661],
+  [1,"iron",2,3.42,94,81,88,11,160,240,2,554,831,676],
+  [1,"iron",3,3.72,118,102,110,13,174,240,2,555,863,665],
+  [2,"recruit",20,3.72,0,0,0,0,175,240,2,505,833,655],
+  [1,"stone",6,3.77,215,165,132,10,185,240,2,443,820,624],
+  [1,"stone",7,4.08,273,210,168,12,197,240,2,376,813,603],
+  [1,"iron",4,4.28,147,128,137,15,212,240,2,392,846,574],
+  [1,"farm",1,4.7,45,40,30,0,212,240,2,565,1025,703],
+  [1,"farm",2,4.72,53,47,35,0,213,240,2,613,1099,759],
+  [1,"storage",3,4.98,96,80,64,0,216,281,2,576,1140,819],
+  [1,"storage",4,5.05,121,101,81,0,217,330,2,559,1164,831],
+  [1,"iron",5,5.38,184,160,172,17,236,330,2,494,1167,802],
+  [1,"iron",6,5.53,231,200,215,19,255,330,2,423,1128,695],
+  [1,"iron",7,5.9,289,250,270,21,276,330,2,362,1109,596],
+  [1,"wood",7,6.15,191,229,153,12,288,330,2,337,1049,557],
+  [1,"farm",3,6.65,62,55,41,0,288,330,2,513,1237,704],
+  [1,"farm",4,6.77,72,64,48,0,288,330,2,598,1332,765],
+  [1,"wood",8,7.05,238,286,191,14,305,386,2,438,1183,721],
+  [1,"wood",9,7.25,298,358,238,16,321,453,2,304,990,598],
+  [1,"wood",10,7.8,373,447,298,18,339,453,2,183,794,501],
+  [1,"stone",8,8.15,346,266,213,14,353,453,2,79,766,476],
+  [1,"wood",11,8.9,466,559,373,21,374,453,2,51,625,421],
+  [1,"stone",9,10.18,440,338,271,16,390,453,2,99,735,533],
+  [1,"farm",5,10.18,84,75,56,0,390,453,2,15,660,477],
+  [1,"stone",10,11.17,559,430,344,18,408,531,2,15,741,530],
+  [1,"wood",12,13.3,582,698,466,24,434,531,2,23,614,552],
+  [2,"recruit",40,15.98,0,0,0,0,442,531,2,503,1178,1110],
+  [1,"farm",6,17.58,99,88,66,0,452,531,2,413,1233,1319],
+  [1,"farm",7,17.58,115,103,77,0,452,531,2,298,1130,1242],
+  [2,"recruit",60,18.85,0,0,0,0,462,729,2,502,1482,1640],
+  [1,"storage",5,19.7,154,128,102,0,467,729,2,476,1548,1795],
+  [1,"storage",6,20.17,194,162,130,0,467,729,2,356,1440,1699],
+  [2,"recruit",80,21.32,0,0,0,0,482,729,2,502,1839,2249],
+  [1,"storage",7,22.9,246,205,164,0,493,729,2,464,1998,2600],
+  [1,"storage",8,23.43,311,259,207,0,493,729,2,427,1991,2622],
+  [2,"recruit",102,24.42,0,0,0,0,504,729,2,522,2266,2975],
+  [1,"wood",13,24.5,728,873,582,28,532,729,2,3,1598,2595],
+  [1,"iron",8,25.43,362,313,338,24,556,729,2,1,1607,2538],
+  [1,"stone",11,26.63,709,546,437,21,585,729,2,27,1899,2951],
+  [2,"recruit",123,28.25,0,0,0,0,598,729,2,512,2542,3748],
+  [1,"storage",9,29.3,393,328,262,0,606,729,2,418,2623,4002],
+  [1,"storage",10,29.83,498,415,332,0,606,729,2,291,2553,3989],
+  [2,"recruit",144,30.92,0,0,0,0,619,729,2,536,3006,4598],
+  [1,"farm",8,31.02,135,120,90,0,620,729,2,370,2870,4507],
+  [1,"farm",9,31.25,158,140,105,0,620,729,2,405,2912,4522],
+  [2,"recruit",150,31.57,0,0,0,0,625,729,2,502,3094,4788],
+  [0,"scavenge",3,32.0,1000,1200,1000,0,625,855,3,34,2405,4228],
+  [1,"wood",14,33.08,909,1091,728,33,658,1002,3,412,2549,4630],
+  [1,"iron",9,33.32,453,392,423,28,686,1002,3,2,2189,4228],
+  [1,"iron",10,34.38,567,491,529,31,717,1002,3,1031,3243,5140],
+  [1,"storage",11,35.3,630,525,420,0,717,1002,3,1970,4243,6162],
+  [1,"stone",12,35.67,901,693,554,24,741,1002,3,1297,3750,5745],
+  [1,"storage",12,37.0,796,664,531,0,741,1002,3,2812,5292,7345],
+  [1,"wood",15,37.2,1137,1364,909,38,779,1002,3,1868,4105,6559],
+  [1,"stone",13,39.05,1144,880,704,28,807,1002,3,3769,6167,8671],
+  [1,"wood",16,39.85,1421,1705,1137,43,850,1002,3,3295,5364,8353],
+  [1,"storage",13,40.9,1007,840,672,0,850,1002,3,3949,6090,9154],
+  [1,"storage",14,43.03,1274,1062,850,0,850,1002,3,5856,8070,11082],
+  [1,"storage",15,43.35,1612,1343,1075,0,850,1002,3,5111,7561,10769],
+  [1,"iron",11,45.98,710,615,662,35,885,1002,3,8437,10705,13640],
+  [1,"farm",10,46.88,185,164,123,0,885,1002,3,9287,11482,14347],
+  [1,"farm",11,47.52,216,192,144,0,885,1002,3,10654,12806,15628],
+  [1,"wood",17,48.3,1776,2132,1421,50,935,1175,3,9879,11593,15038],
+  [1,"stone",14,49.22,1453,1118,894,33,968,1377,3,10091,12044,15619],
+  [1,"storage",16,51.43,2039,1700,1360,0,968,1377,3,11343,13402,17160],
+  [1,"storage",17,52.12,2580,2150,1720,0,968,1377,3,9735,12173,16258],
+  [1,"iron",12,55.67,889,770,829,40,1008,1377,3,14568,16688,20387],
+  [1,"iron",13,57.2,1113,964,1038,46,1054,1377,3,15997,18077,21532],
+  [1,"wood",18,57.52,2220,2665,1776,58,1112,1377,3,14033,15630,19900],
+  [1,"stone",15,59.42,1846,1420,1136,38,1150,1377,3,15478,17266,21664],
+  [1,"wood",19,62.07,2776,3331,2220,67,1217,1377,3,16870,17777,23156],
+  [1,"farm",12,62.08,253,225,169,0,1217,1377,3,16772,17707,23090],
+  [1,"iron",14,64.13,1393,1207,1300,52,1269,1614,3,18831,19660,24768],
+  [1,"storage",18,66.78,3264,2720,2176,0,1269,1614,3,19878,20875,26304],
+  [1,"storage",19,67.55,4128,3440,2752,0,1269,1614,3,16825,18401,24441],
+  [1,"wood",20,72.88,3469,4163,2776,77,1346,1614,3,22182,21966,29157],
+  [1,"stone",16,74.87,2344,1803,1442,43,1389,1614,3,23391,23307,30739],
+  [1,"farm",13,78.05,296,263,197,0,1389,1614,3,28443,27736,35073],
+  [1,"farm",14,79.47,346,308,231,0,1389,1614,3,30142,29238,36495],
+  [1,"iron",15,80.5,1744,1511,1628,59,1448,1893,3,30345,29425,36439],
+  [1,"stone",17,82.42,2977,2290,1832,50,1498,2219,3,31034,30339,37617],
+  [1,"iron",16,83.68,2183,1892,2038,67,1565,2219,3,30923,30213,37200],
+  [1,"iron",17,86.23,2734,2369,2551,76,1641,2219,3,32815,31856,38509],
+  [1,"stone",18,87.5,3781,2908,2327,58,1699,2219,3,31730,31400,38472],
+  [1,"stone",19,90.8,4802,3693,2955,67,1766,2219,3,32577,32719,40321],
+  [1,"iron",18,92.07,3422,2966,3194,86,1852,2219,3,31227,31580,38904],
+  [1,"iron",19,96.28,4285,3714,3999,98,1950,2219,3,34327,34665,41426],
+  [1,"farm",15,97.55,405,360,270,0,1950,2219,3,35993,36281,42933],
+  [1,"stone",20,101.08,6098,4691,3753,77,2027,2602,3,36293,37723,45036],
+  [1,"iron",20,102.87,5365,4649,5007,111,2138,2602,3,33898,35910,42701],
+  [1,"iron",21,107.67,6717,5821,6269,126,2264,2602,3,35500,38048,44341],
+  [1,"farm",16,110.77,474,422,316,0,2264,2602,3,40569,43169,49286],
+  [1,"market",1,115.0,100,100,100,10,2274,3050,3,47862,50463,50575],
+  [1,"market",2,115.63,126,126,126,12,2286,3050,3,48847,50549,50549],
+  [1,"main",5,116.38,227,202,176,9,2295,3050,3,50418,50473,50499],
+  [1,"smith",1,116.82,220,180,240,20,2315,3050,3,50455,50495,50435],
+  [1,"smith",2,117.13,277,227,302,23,2338,3050,3,50398,50448,50373],
+  [1,"smith",3,118.13,349,286,381,27,2365,3050,3,50326,50389,50294],
+  [1,"smith",4,118.72,440,360,480,32,2397,3050,3,50235,50315,50195],
+  [1,"smith",5,120.02,555,454,605,37,2434,3050,3,50120,50221,50070],
+  [1,"smith",6,120.98,699,572,762,44,2478,3050,3,49976,50103,49913],
+  [1,"market",3,122.73,159,159,159,14,2492,3050,3,50516,50516,50516],
+  [1,"main",6,123.58,286,254,222,11,2503,3050,3,50389,50421,50453],
+  [1,"smith",7,124.08,880,720,960,51,2554,3050,3,49795,49955,49715],
+  [1,"main",7,124.23,360,320,280,13,2567,3050,3,49665,49865,49627],
+  [1,"smith",8,124.8,1109,908,1210,60,2627,3050,3,49566,49767,49465],
+  [1,"farm",17,127.8,555,493,370,0,2627,3050,3,50120,50182,50305],
+  [1,"farm",18,129.05,649,577,433,0,2627,3050,3,50026,50098,50242],
+  [1,"market",4,132.18,200,200,200,16,2643,3576,3,50475,50475,50475],
+  [1,"main",8,133.12,454,403,353,15,2658,3576,3,50221,50272,50322],
+  [1,"main",9,133.77,572,508,445,18,2676,3576,3,50103,50167,50230],
+  [1,"main",10,134.32,720,640,560,21,2697,4192,3,49955,50035,50115],
+  [1,"smith",9,134.5,1398,1144,1525,70,2767,4192,3,49277,49531,49150],
+  [1,"smith",10,135.2,1761,1441,1921,82,2849,4192,3,48662,49234,48385],
+  [1,"market",5,139.13,252,252,252,19,2868,4192,3,50423,50423,50423],
+  [1,"smith",11,140.1,2219,1815,2421,96,2964,4192,3,48456,48860,48254],
+  [1,"main",11,140.48,908,807,706,24,2988,4192,3,48526,49031,48509],
+  [1,"smith",12,141.45,2796,2287,3050,112,3100,4192,3,47643,48388,47405],
+  [1,"market",6,146.45,318,318,318,22,3122,4192,3,50357,50357,50357],
+  [1,"main",12,147.55,1144,1017,890,28,3150,4192,3,49531,49658,49785],
+  [1,"smith",13,148.65,3523,2882,3843,132,3282,4192,3,47152,47793,46832],
+  [1,"main",13,148.7,1441,1281,1121,33,3315,4192,3,45888,46689,45842],
+  [1,"smith",14,149.95,4439,3632,4842,154,3469,4192,3,44136,45744,43745],
+  [1,"market",7,156.93,400,400,400,26,3495,4192,3,50275,50275,50275],
+  [1,"main",14,158.13,1816,1614,1412,38,3533,4192,3,48859,49061,49263],
+  [1,"main",15,159.42,2288,2034,1779,45,3578,4192,3,48387,48641,48896],
+  [1,"farm",19,159.57,760,675,506,0,3578,4192,3,48482,48821,49207],
+  [1,"farm",20,161.13,889,790,592,0,3578,4192,3,49786,49885,50083],
+  [1,"smith",15,164.05,5593,4576,6101,180,3758,4914,3,45082,46099,44574],
+  [1,"smith",16,166.27,7047,5765,7687,211,3969,5760,3,41860,44159,40852],
+  [1,"market",8,174.35,504,504,504,30,3999,5760,3,50171,50171,50171],
+  [1,"main",16,175.65,2883,2562,2242,53,4052,5760,3,47792,48113,48433],
+  [1,"smith",17,177.52,8879,7264,9686,247,4299,5760,3,41796,43411,40989],
+  [1,"main",17,178.63,3632,3229,2825,62,4361,5760,3,40156,42174,40202],
+  [1,"smith",18,180.77,11187,9153,12204,289,4650,5760,3,32750,36802,31912],
+  [1,"market",9,191.63,635,635,635,35,4685,5760,3,50040,50040,50040],
+  [1,"main",18,193.05,4577,4068,3560,72,4757,5760,3,46098,46607,47115],
+  [1,"smith",19,195.48,14096,11533,15377,338,5095,5760,3,36567,39142,35298],
+  [1,"farm",21,196.9,1040,924,693,0,5095,5760,3,38303,40994,37453],
+  [1,"main",19,202.22,5767,5126,4485,84,5179,6752,3,41753,45086,42593],
+  [1,"smith",20,204.98,17761,14532,19375,395,5574,6752,3,28734,35295,28147],
+  [1,"market",10,213.93,800,800,800,41,5615,6752,3,43452,49875,43585],
+  [1,"main",20,215.47,7266,6458,5651,99,5714,6752,3,38399,44217,40229],
+  [1,"snob",1,226.07,15000,25000,10000,80,5794,6752,3,35675,25675,40675],
+  [1,"farm",22,226.07,1217,1081,811,0,5794,6752,3,34458,24594,39864],
+  [1,"farm",23,229.85,1423,1265,949,0,5794,6752,3,39565,29859,45721]
   ];
-  // column indices
   var T_TYPE=0,T_B=1,T_LV=2,T_AT=3,T_CW=4,T_CS=5,T_CI=6,T_CP=7,T_PU=8,T_PC=9,T_TIER=10,T_EW=11,T_ES=12,T_EI=13;
 
-  var LEVEL_REWARD = { wood:150, stone:150, iron:100 };
-  var SPEAR_GOAL = 150;
-  // FARM-vs-SCAVENGE crossover (from the rate math): on a raid-capped, scavenge-
-  // uncapped world, farming a barb beats scavenging the SAME troops ONLY within
-  // ~2 fields (spears, full haul ≈2.3, half ≈1.2). Beyond that, those troops
-  // earn MORE scavenging — farming further is a net efficiency LOSS. So the
-  // perfect policy is: only flag point-blank barbs; scavenge everything else.
-  var FARM_CROSSOVER_FIELDS = 2.0;
-  // Spear recruit time (seconds) at world speed 1: base ~1020s at barracks 1,
-  // each barracks level cuts it ~10% (×0.9^(lvl-1)). Lets us PINPOINT troop
-  // production ("12 spears = 18 min") instead of estimating.
-  var SPEAR_BASE_TRAIN_S = 1020;
-  // Prefer the REAL per-spear time read live from the barracks page (cached on
-  // W.__twnl_spearsec); fall back to the formula only until we've read it once.
-  // (The formula's decay factor is approximate; the live value is authoritative.)
-  function spearTrainSec(barracksLvl){
-    if(typeof W.__twnl_spearsec==="number" && W.__twnl_spearsec>0) return W.__twnl_spearsec;
-    return SPEAR_BASE_TRAIN_S*Math.pow(0.9, Math.max(0,(barracksLvl||1)-1));
-  }
-  var SCAV_LOOT = {1:0.10,2:0.25,3:0.50,4:0.75};
+  var NOBLE_H=229.9;
+  var SCAV_LOOT={1:0.10,2:0.25,3:0.50,4:0.75};
   var DUR_EXP=0.45, DUR_INITIAL=1800.0, DUR_FACTOR=0.7722074896557402;
   var CARRY={spear:25,sword:15,axe:10,archer:10,light:80,marcher:50,heavy:50,spy:0,ram:0,catapult:0,knight:100};
+  var BLABEL={main:"Hauptgebäude",place:"Versammlungsplatz",barracks:"Kaserne",smith:"Schmiede",
+    market:"Marktplatz",wood:"Holzfäller",stone:"Lehmgrube",iron:"Eisenmine",farm:"Bauernhof",
+    storage:"Speicher",snob:"Adelshof",hide:"Versteck",wall:"Wall"};
 
-  var BLABEL = {
-    main:"Hauptgebäude", place:"Versammlungsplatz", barracks:"Kaserne",
-    smith:"Schmiede", market:"Marktplatz", wood:"Holzfäller", stone:"Lehmgrube",
-    iron:"Eisenmine", farm:"Bauernhof", storage:"Speicher", snob:"Adelshof",
-    hide:"Versteck", wall:"Wall", scavenge:"Raubzug"
-  };
-  function bscreen(b){ return b==="place"||b==="scavenge" ? "place" : "main"; }
-
-  // Total resource cost of the WHOLE plan to first noble, computed once from TL.
-  // Gross = sum of all step costs; refund = 150/150/100 per BUILD (not scav);
-  // net = what you must actually generate. Also the remaining cost from your
-  // current step onward, so the panel can show "X left to noble".
-  function planTotals(fromIdx){
-    var g={w:0,s:0,i:0}, rem={w:0,s:0,i:0}, nbuild=0, nbuildRem=0;
-    for(var k=0;k<TL.length;k++){
-      var row=TL[k]; g.w+=row[T_CW]; g.s+=row[T_CS]; g.i+=row[T_CI];
-      if(row[T_TYPE]===1) nbuild++;
-      if(k>=fromIdx){ rem.w+=row[T_CW]; rem.s+=row[T_CS]; rem.i+=row[T_CI]; if(row[T_TYPE]===1) nbuildRem++; }
-    }
-    var REW={w:150,s:150,i:100};
-    return {
-      gross:g, refund:{w:nbuild*REW.w,s:nbuild*REW.s,i:nbuild*REW.i},
-      net:{w:g.w-nbuild*REW.w,s:g.s-nbuild*REW.s,i:g.i-nbuild*REW.i},
-      remGross:rem, remRefund:{w:nbuildRem*REW.w,s:nbuildRem*REW.s,i:nbuildRem*REW.i},
-      remNet:{w:rem.w-nbuildRem*REW.w,s:rem.s-nbuildRem*REW.s,i:rem.i-nbuildRem*REW.i}
-    };
-  }
-
-  // ── live state (read-only) ───────────────────────────────────────────────
-  function vidParam(){ return (GD.village&&GD.village.id)||""; }
+  // ── live state ────────────────────────────────────────────────────────────
+  function vid(){ return (GD.village&&GD.village.id)||""; }
   function liveRes(){
-    var v=GD.village||{};
-    // prefer freshly-fetched res (from the scavenge JSON) when available — it's
-    // current as of the last 🔄; game_data only updates on its own AJAX tick.
-    var f=W.__twnl_res;
-    return { wood:f?f.wood:Math.floor(v.wood||0),
-             stone:f?f.stone:Math.floor(v.stone||0),
-             iron:f?f.iron:Math.floor(v.iron||0),
-             cap:(f&&f.cap)?f.cap:(v.storage_max||0),
-             pop:Math.floor(v.pop||0), popMax:Math.floor(v.pop_max||0) };
+    var v=GD.village||{}, f=W.__twnl_res;
+    return { wood:f?f.wood:Math.floor(v.wood||0), stone:f?f.stone:Math.floor(v.stone||0),
+             iron:f?f.iron:Math.floor(v.iron||0), pop:Math.floor(v.pop||0), popMax:Math.floor(v.pop_max||0) };
   }
-  function liveLevels(){
-    var b=(GD.village&&GD.village.buildings)||{}, o={};
-    Object.keys(b).forEach(function(k){o[k]=parseInt(b[k],10)||0;});
-    return o;
-  }
+  function liveLevels(){ var b=(GD.village&&GD.village.buildings)||{}, o={}; Object.keys(b).forEach(function(k){o[k]=parseInt(b[k],10)||0;}); return o; }
   function scavTiers(){ return (typeof W.__twnl_scav==="number")?W.__twnl_scav:0; }
   function troopsHome(){ return (GD.village&&GD.village.unit_counts)||W.__twnl_troops||null; }
+  function totalSpears(){ var h=(troopsHome()||{}).spear||0, o=(W.__twnl_scav_out||{}).spear||0; return h+o; }
 
-  // ── find current position in the timeline ────────────────────────────────
-  // The current step = first TL row not yet satisfied by live levels/tiers.
+  // The current step = first TL row not yet satisfied. A build counts as done
+  // when finished OR sitting in the QUEUE (effective level = live + queued), so
+  // the guide advances the moment you queue it, not when it completes. Manual
+  // "skip" (W.__twng_force) floors the search past steps auto-detect can't see.
+  function effLevel(lv,b){ return (lv[b]||0) + ((W.__twnl_qbuild||{})[b]||0); }
   function currentIndex(lv){
-    for (var i=0;i<TL.length;i++){
-      var row=TL[i];
-      if (row[T_TYPE]===0){ if (scavTiers()<row[T_LV]) return i; }
-      else if ((lv[row[T_B]]||0)<row[T_LV]) return i;
+    var floor=W.__twng_force||0;
+    for(var i=floor;i<TL.length;i++){
+      var row=TL[i], typ=row[T_TYPE];
+      if(typ===0){ if(scavTiers()<row[T_LV]) return i; }
+      else if(typ===2){ if(totalSpears()<row[T_LV]) return i; }
+      else { if(effLevel(lv,row[T_B])<row[T_LV]) return i; }
     }
     return TL.length;
   }
-  // next pending BUILD row (skip scav — own track)
-  function nextBuildIdx(lv,from){
-    for (var i=from;i<TL.length;i++) if (TL[i][T_TYPE]===1 && (lv[TL[i][T_B]]||0)<TL[i][T_LV]) return i;
-    return -1;
-  }
 
-  // ── scavenge split (max loot/hour, exact TW math) ─────────────────────────
+  // ── scavenge math ───────────────────────────────────────────────────────
   function scavDuration(c,lf){ if(c<=0)return 1; var inner=c*(100*lf)*c*lf; return (Math.pow(inner,DUR_EXP)+DUR_INITIAL)*DUR_FACTOR; }
   function scavRate(c,lf){ return c<=0?0:(c*lf)/scavDuration(c,lf); }
-  // INVERSE math (for the run-sizing modes):
-  //  carryForDuration: carry whose tier-lf run takes ~targetSec (overnight mode)
-  //  carryForLoot:     carry whose run earns ~targetLoot (unblock-build mode)
-  function carryForDuration(targetSec, lf){
-    var x=targetSec/DUR_FACTOR - DUR_INITIAL; if(x<=0) return 0;
-    var inner=Math.pow(x, 1/DUR_EXP);
-    return Math.sqrt(inner/(100*lf*lf));
-  }
-  function carryForLoot(targetLoot, lf){ return lf>0? targetLoot/lf : 0; }
+  function carryForDuration(sec,lf){ var x=sec/DUR_FACTOR-DUR_INITIAL; if(x<=0)return 0; return Math.sqrt(Math.pow(x,1/DUR_EXP)/(100*lf*lf)); }
+  function carryForLoot(loot,lf){ return lf>0?loot/lf:0; }
   function optimalSplit(total,tiers){
     var b={}; tiers.forEach(function(t){b[t]=0;}); if(!tiers.length||total<=0)return b;
     var n=200, ch=total/n;
@@ -309,783 +251,262 @@
       if(bt===null)break; b[bt]+=ch; }
     return b;
   }
+  function troopsForCarry(th,target){
+    if(target<=0) return {};
+    var pool={}; Object.keys(th).forEach(function(u){ if(CARRY[u]>0)pool[u]=th[u]||0; });
+    var order=Object.keys(pool).sort(function(a,b){return CARRY[a]-CARRY[b];});
+    var picked={}, got=0;
+    order.forEach(function(u){ if(got>=target)return; var n=Math.min(pool[u],Math.ceil((target-got)/CARRY[u])); if(n>0){picked[u]=n;got+=n*CARRY[u];} });
+    return picked;
+  }
+  function countdown(ts){ var s=Math.max(0,Math.round(ts-Date.now()/1000)),m=Math.floor(s/60),h=Math.floor(m/60); return h>0?h+"h"+(m%60)+"m":(m>0?m+"m"+(s%60)+"s":s+"s"); }
 
-  // ── live FETCH (read-only) — ONE source of truth: the scavenge screen's
-  // inline `var village = {...}` JSON. Verified live on de256 (see the bot's
-  // _fetch_scavenge_state). It carries BOTH the per-tier lock state AND troops
-  // home, so one fetch fixes scavenge-tier detection AND troop reading.
-  //   options[id].is_locked === false  → that tier is unlocked
-  //   unit_counts_home                  → troops currently home
-  function fetchScavAndTroops(){
-    return fetch("/game.php?village="+vidParam()+"&screen=place&mode=scavenge",
-                 {credentials:"include"})
-      .then(function(r){return r.text();})
-      .then(function(h){
-        // pull the inline village JSON: var village = {...};  The object has
-        // NESTED braces (options/squad), so a non-greedy {...} stops too early.
-        // Match up to the terminating "};" instead (verified against de256).
-        var m=h.match(/var\s+village\s*=\s*(\{[\s\S]*?\});/);
-        if(!m) return;
-        var vdata; try{ vdata=JSON.parse(m[1]); }catch(e){ return; }
-
-        // csrf token — needed to POST scavenge send_squads (same token the
-        // game's own send button uses). Try the common embeds.
-        var cm=h.match(/csrf_token\s*[:=]\s*['"]([a-f0-9]+)['"]/i)
-            || h.match(/"csrf"\s*:\s*"([a-f0-9]+)"/i);
-        if(cm) W.__twnl_csrf=cm[1];
-
-        // troops home
-        var home=vdata.unit_counts_home||vdata.unitCountsHome||null;
-        if(home){ var t={}; Object.keys(home).forEach(function(u){t[u]=parseInt(home[u],10)||0;}); W.__twnl_troops=t; }
-
-        // fresh resources + storage cap straight from this JSON (game_data can
-        // lag between its AJAX ticks; this is current as of the fetch).
-        if(vdata.res){ W.__twnl_res={ wood:Math.floor(+vdata.res.wood||0),
-          stone:Math.floor(+vdata.res.stone||0), iron:Math.floor(+vdata.res.iron||0),
-          cap:+vdata.storage_max||0 }; }
-
-        // scavenge tiers: count options whose is_locked is false. (ids 1..4)
-        var opts=vdata.options||{};
-        var unlocked=0;
-        Object.keys(opts).forEach(function(k){
-          var o=opts[k]; if(o && (o.is_locked===false || o.is_locked==="false")) unlocked++;
+  // ── live fetch (read-only) ──────────────────────────────────────────────
+  function fetchScav(){
+    return fetch("/game.php?village="+vid()+"&screen=place&mode=scavenge",{credentials:"include"})
+      .then(function(r){return r.text();}).then(function(h){
+        var m=h.match(/var\s+village\s*=\s*(\{[\s\S]*?\});/); if(!m) return;
+        var d; try{ d=JSON.parse(m[1]); }catch(e){ return; }
+        var cm=h.match(/csrf_token\s*[:=]\s*['"]([a-f0-9]+)['"]/i)||h.match(/"csrf"\s*:\s*"([a-f0-9]+)"/i); if(cm) W.__twnl_csrf=cm[1];
+        var home=d.unit_counts_home||{}; var t={}; Object.keys(home).forEach(function(u){t[u]=parseInt(home[u],10)||0;}); if(Object.keys(t).length)W.__twnl_troops=t;
+        if(d.res) W.__twnl_res={wood:Math.floor(+d.res.wood||0),stone:Math.floor(+d.res.stone||0),iron:Math.floor(+d.res.iron||0)};
+        var opts=d.options||{}, n=0, busy={}, ret={}, out={};
+        Object.keys(opts).forEach(function(k){ var o=opts[k]; if(!o)return;
+          if(o.is_locked===false||o.is_locked==="false") n++;
+          var sq=o.scavenging_squad; if(sq){ busy[k]=true; var rt=parseFloat(sq.return_time||0); if(rt>0)ret[k]=rt;
+            var uc=sq.unit_counts||{}; Object.keys(uc).forEach(function(u){out[u]=(out[u]||0)+(parseInt(uc[u],10)||0);}); }
         });
-        // tiers are sequential, so the unlocked COUNT is the highest tier.
-        W.__twnl_scav=unlocked;
-
-        // Per-tier OUT state: which tiers have a squad deployed, when each
-        // returns (Unix sec), and the units that are out — so we can (a) show
-        // countdowns, (b) count TOTAL army (home + out), (c) forecast loot
-        // landing. return_time is in the squad; unlock_time is on the option.
-        var busy={}, ret={}, outUnits={};
-        Object.keys(opts).forEach(function(k){
-          var o=opts[k]; if(!o) return;
-          var sq=o.scavenging_squad;
-          if(sq){
-            busy[k]=true;
-            var rt=parseFloat(sq.return_time||0);
-            if(rt>0) ret[k]=rt;
-            var uc=sq.unit_counts||{};
-            Object.keys(uc).forEach(function(u){ outUnits[u]=(outUnits[u]||0)+(parseInt(uc[u],10)||0); });
-          }
-          var ut=parseFloat(o.unlock_time||0);
-          if(ut>0){ busy[k]=true; if(!ret[k]||ut<ret[k]) ret[k]=ut; }
-        });
-        W.__twnl_scav_busy=busy;
-        W.__twnl_scav_ret=ret;        // {tier: returnUnixSec}
-        W.__twnl_scav_out=outUnits;   // {unit: countOut} across scavenge squads
+        W.__twnl_scav=n; W.__twnl_scav_busy=busy; W.__twnl_scav_ret=ret; W.__twnl_scav_out=out;
       }).catch(function(){});
   }
-
-  // Read the live BUILD QUEUE depth from the main screen (read-only). Verified
-  // de256 markup: each active+queued build has a `buildorder_<slug>` class once;
-  // the count = slots used. TW gives 2 slots, so free = 2 - used. (game_data
-  // alone doesn't carry the queue — the bot read it off this screen too.)
   function fetchQueue(){
-    return fetch("/game.php?village="+vidParam()+"&screen=main",{credentials:"include"})
-      .then(function(r){return r.text();})
-      .then(function(h){
-        // Count `buildorder_<slug>` classes — one per active+queued build. Works
-        // across desktop + app skins (the class is in both). Scope to the queue
-        // table when present, else scan the whole page (the class only appears
-        // in the queue, so a global scan is safe).
-        var qm=h.match(/<table[^>]*id="build_queue"[^>]*>([\s\S]*?)<\/table>/i)
-            || h.match(/<tbody[^>]*id="buildqueue"[^>]*>([\s\S]*?)<\/tbody>/i);
-        var scope=qm?qm[1]:h;
-        var used=0, queued=[], mm, re=/buildorder_([a-z_]+)/gi;
-        while((mm=re.exec(scope))){ queued.push(mm[1].toLowerCase()); }
-        used=queued.length;
-        W.__twnl_qused=used; W.__twnl_qbuilds=queued;
+    return fetch("/game.php?village="+vid()+"&screen=main",{credentials:"include"})
+      .then(function(r){return r.text();}).then(function(h){
+        var cm=h.match(/csrf_token\s*[:=]\s*['"]([a-f0-9]+)['"]/i)||h.match(/"csrf"\s*:\s*"([a-f0-9]+)"/i)||h.match(/&h=([a-f0-9]+)/i); if(cm)W.__twnl_csrf=cm[1];
+        var qm=h.match(/<table[^>]*id="build_queue"[^>]*>([\s\S]*?)<\/table>/i)||h.match(/<tbody[^>]*id="buildqueue"[^>]*>([\s\S]*?)<\/tbody>/i);
+        // capture WHICH buildings are queued (count per slug) so the guide can
+        // treat a queued-but-unfinished build as done — effective level =
+        // live level + how many of that building sit in the queue. Without this
+        // the step wouldn't advance until the build COMPLETES, leaving the guide
+        // telling you to build something already queued.
+        var scope=qm?qm[1]:h, used=0, qb={}, mm, re=/buildorder_([a-z_]+)/gi;
+        while((mm=re.exec(scope))){ var slug=mm[1].toLowerCase(); qb[slug]=(qb[slug]||0)+1; used++; }
+        W.__twnl_qused=used; W.__twnl_qbuild=qb;   // {slug: countInQueue}
       }).catch(function(){});
   }
-  function queueUsed(){ return (typeof W.__twnl_qused==="number")?W.__twnl_qused:null; }
-  var BUILD_SLOTS=2;  // non-premium TW
+  function refreshAll(){ GD=W.game_data||GD; return Promise.all([fetchScav(),fetchQueue()]).then(render); }
 
-  // Read OUTGOING commands (farm attacks out) from the overview/place screen so
-  // we know troops are deployed + when they return. TW shows outgoing commands
-  // with a return countdown; we read the soonest-return as a timer. (Loot from
-  // farms is NOT predictable — only the timing is.) Caches:
-  //   W.__twnl_out_count = number of outgoing commands
-  //   W.__twnl_out_next  = soonest return Unix sec (or 0)
-  function fetchOutgoing(){
-    return fetch("/game.php?village="+vidParam()+"&screen=overview_villages&mode=commands&type=return",{credentials:"include"})
-      .then(function(r){return r.text();})
-      .then(function(h){
-        // each returning command has a data-endtime (Unix ms) timer; collect them
-        var ends=[], m, re=/data-endtime="(\d+)"/g;
-        while((m=re.exec(h))){ var v=parseInt(m[1],10); if(v>1e12) v=Math.floor(v/1000); ends.push(v); }
-        var now=Math.floor(Date.now()/1000);
-        ends=ends.filter(function(t){return t>now;}).sort(function(a,b){return a-b;});
-        W.__twnl_out_count=ends.length;
-        W.__twnl_out_next=ends.length?ends[0]:0;
-      }).catch(function(){});
+  // ── ACTIONS (markup-independent AJAX; same request the game makes) ───────
+  function toast(msg,good){
+    var p=document.getElementById("twng"); if(!p) return;
+    var el=document.getElementById("twng_toast");
+    if(!el){ el=document.createElement("div"); el.id="twng_toast"; el.style.cssText="margin:6px 0;padding:5px 7px;border-radius:5px;font-size:11px";
+      p.insertBefore(el, p.children[1]||null); }
+    el.style.background=good?"#d7e9c8":"#f6d3d3"; el.style.color=good?"#2a6":"#a00"; el.textContent=msg;
   }
-  // TOTAL army = home + out-scavenging (+ we can't read out-farm unit counts
-  // cheaply, so farm troops show as a command count, not unit totals).
-  function totalArmy(){
-    var home=troopsHome()||{}, out=W.__twnl_scav_out||{}, t={};
-    Object.keys(home).forEach(function(u){ t[u]=(t[u]||0)+home[u]; });
-    Object.keys(out).forEach(function(u){ t[u]=(t[u]||0)+out[u]; });
-    return t;
+  function doBuild(b,lvl){
+    if(!AUTO_BUILD){ W.location.href="/game.php?village="+vid()+"&screen="+(b==="place"?"place":"main"); return; }
+    toast("building "+(BLABEL[b]||b)+" "+lvl+"…",true);
+    var mu="/game.php?village="+vid()+"&screen=main";
+    function direct(){
+      var u="/game.php?village="+vid()+"&screen=main&ajaxaction=upgrade_building&type=main";
+      var body=new URLSearchParams(); body.set("id",b); body.set("force","1"); body.set("destroy","0"); body.set("source",vid()); if(W.__twnl_csrf)body.set("h",W.__twnl_csrf);
+      return fetch(u,{method:"POST",credentials:"include",headers:{"X-Requested-With":"XMLHttpRequest","TribalWars-Ajax":"1","Content-Type":"application/x-www-form-urlencoded; charset=UTF-8","Accept":"application/json, text/javascript, */*; q=0.01"},body:body.toString()})
+        .then(function(r){return r.text();}).then(function(txt){ var j=null; try{j=JSON.parse(txt);}catch(e){}
+          if(j&&(j.error||j.errors)){ toast("build: "+String(j.error||j.errors).slice(0,90),false); return; }
+          toast("✓ queued "+(BLABEL[b]||b)+" "+lvl,true); setTimeout(refreshAll,700); });
+    }
+    fetch(mu,{credentials:"include"}).then(function(r){return r.text();}).then(function(h){
+      var cm=h.match(/csrf_token\s*[:=]\s*['"]([a-f0-9]+)['"]/i)||h.match(/"csrf"\s*:\s*"([a-f0-9]+)"/i)||h.match(/&h=([a-f0-9]+)/i); if(cm)W.__twnl_csrf=cm[1];
+      var BAD=/\b(premium|instant|kurzbau|buy)\b/i, link=null, hm, hre=/href="([^"]*action=upgrade[^"]*)"/gi;
+      while((hm=hre.exec(h))){ var href=hm[1].replace(/&amp;/g,"&"); var idm=href.match(/[?&]id=([a-z_]+)/i); var tym=href.match(/[?&]type=([a-z_]+)/i);
+        if(!idm||idm[1].toLowerCase()!==b)continue; if(tym&&BAD.test(tym[1]))continue; link=href; break; }
+      if(link){ if(link.charAt(0)!=="/")link="/"+link.replace(/^.*game\.php/,"game.php");
+        return fetch(link,{credentials:"include"}).then(function(){ toast("✓ queued "+(BLABEL[b]||b)+" "+lvl,true); setTimeout(refreshAll,700); }); }
+      return direct();
+    }).catch(function(e){ toast("build failed: "+e,false); });
   }
-  // human countdown from a future Unix sec
-  function countdown(ts){
-    var s=Math.max(0, Math.round(ts-Date.now()/1000));
-    var m=Math.floor(s/60), h=Math.floor(m/60);
-    if(h>0) return h+"h"+(m%60)+"m";
-    if(m>0) return m+"m"+(s%60)+"s";
-    return s+"s";
+  function doRecruit(toN){
+    var have=totalSpears(), n=Math.max(0,toN-have);
+    if(n<=0){ toast("already have "+have+" spears",true); setTimeout(refreshAll,300); return; }
+    if(!AUTO_BUILD){ W.location.href="/game.php?village="+vid()+"&screen=barracks"; return; }
+    toast("recruiting "+n+" spears (to "+toN+")…",true);
+    fetch("/game.php?village="+vid()+"&screen=barracks",{credentials:"include"}).then(function(r){return r.text();}).then(function(h){
+      var fm=h.match(/<form[^>]*action="([^"]+)"[^>]*>([\s\S]*?)<\/form>/gi), body=null, action=null;
+      if(fm)for(var i=0;i<fm.length;i++){ var am=fm[i].match(/action="([^"]+)"/i); var act=am?am[1].replace(/&amp;/g,"&"):"";
+        if(/train|recruit/i.test(act)&&/name="spear"/i.test(fm[i])){ action=act; body=fm[i]; break; } }
+      if(!action){ toast("no recruit form (botschutz?)",false); return; }
+      var data=new URLSearchParams(), im, re=/<input[^>]*name="([^"]+)"[^>]*value="([^"]*)"/gi; while((im=re.exec(body)))data.set(im[1],im[2]);
+      data.set("spear",String(n));
+      ["sword","axe","archer","spy","light","heavy","marcher","ram","catapult"].forEach(function(u){ if(new RegExp('name="'+u+'"').test(body))data.set(u,"0"); });
+      if(action.charAt(0)!=="/")action="/"+action.replace(/^.*game\.php/,"game.php");
+      return fetch(action,{method:"POST",credentials:"include",headers:{"Content-Type":"application/x-www-form-urlencoded"},body:data.toString()})
+        .then(function(){ toast("✓ queued "+n+" spears",true); setTimeout(refreshAll,700); });
+    }).catch(function(e){ toast("recruit failed: "+e,false); });
   }
-
-  // Read Farm Assistant TEMPLATES (A/B) + their template_ids + the AJAX
-  // send_units_link from the am_farm page (read-only). Ported from FarmBot's
-  // _parse_templates + _extract_send_units_link. Caches:
-  //   W.__twnl_farm_tpl     = {a:{id,units}, b:{id,units}}
-  //   W.__twnl_farm_sendurl = Accountmanager.send_units_link
-  function fetchFarmTemplates(){
-    return fetch("/game.php?village="+vidParam()+"&screen=am_farm",{credentials:"include"})
-      .then(function(r){return r.text();})
-      .then(function(h){
-        // send_units_link (the AJAX farm endpoint)
-        var su=h.match(/Accountmanager\.send_units_link\s*=\s*['"]([^'"]+)['"]/);
-        if(su) W.__twnl_farm_sendurl=su[1].replace(/&amp;/g,"&");
-
-        // templates: scope to loot_assistant_templates table, walk rows.
-        var tblM=h.match(/<table[^>]*class="[^"]*loot_assistant_templates[^"]*"[^>]*>([\s\S]*?)<\/table>/i);
-        var body=tblM?tblM[1]:h;
-        var tpl={}, label=null;
-        var rowRe=/<tr([^>]*)>([\s\S]*?)<\/tr>/gi, rm;
-        while((rm=rowRe.exec(body))){
-          var rb=rm[2];
-          var ic=rb.match(/farm_icon_([ab])/i);
-          if(ic){ label=ic[1].toLowerCase(); continue; }
-          // a unit-input row: name="spear[<tid>]" etc, with template[<tid>][id]
-          if(label && /name="(?:spear|sword|axe|spy|light|heavy|ram|catapult)\[\d+\]"/i.test(rb)){
-            var idm=rb.match(/name="template\[(\d+)\]\[id\]"\s+value="(\d+)"/i);
-            var tid=idm?idm[2]:null;
-            var units={}, um, ure=/name="(spear|sword|axe|archer|spy|light|heavy|marcher|ram|catapult)\[\d+\]"[^>]*value="(\d+)"/gi;
-            while((um=ure.exec(rb))){ units[um[1]]=parseInt(um[2],10)||0; }
-            if(tid){ tpl[label]={id:tid, units:units}; }
-            label=null;
-          }
-        }
-        if(Object.keys(tpl).length) W.__twnl_farm_tpl=tpl;
-      }).catch(function(){});
+  function packSquads(th,tiers){
+    var tot=0; Object.keys(th).forEach(function(u){tot+=(th[u]||0)*(CARRY[u]||0);});
+    var split=optimalSplit(tot,tiers), pool={}; Object.keys(th).forEach(function(u){ if(CARRY[u]>0)pool[u]=th[u]||0; });
+    var byCarry=Object.keys(pool).sort(function(a,b){return CARRY[b]-CARRY[a];});
+    var order=tiers.slice().sort(function(a,b){return split[b]-split[a];}), out=[];
+    order.forEach(function(t){ var budget=split[t],counts={},filled=0;
+      byCarry.forEach(function(u){ if(pool[u]<=0)return; var n=Math.min(pool[u],Math.floor(Math.max(0,budget-filled)/CARRY[u])); if(n>0){counts[u]=n;pool[u]-=n;filled+=n*CARRY[u];} });
+      if(filled>0)out.push({option_id:t,unit_counts:counts,carry:filled}); });
+    return out;
   }
-
-  // Read the REAL per-spear recruit time (seconds) from the barracks page, so
-  // the troop-time display is exact, not formula-estimated. TW shows the unit
-  // build time in the recruit row; we try several markup variants. Cached on
-  // W.__twnl_spearsec. (If all parses miss, the formula fallback stays in use —
-  // paste the barracks console dump and I'll lock the exact selector.)
-  function fetchTrainTime(){
-    return fetch("/game.php?village="+vidParam()+"&screen=barracks",{credentials:"include"})
-      .then(function(r){return r.text();})
-      .then(function(h){
-        var sec=null;
-        // variant A: inline unit JSON  "spear":{..."build_time":1020...}
-        var a=h.match(/"spear"\s*:\s*\{[^}]*?build_time"?\s*:\s*"?(\d+)/i);
-        if(a) sec=parseInt(a[1],10);
-        // variant B: data-build_time / data-build-time on a spear element
-        if(!sec){ var b=h.match(/spear[^>]*data-build[_-]?time="(\d+)"/i)
-                     || h.match(/data-unit="spear"[^>]*data-build[_-]?time="(\d+)"/i);
-                  if(b) sec=parseInt(b[1],10); }
-        // variant C: H:MM:SS duration text in the spear recruit row
-        if(!sec){ var c=h.match(/spear[\s\S]{0,300}?(\d+):(\d{2}):(\d{2})/i);
-                  if(c) sec=(+c[1])*3600+(+c[2])*60+(+c[3]); }
-        if(sec && sec>0 && sec<100000) W.__twnl_spearsec=sec;
-      }).catch(function(){});
+  function doScavenge(opts){
+    opts=opts||{}; var th=opts.troops||troopsHome(), tiers=[]; for(var t=1;t<=scavTiers();t++)tiers.push(t);
+    if(!th||!tiers.length){ toast("no troops/tiers",false); return; }
+    var busy=W.__twnl_scav_busy||{}, send=tiers.filter(function(t){return !busy[t];});
+    if(!send.length){ toast("all tiers already out",false); return; }
+    if(!W.__twnl_csrf){ toast("no csrf — tap 🔄",false); return; }
+    var squads=packSquads(th,send).filter(function(s){return s.carry>0;}); if(!squads.length){ toast("no troops home",false); return; }
+    var data=new URLSearchParams();
+    squads.forEach(function(s,i){ var pre="squad_requests["+i+"]";
+      data.set(pre+"[village_id]",+vid()); data.set(pre+"[option_id]",s.option_id); data.set(pre+"[use_premium]","false");
+      data.set(pre+"[candidate_squad][carry_max]",Math.round(s.carry));
+      Object.keys(s.unit_counts).forEach(function(u){ data.set(pre+"[candidate_squad][unit_counts]["+u+"]",s.unit_counts[u]); }); });
+    data.set("h",W.__twnl_csrf);
+    toast("sending "+squads.length+" squad(s)…",true);
+    fetch("/game.php?village="+vid()+"&screen=scavenge_api&ajaxaction=send_squads",
+      {method:"POST",credentials:"include",headers:{"X-Requested-With":"XMLHttpRequest","TribalWars-Ajax":"1","Content-Type":"application/x-www-form-urlencoded; charset=UTF-8","Accept":"application/json, text/javascript, */*; q=0.01"},body:data.toString()})
+      .then(function(r){return r.json();}).then(function(j){
+        if(j&&j.response!==false){ toast("✓ scavenge sent",true); setTimeout(refreshAll,700); } else toast("scavenge rejected (busy?)",false);
+      }).catch(function(e){ toast("scavenge failed: "+e,false); });
   }
 
-  // Find POINT-BLANK barbs (owner 0) within the farm-vs-scavenge crossover —
-  // the only barbs the math says are worth farming over scavenging. Reads the
-  // public village.txt (same read-only source as tw_conquer.js). Caches the
-  // nearby barb list on W.__twnl_barbs = [{x,y,dist}], nearest first.
-  function fetchBarbs(){
-    var v=GD.village||{}; var mx=+v.x, my=+v.y;
-    if(!mx||!my) return Promise.resolve();
-    return fetch(location.protocol+"//"+location.host+"/map/village.txt",{credentials:"include"})
-      .then(function(r){return r.text();})
-      .then(function(txt){
-        var near=[]; var lines=txt.split("\n");
-        for(var i=0;i<lines.length;i++){
-          var p=lines[i].split(",");
-          if(p.length<5) continue;
-          if(p[4]!=="0") continue;                 // owner 0 = barbarian
-          var bx=+p[2], by=+p[3];
-          var d=Math.sqrt((bx-mx)*(bx-mx)+(by-my)*(by-my));
-          if(d<=FARM_CROSSOVER_FIELDS+0.5){ near.push({x:bx,y:by,dist:d,id:p[0]}); }
-        }
-        near.sort(function(a,b){return a.dist-b.dist;});
-        W.__twnl_barbs=near;
-      }).catch(function(){});
-  }
-
-  // ── PANEL ────────────────────────────────────────────────────────────────
+  // ── THE GUIDE — one current step ─────────────────────────────────────────
   function render(){
-    var r=liveRes(), lv=liveLevels(), th=troopsHome();
-    var idx=currentIndex(lv);
-    var done=idx>=TL.length;
+    var r=liveRes(), lv=liveLevels(), idx=currentIndex(lv), done=idx>=TL.length;
+    var old=document.getElementById("twng"); if(old)old.remove();
+    var p=document.createElement("div"); p.id="twng";
+    p.style.cssText=["position:fixed","z-index:2147483647","bottom:calc(10px + env(safe-area-inset-bottom,0px))","left:8px","width:250px",
+      "background:#f4e4bc","border:2px solid #804000","border-radius:8px","font:12px/1.4 Verdana,Arial,sans-serif","color:#000",
+      "box-shadow:0 3px 12px rgba(0,0,0,.45)","padding:9px"].join(";");
 
-    var old=document.getElementById("twnl"); if(old) old.remove();
-    var p=document.createElement("div"); p.id="twnl";
-    p.style.cssText=["position:fixed","z-index:2147483647",
-      "bottom:calc(10px + env(safe-area-inset-bottom,0px))","left:8px","width:252px",
-      "background:#f4e4bc","border:2px solid #804000","border-radius:8px",
-      "font:12px/1.35 Verdana,Arial,sans-serif","color:#000",
-      "box-shadow:0 3px 12px rgba(0,0,0,.45)","padding:8px","max-height:82vh","overflow:auto"].join(";");
-
-    var head=document.createElement("div");
-    head.style.cssText="font-weight:bold;display:flex;justify-content:space-between;align-items:center;margin-bottom:4px";
+    // header: progress + refresh + close
+    var head=document.createElement("div"); head.style.cssText="display:flex;justify-content:space-between;align-items:center;font-weight:bold;margin-bottom:5px";
     head.innerHTML="<span>👑 Noble Guide</span>";
-    var ctl=document.createElement("span"); ctl.style.cssText="display:flex;gap:8px;align-items:center";
-    ctl.innerHTML="<span style='opacity:.6;font-weight:normal'>"+Math.round(100*idx/TL.length)+"%</span>";
-    // prominent header refresh — re-pull EVERYTHING (res/levels via game_data +
-    // scavenge/troops/queue via fetch) then re-render.
-    var rfh=document.createElement("span"); rfh.textContent="🔄";
-    rfh.title="refresh all live data";
-    rfh.style.cssText="cursor:pointer;font-size:14px";
-    rfh.onclick=function(){ rfh.textContent="⏳"; W.__twnl_farm_sent={}; /* manual refresh re-enables farming all barbs */ softRefresh().then(function(){ /* render() inside softRefresh repaints */ }); };
-    ctl.appendChild(rfh);
-    var x=document.createElement("span"); x.textContent="✕"; x.style.cssText="cursor:pointer;padding:0 3px";
-    x.onclick=function(){p.remove();}; ctl.appendChild(x);
-    head.appendChild(ctl); p.appendChild(head);
+    var ctl=document.createElement("span"); ctl.style.cssText="display:flex;gap:9px;align-items:center;font-weight:normal";
+    ctl.innerHTML="<span style='opacity:.6'>"+Math.round(100*idx/TL.length)+"%</span>";
+    var rfh=document.createElement("span"); rfh.textContent="🔄"; rfh.style.cssText="cursor:pointer;font-size:15px"; rfh.onclick=function(){ rfh.textContent="⏳"; refreshAll(); };
+    var cls=document.createElement("span"); cls.textContent="✕"; cls.style.cssText="cursor:pointer"; cls.onclick=function(){p.remove();};
+    ctl.appendChild(rfh); ctl.appendChild(cls); head.appendChild(ctl); p.appendChild(head);
 
-    // resources + the timeline's expectation at this step (the CHECK)
-    var rl=document.createElement("div"); rl.style.cssText="font-size:10px;opacity:.75;margin-bottom:4px";
-    rl.innerHTML="🪵"+r.wood+" 🧱"+r.stone+" ⚙️"+r.iron+" · pop "+r.pop+"/"+r.popMax;
-    p.appendChild(rl);
-
-    // TOTAL to first noble (net of 150/150/100 refunds) + what's LEFT from here.
-    var tot=planTotals(idx);
-    function k(n){ return n>=1000?(Math.round(n/100)/10)+"k":n; }
-    var tl=document.createElement("div");
-    tl.style.cssText="font-size:10px;opacity:.7;margin-bottom:5px;cursor:pointer";
-    tl.title="net resources (after refunds) — tap for full breakdown";
-    var sumLeft=tot.remNet.w+tot.remNet.s+tot.remNet.i;
-    tl.innerHTML="🎯 to noble: <b>"+k(sumLeft)+"</b> net left "+
-      "("+k(tot.remNet.w)+"/"+k(tot.remNet.s)+"/"+k(tot.remNet.i)+")";
-    tl.onclick=function(){
-      tl.innerHTML="🎯 to noble (net of +150/150/100 refunds):<br>"+
-        "&nbsp;left: "+k(tot.remNet.w)+"/"+k(tot.remNet.s)+"/"+k(tot.remNet.i)+" = "+k(sumLeft)+"<br>"+
-        "&nbsp;full plan net: "+k(tot.net.w)+"/"+k(tot.net.s)+"/"+k(tot.net.i)+" = "+k(tot.net.w+tot.net.s+tot.net.i)+"<br>"+
-        "&nbsp;gross "+k(tot.gross.w+tot.gross.s+tot.gross.i)+" − refunds "+k(tot.refund.w+tot.refund.s+tot.refund.i);
-    };
-    p.appendChild(tl);
-
-    if (!done){
-      var cur=TL[idx];
-      // CHECK: compare live res to this step's expected on-hand resources
-      var chk=document.createElement("div");
-      chk.style.cssText="font-size:10px;margin-bottom:5px;padding:4px;border-radius:4px;background:#fff;border:1px solid #ddd";
-      var dW=r.wood-cur[T_EW], dS=r.stone-cur[T_ES], dI=r.iron-cur[T_EI];
-      function tag(d){ return d>=-100?"✓":(d< -1000?"⚠⚠":"⚠"); }
-      var behind=[]; if(dW< -500)behind.push("wood"); if(dS< -500)behind.push("clay"); if(dI< -500)behind.push("iron");
-      chk.innerHTML="<b>plan check</b> (vs +"+cur[T_AT]+"h):<br>"+
-        "wood "+tag(dW)+" clay "+tag(dS)+" iron "+tag(dI)+
-        (behind.length?"<br><span style='color:#b00'>behind on "+behind.join(", ")+" → scavenge more / wait</span>"
-                       :"<br><span style='color:#2a8'>on track ✓</span>");
-      p.appendChild(chk);
+    if(done){
+      var d=document.createElement("div"); d.style.cssText="padding:8px;background:#d7e9c8;border-radius:6px;text-align:center";
+      d.innerHTML="✅ <b>Plan complete!</b><br>Build the Academy, mint a gold coin at the Marktplatz, recruit your noble.";
+      p.appendChild(d); document.body.appendChild(p); return;
     }
 
-    var hdr=document.createElement("div"); hdr.style.cssText="font-size:10px;font-weight:bold;opacity:.6;margin:2px 0 4px";
-    hdr.textContent="DO ALL IN PARALLEL ↓"; p.appendChild(hdr);
-    function card(bg,br){ var d=document.createElement("div");
-      d.style.cssText="background:"+bg+";border:1px solid "+br+";border-radius:6px;padding:6px;margin-bottom:5px"; return d; }
-    function afford(cw,cs,ci){ return r.wood>=cw&&r.stone>=cs&&r.iron>=ci; }
-    function waitMin(cw,cs,ci){ var v=GD.village||{};
-      var pw=(v.wood_prod||0)*3600, ps=(v.stone_prod||0)*3600, pi=(v.iron_prod||0)*3600;
-      function nd(h,w,p){ return h>=w?0:(p<=0?Infinity:(w-h)/p*60); }
-      return Math.ceil(Math.max(nd(r.wood,cw,pw),nd(r.stone,cs,ps),nd(r.iron,ci,pi))); }
+    var cur=TL[idx], typ=cur[T_TYPE], b=cur[T_B], lvl=cur[T_LV];
 
-    // ── 1. BUILD track ── TW has 2 build slots, so show the next TWO plan
-    // builds (slot 1 + slot 2) and keep BOTH queued. The optimizer's timeline
-    // already assumed 2 parallel slots, so filling both is what hits ~9.6d —
-    // leaving slot 2 idle silently slows the whole rush.
-    var used=queueUsed();                       // live queue depth (null if unread)
-    var free=(used===null)?BUILD_SLOTS:Math.max(0,BUILD_SLOTS-used);
-    var bc=card("#fff7e0","#c0a060");
-    bc.innerHTML="<div style='font-size:10px;opacity:.6'>🏗️ BUILD — "+
-      (used===null?"2 slots":(used+"/"+BUILD_SLOTS+" used, "+free+" free"))+
-      (AUTO_BUILD?", tap to queue ⚠️":", tap to open")+"</div>";
-    if (done){ bc.innerHTML+="✅ done — build Academy & mint coin."; }
-    else if (free===0){ bc.innerHTML+="<span style='opacity:.7'>both slots busy — next: "+
-      (function(){var bx=nextBuildIdx(lv,idx);return bx<0?"—":(BLABEL[TL[bx][T_B]]||TL[bx][T_B])+" "+TL[bx][T_LV];})()+"</span>"; }
+    // THE STEP — one big card
+    var step=document.createElement("div"); step.style.cssText="background:#fff7e0;border:2px solid #c0a060;border-radius:7px;padding:10px;margin-bottom:6px";
+    var stepN="Step "+(idx+1)+"/"+TL.length;
+    if(typ===1){
+      var cw=cur[T_CW],cs=cur[T_CS],ci=cur[T_CI],cp=cur[T_CP];
+      var ok=(r.wood>=cw&&r.stone>=cs&&r.iron>=ci);
+      var popBlock=(b!=="farm"&&cp&&(r.pop+cp>r.popMax));
+      var qUsed=(typeof W.__twnl_qused==="number")?W.__twnl_qused:0;
+      var qFull=qUsed>=2;   // both build slots occupied
+      step.innerHTML="<div style='font-size:10px;opacity:.6'>"+stepN+" · NEXT</div>"+
+        "<div style='font-size:16px;font-weight:bold;margin:2px 0'>🏗️ "+(BLABEL[b]||b)+" → "+lvl+"</div>"+
+        "<div style='font-size:11px;opacity:.7'>cost "+cw+"/"+cs+"/"+ci+(cp?" · "+cp+" pop":"")+"</div>"+
+        (qFull?"<div style='font-size:12px;margin-top:3px;opacity:.8'>⏳ both build slots busy — finishing queued builds first</div>"
+          :popBlock?"<div style='color:#b00;font-size:12px;margin-top:3px'>⚠ pop-capped — a Bauernhof step should come first</div>"
+          :ok?"<div style='color:#2a8;font-size:12px;margin-top:3px;font-weight:bold'>✓ affordable — build it now</div>"
+              :"<div style='font-size:12px;margin-top:3px;opacity:.8'>⏳ need more "+(r.wood<cw?"wood ":"")+(r.stone<cs?"clay ":"")+(r.iron<ci?"iron":"")+"— keep scavenging</div>");
+      var canBuild=ok&&!popBlock&&!qFull;
+      var go=document.createElement("div"); go.style.cssText="margin-top:7px;text-align:center;padding:7px;border-radius:5px;cursor:pointer;font-weight:bold;"+(canBuild?"background:#5a9;color:#fff":"background:#ddd;color:#777");
+      go.textContent=AUTO_BUILD?(canBuild?"⚡ BUILD NOW":(qFull?"queue full":"build (not ready)")):"→ open & build";
+      go.onclick=function(){ doBuild(b,lvl); };
+      step.appendChild(go);
+    } else if(typ===0){
+      step.innerHTML="<div style='font-size:10px;opacity:.6'>"+stepN+" · NEXT</div>"+
+        "<div style='font-size:16px;font-weight:bold;margin:2px 0'>🔓 Unlock Raubzug tier "+lvl+"</div>"+
+        "<div style='font-size:11px;opacity:.7'>cost "+cur[T_CW]+"/"+cur[T_CS]+"/"+cur[T_CI]+"</div>"+
+        "<div style='font-size:12px;margin-top:3px;opacity:.8'>opens the next scavenge option (more loot/run)</div>";
+      var go2=document.createElement("a"); go2.href="/game.php?village="+vid()+"&screen=place&mode=scavenge";
+      go2.style.cssText="display:block;margin-top:7px;text-align:center;padding:7px;border-radius:5px;background:#789;color:#fff;font-weight:bold;text-decoration:none";
+      go2.textContent="→ open Raubzug & unlock";
+      step.appendChild(go2);
+    } else { // recruit
+      var haveSp=totalSpears(), nNeed=lvl-haveSp;
+      step.innerHTML="<div style='font-size:10px;opacity:.6'>"+stepN+" · NEXT</div>"+
+        "<div style='font-size:16px;font-weight:bold;margin:2px 0'>⚔️ Recruit spears → "+lvl+"</div>"+
+        "<div style='font-size:11px;opacity:.7'>have "+haveSp+", recruit "+Math.max(0,nNeed)+" more · feeds scavenge carry</div>";
+      var go3=document.createElement("div"); go3.style.cssText="margin-top:7px;text-align:center;padding:7px;border-radius:5px;cursor:pointer;font-weight:bold;background:#b97;color:#fff";
+      go3.textContent=AUTO_BUILD?"⚡ RECRUIT to "+lvl:"→ open barracks";
+      go3.onclick=function(){ doRecruit(lvl); };
+      step.appendChild(go3);
+    }
+    p.appendChild(step);
+
+    // next-up preview (faint, 3 steps)
+    var prev=[]; for(var j=idx+1;j<Math.min(idx+4,TL.length);j++){ var s=TL[j];
+      prev.push(s[T_TYPE]===0?"unlock t"+s[T_LV]:s[T_TYPE]===2?"recruit to "+s[T_LV]:(BLABEL[s[T_B]]||s[T_B])+" "+s[T_LV]); }
+    if(prev.length){ var pv=document.createElement("div"); pv.style.cssText="font-size:10px;opacity:.55;margin-bottom:6px"; pv.innerHTML="next: "+prev.join(" → "); p.appendChild(pv); }
+
+    // ── STANDING: keep scavenging (background income, not a step) ──
+    var tiers=[]; for(var t=1;t<=scavTiers();t++)tiers.push(t);
+    var th=troopsHome();
+    var sc=document.createElement("div"); sc.style.cssText="background:#eaf3e0;border:1px solid #9bbf7a;border-radius:6px;padding:6px;margin-bottom:5px;font-size:11px";
+    if(!tiers.length){ sc.innerHTML="<b>⛏️ Scavenge</b><br><span style='opacity:.7'>unlock tier 1 first (a step above)</span>"; }
     else {
-      // collect the next `free` distinct pending builds (skip scav rows)
-      var picks=[]; var fromI=idx;
-      for (var sN=0; sN<free; sN++){
-        var bidx=nextBuildIdx(lv,fromI);
-        // skip past any earlier picks of the same building+level
-        while (bidx>=0 && picks.some(function(pp){return pp.idx===bidx;})) bidx=nextBuildIdx(lv,bidx+1);
-        if (bidx<0) break;
-        picks.push({idx:bidx, row:TL[bidx]});
-        fromI=bidx+1;
-      }
-      // running resource claim so slot 2's affordability accounts for slot 1
-      var rem={wood:r.wood,stone:r.stone,iron:r.iron}, popRem=r.popMax-r.pop;
-      picks.forEach(function(pk,si){
-        var row=pk.row, b=row[T_B], lvl=row[T_LV];
-        var cw=row[T_CW],cs=row[T_CS],ci=row[T_CI],cp=row[T_CP];
-        var popBlock=(b!=="farm"&&cp&&(cp>popRem));
-        var ok=(rem.wood>=cw&&rem.stone>=cs&&rem.iron>=ci);
-        if(ok&&!popBlock){ rem.wood-=cw; rem.stone-=cs; rem.iron-=ci; popRem-=cp; }
-        var rowDiv=document.createElement("div");
-        rowDiv.style.cssText="padding:4px 0;border-top:"+(si?"1px dotted #cb9":"none")+";cursor:pointer";
-        rowDiv.innerHTML="<b>slot "+(si+1)+": "+(BLABEL[b]||b)+" → "+lvl+"</b> "+
-          (popBlock?"<span style='color:#b00'>⚠ pop-cap</span>"
-            : ok?"<span style='color:#2a8'>✓ now</span>"
-            : "<span style='opacity:.7'>⏳ ~"+waitMin(cw,cs,ci)+"min</span>")+
-          "<div style='font-size:10px;opacity:.6'>cost "+cw+"/"+cs+"/"+ci+
-            " · refund +"+LEVEL_REWARD.wood+"/"+LEVEL_REWARD.stone+"/"+LEVEL_REWARD.iron+"</div>";
-        rowDiv.onclick=function(){ doBuild(b,lvl); };
-        bc.appendChild(rowDiv);
-      });
-      // one-tap "queue both" when both are affordable now
-      if (AUTO_BUILD && picks.length>=2){
-        var both=document.createElement("div");
-        both.style.cssText="margin-top:4px;text-align:center;padding:3px;background:#c0a060;border-radius:4px;cursor:pointer;font-weight:bold";
-        both.textContent="⚡ queue both slots";
-        both.onclick=function(){
-          doBuild(picks[0].row[T_B],picks[0].row[T_LV]);
-          // small stagger so the second scrape sees the first already queued
-          setTimeout(function(){ doBuild(picks[1].row[T_B],picks[1].row[T_LV]); }, 900);
-        };
-        bc.appendChild(both);
-      }
-    }
-    p.appendChild(bc);
-
-    // ── 2. SCAVENGE-UNLOCK track ──
-    var nextTier=null;
-    for (var ti=idx; ti<TL.length; ti++){ if(TL[ti][T_TYPE]===0 && scavTiers()<TL[ti][T_LV]){ nextTier=TL[ti]; break; } }
-    if (nextTier){
-      var uc=card("#eef0ff","#9aa6e0"); var ok2=afford(nextTier[T_CW],nextTier[T_CS],nextTier[T_CI]);
-      uc.innerHTML="<div style='font-size:10px;opacity:.6'>🔓 SCAVENGE UNLOCK (parallel)</div>"+
-        "<b>Unlock tier "+nextTier[T_LV]+"</b> "+(ok2?"<span style='color:#2a8'>✓ now</span>":"<span style='opacity:.7'>save "+nextTier[T_CW]+"/"+nextTier[T_CS]+"/"+nextTier[T_CI]+"</span>");
-      var ua=document.createElement("a"); ua.href="/game.php?village="+vidParam()+"&screen=place&mode=scavenge";
-      ua.textContent=" → open"; ua.style.cssText="font-size:11px;color:#36c"; uc.appendChild(ua);
-      p.appendChild(uc);
-    }
-
-    // ── 3. SCAVENGE-SEND track (free) ──
-    var sc=card("#eaf3e0","#9bbf7a"); var tiers=[]; for(var t=1;t<=scavTiers();t++)tiers.push(t);
-    if(!tiers.length){ sc.innerHTML="<div style='font-size:10px;opacity:.6'>⛏️ SCAVENGE</div>No tiers yet."; }
-    else if(!th){ sc.innerHTML="<div style='font-size:10px;opacity:.6'>⛏️ SCAVENGE</div>Reading troops… tap 🔄."; }
-    else {
-      var carry=0; Object.keys(th).forEach(function(u){carry+=(th[u]||0)*(CARRY[u]||0);});
-      var split=optimalSplit(carry,tiers), L=["<div style='font-size:10px;opacity:.6'>⛏️ SCAVENGE — send (free, max loot/h)</div>"], lph=0;
-      tiers.slice().reverse().forEach(function(t){ var c=Math.round(split[t]); if(c<=0)return;
-        lph+=scavRate(c,SCAV_LOOT[t])*3600; L.push("• T"+t+": ~"+c+" carry ("+Math.round(scavDuration(c,SCAV_LOOT[t])/60)+"min)"); });
-      L.push("<span style='opacity:.6'>≈ "+Math.round(lph)+" res/h</span>");
-      // SQUADS OUT: countdown + forecast loot landing (scavenge loot IS known:
-      // carry × loot_factor, split 1/3 per resource). This is the "when + how
-      // much resources arrive" the perfect guide needs — exact for scavenge.
-      var ret=W.__twnl_scav_ret||{}, out=W.__twnl_scav_out||{};
-      var outTiers=Object.keys(ret);
-      if(outTiers.length){
-        L.push("<span style='font-size:10px;opacity:.6'>— squads out —</span>");
-        // carry of all out troops (we don't know per-tier carry split post-hoc,
-        // so approximate each out tier's loot from total out-carry / #out tiers)
-        var outCarry=0; Object.keys(out).forEach(function(u){ outCarry+=(out[u]||0)*(CARRY[u]||0); });
-        outTiers.sort(function(a,b){return ret[a]-ret[b];}).forEach(function(tk){
-          var lf=SCAV_LOOT[+tk]||0;
-          // per-tier loot: best-effort = its share of out-carry × loot_factor
-          var tierCarry=outCarry/outTiers.length;
-          var loot=Math.round(tierCarry*lf);
-          var per=Math.round(loot/3);
-          L.push("• T"+tk+" back in <b>"+countdown(ret[tk])+"</b> → +"+per+"/"+per+"/"+per);
-        });
-      }
-      sc.innerHTML=L.join("<br>");
-      if(AUTO_BUILD){
-        var bestLf=Math.max.apply(null, tiers.map(function(t){return SCAV_LOOT[t];}));
-        // ── MODE 1: UNBLOCK NEXT BUILD ── shortest run earning enough for the
-        // next pending build(s). The rush is build-blocked, so this is the
-        // primary min/max move: build sooner, accept the smaller per-run loot.
-        var nbx=nextBuildIdx(lv,idx);
-        if(nbx>=0){
-          var nrow=TL[nbx];
-          // need = the per-resource shortfall × 3 (scavenge splits loot evenly),
-          // i.e. enough TOTAL loot so each resource covers the next build cost.
-          var needW=Math.max(0,nrow[T_CW]-r.wood), needS=Math.max(0,nrow[T_CS]-r.stone), needI=Math.max(0,nrow[T_CI]-r.iron);
-          var needPer=Math.max(needW,needS,needI);     // worst resource sets the bar
-          var needLoot=needPer*3;                       // loot is split /3 per res
-          if(needLoot>0){
-            var wantCarry=carryForLoot(needLoot,bestLf);
-            var sub=troopsForCarry(th, wantCarry);
-            var subCarry=0; Object.keys(sub).forEach(function(u){subCarry+=sub[u]*CARRY[u];});
-            var runH=scavDuration(subCarry,bestLf)/3600;
-            var b1=document.createElement("div");
-            b1.style.cssText="margin-top:4px;text-align:center;padding:4px;background:#7aa86a;border-radius:4px;cursor:pointer;font-weight:bold;color:#fff";
-            b1.innerHTML="⚡ unblock "+(BLABEL[nrow[T_B]]||nrow[T_B])+" "+nrow[T_LV]+
-              "<div style='font-size:10px;font-weight:normal'>"+runH.toFixed(1)+"h → +~"+Math.round(subCarry*bestLf)+" (sends ~"+Object.keys(sub).reduce(function(a,u){return a+sub[u];},0)+" troops)</div>";
-            b1.onclick=function(){ doSendScavenge({troops:sub, mode:"unblock"}); };
-            sc.appendChild(b1);
-          } else {
-            var note0=document.createElement("div");
-            note0.style.cssText="margin-top:4px;font-size:10px;color:#2a8;text-align:center";
-            note0.textContent="next build already affordable — no scavenge needed for it";
-            sc.appendChild(note0);
+      var ret=W.__twnl_scav_ret||{}, outT=Object.keys(ret), busy=W.__twnl_scav_busy||{};
+      var idleTiers=tiers.filter(function(t){return !busy[t];});
+      var carry=0; if(th)Object.keys(th).forEach(function(u){carry+=(th[u]||0)*(CARRY[u]||0);});
+      var html="<b>⛏️ Keep scavenging</b> <span style='opacity:.6'>(continuous income)</span>";
+      if(outT.length){ html+="<br>"; outT.sort(function(a,b){return ret[a]-ret[b];}).forEach(function(tk){ html+="T"+tk+" back "+countdown(ret[tk])+" · "; }); html=html.replace(/ · $/,""); }
+      if(idleTiers.length && carry>0){
+        var sp=optimalSplit(carry,idleTiers), lph=0; idleTiers.forEach(function(t){lph+=scavRate(sp[t]||0,SCAV_LOOT[t])*3600;});
+        html+="<br><span style='opacity:.7'>"+idleTiers.length+" tier(s) idle · ≈"+Math.round(lph)+" res/h ready</span>";
+      } else if(!outT.length){ html+="<br><span style='opacity:.7'>troops home — send them</span>"; }
+      sc.innerHTML=html;
+      if(AUTO_BUILD && idleTiers.length && carry>0){
+        // primary: unblock the CURRENT step if it's a build that needs resources
+        if(typ===1){
+          var needW=Math.max(0,cur[T_CW]-r.wood),needS=Math.max(0,cur[T_CS]-r.stone),needI=Math.max(0,cur[T_CI]-r.iron);
+          var needPer=Math.max(needW,needS,needI);
+          if(needPer>0){
+            var bestLf=Math.max.apply(null,idleTiers.map(function(t){return SCAV_LOOT[t];}));
+            var sub=troopsForCarry(th,carryForLoot(needPer*3,bestLf)), subC=0; Object.keys(sub).forEach(function(u){subC+=sub[u]*CARRY[u];});
+            var bU=document.createElement("div"); bU.style.cssText="margin-top:5px;text-align:center;padding:5px;background:#5a9;border-radius:5px;cursor:pointer;font-weight:bold;color:#fff";
+            bU.innerHTML="⚡ scavenge to unblock this step<div style='font-size:10px;font-weight:normal'>"+(scavDuration(subC,bestLf)/3600).toFixed(1)+"h → +~"+Math.round(subC*bestLf)+"</div>";
+            bU.onclick=function(){ doScavenge({troops:sub}); }; sc.appendChild(bU);
           }
         }
-        // ── MODE 2: OVERNIGHT / GAP RUN ── one long run sized to a sleep window.
-        // Troops work the whole gap, land as you return → zero idle waste.
-        var night=document.createElement("div");
-        night.style.cssText="margin-top:4px;display:flex;gap:4px;align-items:center;font-size:11px";
-        night.innerHTML="🌙 overnight: ";
-        [6,8,10].forEach(function(hrs){
-          var btn=document.createElement("span");
-          btn.style.cssText="cursor:pointer;padding:2px 6px;border:1px solid #678;border-radius:4px;background:#fff";
-          btn.textContent=hrs+"h";
-          btn.onclick=function(){
-            var wantC=carryForDuration(hrs*3600,bestLf);
-            var sub=troopsForCarry(th, wantC);   // clamps to your actual army
-            doSendScavenge({troops:sub, mode:"overnight"});
-          };
-          night.appendChild(btn);
-        });
-        sc.appendChild(night);
-        // ── MODE 3: MAX LOOT/HOUR ── all troops, optimal split (for when you're
-        // actively re-sending and no run sits idle).
-        var bmax=document.createElement("div");
-        bmax.style.cssText="margin-top:4px;text-align:center;padding:3px;background:#9bbf7a;border-radius:4px;cursor:pointer;font-size:11px";
-        bmax.textContent="⚡ max loot/h (send ALL — for active play)";
-        bmax.onclick=function(){ doSendScavenge({mode:"max"}); };
-        sc.appendChild(bmax);
+        var bMax=document.createElement("div"); bMax.style.cssText="margin-top:5px;text-align:center;padding:4px;background:#9bbf7a;border-radius:5px;cursor:pointer";
+        bMax.textContent="⚡ send all (max loot/h)"; bMax.onclick=function(){ doScavenge({}); }; sc.appendChild(bMax);
+        // overnight
+        var ov=document.createElement("div"); ov.style.cssText="margin-top:4px;font-size:10px;opacity:.8"; ov.innerHTML="🌙 overnight: ";
+        [6,8,10].forEach(function(hrs){ var bb=document.createElement("span"); bb.textContent=hrs+"h"; bb.style.cssText="cursor:pointer;padding:1px 5px;margin:0 2px;border:1px solid #789;border-radius:3px";
+          bb.onclick=function(){ var bestLf=Math.max.apply(null,idleTiers.map(function(t){return SCAV_LOOT[t];})); doScavenge({troops:troopsForCarry(th,carryForDuration(hrs*3600,bestLf))}); }; ov.appendChild(bb); });
+        sc.appendChild(ov);
       }
-      var sa=document.createElement("a"); sa.href="/game.php?village="+vidParam()+"&screen=place&mode=scavenge";
-      sa.textContent="→ open Raubzug"; sa.style.cssText="display:inline-block;margin-top:4px;font-size:11px;color:#36c"; sc.appendChild(sa);
     }
     p.appendChild(sc);
 
-    // ── 4. TROOPS track ── (trains in-panel; doesn't gate the noble)
-    if((lv.barracks||0)>=1){
-      // count TOTAL spears (home + out scavenging) toward the goal, so we don't
-      // tell you to over-train when troops are just deployed.
-      var army=totalArmy(); var spN=army.spear||0; var spHome=(th&&th.spear)||0;
-      var spOut=spN-spHome;
-      var tc=card("#f6ece0","#caa882");
-      var popFull=r.pop>=r.popMax;
-      // how many spears we could afford right now (spear = 50/30/10, 1 pop)
-      var canAfford=Math.min(Math.floor(r.wood/50),Math.floor(r.stone/30),Math.floor(r.iron/10),
-                             r.popMax-r.pop, SPEAR_GOAL-spN);
-      var perS=spearTrainSec(lv.barracks||1);   // exact seconds per spear
-      function mmss(sec){ sec=Math.round(sec); var m=Math.floor(sec/60); return m+"m"+(sec%60<10?"0":"")+(sec%60)+"s"; }
-      tc.innerHTML="<div style='font-size:10px;opacity:.6'>⚔️ TROOPS (surplus only, goal ~"+SPEAR_GOAL+")</div>"+
-        "have "+spN+" spears"+(spOut>0?" ("+spOut+" out)":"")+" — "+(spN>=SPEAR_GOAL?"<span style='color:#2a8'>enough ✓</span>"
-          : popFull?"<span style='color:#b00'>pop full</span>"
-          : "<span style='opacity:.75'>"+(canAfford>0?"can train ~"+canAfford+" now":"save for build first")+"</span>")+
-        "<div style='font-size:10px;opacity:.6'>1 spear = "+mmss(perS)+" (barracks "+(lv.barracks||0)+")</div>";
-      if(spN<SPEAR_GOAL && !popFull && canAfford>0){
-        // small batch buttons — each shows the EXACT train time for that batch
-        [Math.min(5,canAfford), Math.min(20,canAfford), canAfford].forEach(function(n,i){
-          if(n<=0) return; if(i>0 && n<=Math.min(5,canAfford)) return;  // dedupe tiny
-          var btn=document.createElement("span"); btn.textContent="+"+n+" ("+mmss(n*perS)+")";
-          btn.style.cssText="display:inline-block;margin:3px 3px 0 0;padding:2px 7px;border:1px solid #a87;border-radius:4px;background:#fff;cursor:pointer;font-size:11px";
-          btn.onclick=function(){ doTrainSpears(n); };
-          tc.appendChild(btn);
-        });
-      }
-      p.appendChild(tc);
-    }
+    // footer: res + ETA + plan-check
+    var foot=document.createElement("div"); foot.style.cssText="font-size:10px;opacity:.7";
+    var etaH=(NOBLE_H-cur[T_AT]); var dW=r.wood-cur[T_EW],dS=r.stone-cur[T_ES],dI=r.iron-cur[T_EI];
+    var drift=(dW< -800||dS< -800||dI< -800)?"<span style='color:#b00'> · behind plan, scavenge more</span>":"<span style='color:#2a8'> · on track</span>";
+    foot.innerHTML="🪵"+r.wood+" 🧱"+r.stone+" ⚙️"+r.iron+" · pop "+r.pop+"/"+r.popMax+
+      "<br>~"+Math.round(etaH)+"h to noble"+drift;
+    p.appendChild(foot);
 
-    // ── 5. FARM track (point-blank barbs only — the math: farming beats
-    // scavenging ONLY within ~2 fields; everything else earns more scavenging).
-    var barbs=W.__twnl_barbs;
-    if(barbs && barbs.length && (lv.barracks||0)>=1 && (th&&(th.spear||th.axe||th.sword))){
-      var fc=card("#f3e8e8","#c89");
-      var L2=["<div style='font-size:10px;opacity:.6'>🐺 FARM — point-blank barbs (beat scavenge)</div>"];
-      barbs.slice(0,4).forEach(function(bb){
-        L2.push("• "+bb.x+"|"+bb.y+" ("+bb.dist.toFixed(1)+" fields)");
-      });
-      L2.push("<span style='font-size:10px;opacity:.6'>only these are worth farming; scavenge the rest</span>");
-      // OUT-FARM timing: show how many attacks are out + soonest return. (Loot
-      // is unknown for farms — only the timing is, so we show count + timer.)
-      var oc=W.__twnl_out_count||0, on=W.__twnl_out_next||0;
-      if(oc>0){ L2.push("<span style='font-size:10px;opacity:.7'>"+oc+" farm"+(oc>1?"s":"")+" out · next back in <b>"+(on?countdown(on):"?")+"</b></span>"); }
-      fc.innerHTML=L2.join("<br>");
-      // Send via Farm Assistant templates A/B (one clean POST each). A button
-      // per configured template, firing at the NEAREST point-blank barb.
-      var tpls=W.__twnl_farm_tpl||{};
-      var haveTpl=Object.keys(tpls).length>0;
-      if(AUTO_BUILD && haveTpl){
-        ["a","b"].forEach(function(lab){
-          if(!tpls[lab]) return;
-          var u=tpls[lab].units||{};
-          var desc=Object.keys(u).filter(function(k){return u[k]>0;}).map(function(k){return u[k]+k.slice(0,2);}).join("+")||"empty";
-          var fb=document.createElement("span");
-          fb.style.cssText="display:inline-block;margin:4px 4px 0 0;padding:3px 8px;background:#c89;border-radius:4px;cursor:pointer;font-weight:bold;color:#fff;font-size:11px";
-          // farm ALL nearby barbs with this template — ONE attack per barb,
-          // skipping ones we already hit this session (no endless spam to one).
-          var freshBarbs=barbs.filter(function(bb){ return !((W.__twnl_farm_sent||{})[bb.id]); });
-          fb.textContent="⚡ "+lab.toUpperCase()+" → "+freshBarbs.length+" barb"+(freshBarbs.length!==1?"s":"")+" ("+desc+")";
-          if(freshBarbs.length===0){ fb.style.opacity="0.5"; fb.textContent="⚡ "+lab.toUpperCase()+" (all hit — 🔄 to reset)"; }
-          fb.onclick=function(){ doFarmAll(freshBarbs, lab); };
-          fc.appendChild(fb);
-        });
-      } else if (AUTO_BUILD && !haveTpl){
-        var warn=document.createElement("div");
-        warn.style.cssText="margin-top:3px;font-size:10px;color:#a60";
-        warn.textContent="set a Farm Assistant template (A/B) in am_farm, then 🔄";
-        fc.appendChild(warn);
-      }
-      var fa=document.createElement("a");
-      fa.href="/game.php?village="+vidParam()+"&screen=am_farm";
-      fa.textContent="→ Farm Assistant"; fa.style.cssText="display:inline-block;margin-top:4px;font-size:11px;color:#36c";
-      fc.appendChild(fa);
-      p.appendChild(fc);
-    } else if (barbs && barbs.length===0 && (lv.barracks||0)>=1){
-      var fc0=card("#f3e8e8","#c89");
-      fc0.innerHTML="<div style='font-size:10px;opacity:.6'>🐺 FARM</div>"+
-        "<span style='font-size:11px;opacity:.75'>no barbs within "+FARM_CROSSOVER_FIELDS+
-        " fields — scavenging is more efficient than any farm from here.</span>";
-      p.appendChild(fc0);
-    }
+    // skip override (in case auto-detect lags)
+    var skip=document.createElement("div"); skip.style.cssText="margin-top:5px;font-size:10px;opacity:.5;display:flex;justify-content:space-between";
+    var sk=document.createElement("span"); sk.textContent="✓ mark done / skip →"; sk.style.cssText="cursor:pointer";
+    sk.onclick=function(){ W.__twng_skip=(W.__twng_skip||0); /* nudge past current step visually */
+      W.__twng_force=idx+1; render(); };
+    skip.appendChild(sk); p.appendChild(skip);
 
-    // refresh + tier sync
-    var rf=document.createElement("span"); rf.textContent="🔄 refresh troops/scavenge";
-    rf.style.cssText="display:inline-block;margin:2px 0;font-size:10px;color:#36c;cursor:pointer";
-    rf.onclick=function(){ Promise.all([fetchScavAndTroops(),fetchQueue()]).then(render); }; p.appendChild(rf);
-
-    var tg=document.createElement("div"); tg.style.cssText="font-size:10px;opacity:.7;margin-bottom:3px"; tg.innerHTML="tiers: ";
-    [0,1,2,3].forEach(function(n){ var s=document.createElement("span"); s.textContent=n;
-      s.style.cssText="cursor:pointer;padding:1px 5px;margin:0 1px;border:1px solid #999;border-radius:3px;"+(scavTiers()===n?"background:#804000;color:#fff":"background:#fff");
-      s.onclick=function(){W.__twnl_scav=n;render();}; tg.appendChild(s); });
-    p.appendChild(tg);
-
-    var note=document.createElement("div"); note.style.cssText="font-size:9px;opacity:.5";
-    note.textContent="Pre-planned (~9.6d to noble) + live check. "+(AUTO_BUILD?"⚠️ AUTO-BUILD ON.":"You tap the game's button.");
-    p.appendChild(note);
     document.body.appendChild(p);
   }
 
-  // toast: brief in-panel status message (no navigation, like Launchpad)
-  function toast(msg, good){
-    var el=document.getElementById("twnl_toast");
-    if(!el){ el=document.createElement("div"); el.id="twnl_toast";
-      el.style.cssText="margin:4px 0;padding:4px 6px;border-radius:4px;font-size:11px"; }
-    el.style.background=good?"#d7e9c8":"#f6d3d3";
-    el.style.color=good?"#2a6":"#a00"; el.textContent=msg;
-    var p=document.getElementById("twnl"); if(p && !el.parentNode) p.insertBefore(el, p.children[2]||null);
-  }
-
-  // refresh just the live resource/level state from game_data WITHOUT reloading
-  // the page. game_data updates on its own AJAX, but to be safe we also re-pull
-  // the village JSON so res/levels reflect the action we just took.
-  function softRefresh(){
-    GD = W.game_data || GD;
-    return Promise.all([fetchScavAndTroops(), fetchQueue(), fetchBarbs(), fetchTrainTime(), fetchFarmTemplates(), fetchOutgoing()]).then(function(){ render(); });
-  }
-
-  // BUILD — sends the upgrade in the background (no navigation, panel stays).
-  function doBuild(b,lvl){
-    var vid=vidParam();
-    if(!AUTO_BUILD){ try{sessionStorage.setItem("twnl_flash",b);}catch(e){}
-      W.location.href="/game.php?village="+vid+"&screen="+bscreen(b); return; }
-    var mu="/game.php?village="+vid+"&screen=main";
-    toast("building "+(BLABEL[b]||b)+" "+lvl+"…", true);
-    fetch(mu,{credentials:"include"}).then(function(r){return r.text();}).then(function(h){
-      // Robust upgrade-link finder (ported from the bot's _find_upgrade_links):
-      // param ORDER varies between desktop and the app skin, so don't assume
-      // action=...id=... order. Instead scan ALL action=upgrade* hrefs, parse
-      // each href's id= param, and pick the one whose id matches this building.
-      // Skip the +25% instant-build variants (type=premium/instant/kurzbau/buy).
-      var BAD=/\b(premium|instant|kurzbau|kurzbauanleitung|buy)\b/i;
-      var link=null, hm, hre=/href="([^"]*action=upgrade[^"]*)"/gi;
-      while((hm=hre.exec(h))){
-        var href=hm[1].replace(/&amp;/g,"&");
-        var idm=href.match(/[?&]id=([a-z_]+)/i);
-        var tym=href.match(/[?&]type=([a-z_]+)/i);
-        if(!idm || idm[1].toLowerCase()!==b) continue;
-        if(tym && BAD.test(tym[1])) continue;
-        link=href; break;
-      }
-      if(!link){ toast("can't build "+(BLABEL[b]||b)+" now — no upgrade link (cost/prereq/queue full?)", false); return; }
-      if(link.charAt(0)!=="/") link="/"+link.replace(/^.*game\.php/,"game.php");
-      return fetch(link,{credentials:"include"}).then(function(){
-        toast("✓ queued "+(BLABEL[b]||b)+" "+lvl, true);
-        setTimeout(softRefresh, 500);   // re-read state, keep panel open
-      });
-    }).catch(function(e){ toast("build failed: "+e, false); });
-  }
-
-  // TRAIN spears in the background (no navigation). Scrapes the barracks recruit
-  // form (action + hidden csrf inputs), sets spear=n, POSTs it. Same request the
-  // game's own recruit button makes.
-  function doTrainSpears(n){
-    var vid=vidParam();
-    var bu="/game.php?village="+vid+"&screen=barracks";
-    if(!AUTO_BUILD){ W.location.href=bu; return; }
-    toast("training "+n+" spears…", true);
-    fetch(bu,{credentials:"include"}).then(function(r){return r.text();}).then(function(h){
-      // find the recruit form (action contains train/recruit)
-      var fm=h.match(/<form[^>]*action="([^"]+)"[^>]*>([\s\S]*?)<\/form>/gi), body=null, action=null;
-      if(fm){ for(var i=0;i<fm.length;i++){
-        var am=fm[i].match(/action="([^"]+)"/i); var act=am?am[1].replace(/&amp;/g,"&"):"";
-        if(/train|recruit/i.test(act) && /name="spear"/i.test(fm[i])){ action=act; body=fm[i]; break; }
-      }}
-      if(!action){ toast("no recruit form (barracks built? botschutz?)", false); return; }
-      // collect hidden inputs (csrf etc.) + set spear=n
-      var data=new URLSearchParams(); var im, re=/<input[^>]*name="([^"]+)"[^>]*value="([^"]*)"/gi;
-      while((im=re.exec(body))){ data.set(im[1], im[2]); }
-      data.set("spear", String(n));
-      // zero the other units the form may carry so we only train spears
-      ["sword","axe","archer","spy","light","heavy","marcher","ram","catapult"].forEach(function(u){
-        if(new RegExp('name="'+u+'"').test(body)) data.set(u,"0"); });
-      if(action.charAt(0)!=="/") action="/"+action.replace(/^.*game\.php/,"game.php");
-      return fetch(action,{method:"POST",credentials:"include",
-        headers:{"Content-Type":"application/x-www-form-urlencoded"},body:data.toString()})
-        .then(function(){ toast("✓ queued "+n+" spears", true); setTimeout(softRefresh,500); });
-    }).catch(function(e){ toast("train failed: "+e, false); });
-  }
-  // Pack actual home units into each tier's CARRY budget (heaviest-carry units
-  // to the highest tiers first), turning the optimalSplit() carry numbers into
-  // concrete unit_counts per tier. Returns [{option_id, unit_counts, carry}].
-  function packSquads(th, tiers){
-    var split=optimalSplit(
-      (function(){var c=0;Object.keys(th).forEach(function(u){c+=(th[u]||0)*(CARRY[u]||0);});return c;})(),
-      tiers);
-    // pool of available units (carry-bearing only), heaviest carry first
-    var pool={}; Object.keys(th).forEach(function(u){ if(CARRY[u]>0) pool[u]=th[u]||0; });
-    var unitsByCarry=Object.keys(pool).sort(function(a,b){return CARRY[b]-CARRY[a];});
-    // tiers sorted by carry budget desc (highest tier usually biggest)
-    var order=tiers.slice().sort(function(a,b){return split[b]-split[a];});
-    var out=[];
-    order.forEach(function(t){
-      var budget=split[t], counts={}, filled=0;
-      unitsByCarry.forEach(function(u){
-        if(pool[u]<=0) return;
-        var room=Math.max(0,budget-filled);
-        var n=Math.min(pool[u], Math.floor(room/CARRY[u]));
-        if(n>0){ counts[u]=n; pool[u]-=n; filled+=n*CARRY[u]; }
-      });
-      if(filled>0) out.push({option_id:t, unit_counts:counts, carry:filled});
-    });
-    return out;
-  }
-
-  // AUTO-SEND the optimal scavenge split: builds the squad_requests payload and
-  // POSTs send_squads (same request the game's send button makes). One tap
-  // dispatches all home troops across the unlocked tiers at max loot/hour.
-  // Build a REDUCED troop set holding ~targetCarry worth of carry (cheapest-
-  // carry-per-pop first = spears), for the run-sizing modes. The rest of the
-  // army stays home for the next short run. Returns {unit:count}.
-  function troopsForCarry(th, targetCarry){
-    if(targetCarry<=0) return {};
-    var pool={}; Object.keys(th).forEach(function(u){ if(CARRY[u]>0) pool[u]=th[u]||0; });
-    // use lightest-carry units first so we send "just enough" granularly
-    var order=Object.keys(pool).sort(function(a,b){return CARRY[a]-CARRY[b];});
-    var picked={}, got=0;
-    order.forEach(function(u){
-      if(got>=targetCarry) return;
-      var need=Math.ceil((targetCarry-got)/CARRY[u]);
-      var n=Math.min(pool[u], need);
-      if(n>0){ picked[u]=n; got+=n*CARRY[u]; }
-    });
-    return picked;
-  }
-
-  // mode: undefined/"max" = all troops, max loot/h. "carry" = send a reduced
-  // set (~optsCarry) sized to a build need or sleep window.
-  function doSendScavenge(opts){
-    opts=opts||{};
-    var th=opts.troops || troopsHome();
-    var tiers=[]; for(var t=1;t<=scavTiers();t++)tiers.push(t);
-    if(!th||!tiers.length){ toast("no troops/tiers to send", false); return; }
-    var busy=W.__twnl_scav_busy||{};
-    var sendTiers=tiers.filter(function(t){ return !busy[t]; });   // skip tiers already out
-    if(!sendTiers.length){ toast("all tiers already scavenging", false); return; }
-    var csrf=W.__twnl_csrf;
-    if(!csrf){ toast("no csrf — tap 🔄 then retry", false); return; }
-    var squads=packSquads(th, sendTiers).filter(function(s){return s.carry>0;});
-    if(!squads.length){ toast("no troops home to send", false); return; }
-    var vid=vidParam();
-    var reqs=squads.map(function(s){ return {
-      village_id:+vid, option_id:s.option_id, use_premium:false,
-      candidate_squad:{ unit_counts:s.unit_counts, carry_max:Math.round(s.carry) }
-    };});
-    // jQuery $.param bracket encoding of {squad_requests:[...], h:csrf}
-    var data=new URLSearchParams();
-    reqs.forEach(function(rq,i){
-      var pre="squad_requests["+i+"]";
-      data.set(pre+"[village_id]", rq.village_id);
-      data.set(pre+"[option_id]", rq.option_id);
-      data.set(pre+"[use_premium]", "false");
-      data.set(pre+"[candidate_squad][carry_max]", rq.candidate_squad.carry_max);
-      Object.keys(rq.candidate_squad.unit_counts).forEach(function(u){
-        data.set(pre+"[candidate_squad][unit_counts]["+u+"]", rq.candidate_squad.unit_counts[u]);
-      });
-    });
-    data.set("h", csrf);
-    toast("sending "+squads.length+" squad(s)…", true);
-    fetch("/game.php?village="+vid+"&screen=scavenge_api&ajaxaction=send_squads",
-      {method:"POST",credentials:"include",
-       headers:{"X-Requested-With":"XMLHttpRequest","TribalWars-Ajax":"1",
-                "Content-Type":"application/x-www-form-urlencoded; charset=UTF-8",
-                "Accept":"application/json, text/javascript, */*; q=0.01"},
-       body:data.toString()})
-      .then(function(r){return r.json();}).then(function(j){
-        if(j && j.response!==false){ toast("✓ scavenge sent ("+squads.length+" tier"+(squads.length>1?"s":"")+")", true); setTimeout(softRefresh,600); }
-        else { toast("scavenge rejected (troops/tier busy?)", false); }
-      }).catch(function(e){ toast("scavenge send failed: "+e, false); });
-  }
-
-  // Send ONE template attack at ONE barb. Returns a promise resolving to true
-  // on success. Marks the barb as sent this session (W.__twnl_farm_sent) so we
-  // never spam the same barb. (Clean POST to Accountmanager.send_units_link —
-  // the same request FarmGod / the game's farm button makes.)
-  function doFarmOne(barb, label){
-    var tpl=(W.__twnl_farm_tpl||{})[label];
-    var sendUrl=W.__twnl_farm_sendurl;
-    if(!tpl || !sendUrl || !barb || !barb.id) return Promise.resolve(false);
-    var vid=vidParam();
-    var url=sendUrl.replace(/village=\d+/, "village="+vid);
-    if(url.charAt(0)!=="/") url="/"+url.replace(/^.*game\.php/,"game.php");
-    var data=new URLSearchParams();
-    data.set("target", String(barb.id));
-    data.set("template_id", String(tpl.id));
-    data.set("source", String(vid));
-    return fetch(url,{method:"POST",credentials:"include",
-      headers:{"X-Requested-With":"XMLHttpRequest","TribalWars-Ajax":"1",
-               "Content-Type":"application/x-www-form-urlencoded; charset=UTF-8",
-               "Accept":"application/json, text/javascript, */*; q=0.01"},
-      body:data.toString()})
-      .then(function(r){return r.json().catch(function(){return null;});})
-      .then(function(j){
-        if(j && (j.error||j.errors)) return false;
-        // mark sent so we don't re-hit this barb (until 🔄 clears it)
-        W.__twnl_farm_sent=W.__twnl_farm_sent||{}; W.__twnl_farm_sent[barb.id]=true;
-        return true;
-      }).catch(function(){return false;});
-  }
-
-  // Farm ALL given (point-blank, not-yet-hit) barbs with template A/B — ONE
-  // attack per barb, staggered. This is the FIX for "endless troops to one
-  // barb": we spread one attack across each nearby barb instead of spamming.
-  function doFarmAll(barbList, label){
-    if(!(W.__twnl_farm_tpl||{})[label] || !W.__twnl_farm_sendurl){
-      toast("no Farm Assistant template "+label.toUpperCase()+" — set one in am_farm, then 🔄", false); return; }
-    if(!barbList || !barbList.length){ toast("no fresh barbs to farm (🔄 to reset)", false); return; }
-    toast("farming "+barbList.length+" barb"+(barbList.length>1?"s":"")+" with "+label.toUpperCase()+"…", true);
-    var ok=0, i=0;
-    (function next(){
-      if(i>=barbList.length){
-        toast("✓ farmed "+ok+"/"+barbList.length+" barbs ("+label.toUpperCase()+")", ok>0);
-        setTimeout(softRefresh, 600); return;
-      }
-      var bb=barbList[i++];
-      doFarmOne(bb, label).then(function(s){ if(s) ok++; setTimeout(next, 350); });  // small human stagger
-    })();
-  }
-
-  function flash(){ var b; try{b=sessionStorage.getItem("twnl_flash");sessionStorage.removeItem("twnl_flash");}catch(e){}
-    if(!b)return; var row=document.getElementById("main_buildrow_"+b); if(!row)return;
-    var on=false,n=0,iv=setInterval(function(){row.style.background=(on=!on)?"#ffe08a":"";if(++n>6){clearInterval(iv);row.style.background="";}},350);
-    row.scrollIntoView({block:"center"});
-  }
-
-  flash(); render();
-  Promise.all([fetchScavAndTroops(), fetchQueue(), fetchBarbs(), fetchTrainTime(), fetchFarmTemplates(), fetchOutgoing()]).then(render);
-  console.log("[noble-guide] loaded, "+TL.length+" timeline steps");
+  render();
+  Promise.all([fetchScav(),fetchQueue()]).then(render);
+  console.log("[noble-guide] "+TL.length+" steps");
 })();
