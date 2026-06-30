@@ -189,12 +189,14 @@ window.FarmGod.Library = (function () {
         : navSelect.length > 0
           ? navSelect.find('option').length - 1
           : $html.find('.paged-nav-item').not('[href*="page=-1"]').length;
-    // We now force page_size=BIG_PAGE_SIZE in processPage, so on mobile the
-    // page is no longer the default 10 — use the big size so the page-count
-    // math (and the page<navLength loop) stays correct and doesn't over-fetch.
+    // NOTE: the app/mobile skin IGNORES the page_size param and still serves 10
+    // rows/page, so keep the real mobile page size (10) here for the page-count
+    // math. The speed-up comes from PARALLEL fetching (processAllPages), not from
+    // bigger pages. navLength below reads the true page count from the nav widget
+    // regardless, so this only affects the page==-1 villageLength==1000 branch.
     let pageSize =
       $('#mobileHeader').length > 0
-        ? BIG_PAGE_SIZE
+        ? 10
         : parseInt($html.find('input[name="page_size"]').val());
 
     if (page == -1 && villageLength == 1000) {
@@ -227,20 +229,68 @@ window.FarmGod.Library = (function () {
       });
   };
 
-  const processAllPages = function (url, processorFn) {
+  // PARALLEL pagination. The app/mobile skin serves 10 rows/page and IGNORES
+  // the page_size param, so the original SEQUENTIAL walk (fetch p0 → p1 → … one
+  // at a time) takes 6-8 MINUTES when there are many pages (lots of commands/
+  // farms). Instead: fetch the FIRST page, learn the total page count from the
+  // nav, then fire ALL remaining pages AT ONCE (Promise.all). Same total data,
+  // but the round-trips overlap → seconds instead of minutes. processorFn is
+  // called once per page (order doesn't matter — it just accumulates into data).
+  const fetchOnePage = function (url, page) {
+    let pageText = url.match('am_farm') ? `&Farm_page=${page}` : `&page=${page}`;
+    return twLib.ajax({ url: url + pageText + `&page_size=${BIG_PAGE_SIZE}` })
+      .then((html) => $(html));
+  };
+  // Read the MAX page index directly from a page's nav widget — the same value
+  // determineNextPage uses as navLength, but returned as a plain number so we
+  // can enumerate every page up front and fetch them in parallel.
+  const getMaxPage = function ($html) {
+    if ($html.find('#am_widget_Farm').length > 0) {
+      // am_farm plunder list: pages numbered in #plunder_list_nav; last item is
+      // the highest page number (1-based in the UI → subtract 1 for 0-based).
+      let items = $('#plunder_list_nav').first()
+        .find('a.paged-nav-item, strong.paged-nav-item');
+      if (!items.length) return 0;
+      let lastTxt = items[items.length - 1].textContent.replace(/\D/g, '');
+      return Math.max(0, (parseInt(lastTxt, 10) || 1) - 1);
+    }
+    let navSelect = $html.find('.paged-nav-item').first().closest('td').find('select').first();
+    if (navSelect.length > 0) return navSelect.find('option').length - 1;
+    return $html.find('.paged-nav-item').not('[href*="page=-1"]').length;
+  };
+
+  // Original SEQUENTIAL walk — kept as the safe fallback (proven correct).
+  const processAllPagesSeq = function (url, processorFn) {
     let page = url.match('am_farm') || url.match('scavenge_mass') ? 0 : -1;
     let wrapFn = function (page, $html) {
       let dnp = determineNextPage(page, $html);
-
-      if (dnp) {
-        processorFn($html);
-        return processPage(url, dnp, wrapFn);
-      } else {
-        return processorFn($html);
-      }
+      if (dnp) { processorFn($html); return processPage(url, dnp, wrapFn); }
+      else { return processorFn($html); }
     };
-
     return processPage(url, page, wrapFn);
+  };
+
+  const processAllPages = function (url, processorFn) {
+    let firstPage = url.match('am_farm') || url.match('scavenge_mass') ? 0 : -1;
+    return fetchOnePage(url, firstPage).then(($firstHtml) => {
+      let maxPage = getMaxPage($firstHtml);
+      // SAFETY: only take the parallel fast-path when the nav clearly shows a
+      // multi-page list with a sane page count. Otherwise fall back to the
+      // proven sequential walk (re-fetches from scratch — costs one extra page
+      // load but guarantees the original, correct behaviour). This protects
+      // against getMaxPage mis-reading an unusual nav and dropping pages.
+      let parallelOk = Number.isFinite(maxPage) && maxPage > firstPage && maxPage <= 200;
+      if (!parallelOk) {
+        return processAllPagesSeq(url, processorFn);
+      }
+      processorFn($firstHtml);            // first page already in hand
+      let pages = [];
+      for (let pg = firstPage + 1; pg <= maxPage; pg++) pages.push(pg);
+      if (!pages.length) return;
+      return Promise.all(
+        pages.map((pg) => fetchOnePage(url, pg).then(($h) => processorFn($h)))
+      );
+    });
   };
 
   const getDistance = function (origin, target) {
@@ -1100,6 +1150,58 @@ window.FarmGod.Main = (function (Library, Translation) {
     init,
   };
 })(window.FarmGod.Library, window.FarmGod.Translation);
+
+// ─── BOTSCHUTZ AUTO-CLOSE (browser only) ───────────────────────────────────
+// While farming, Botschutz (the bot-check captcha) appears every couple of
+// minutes in the BROWSER. Missing it = penalty → 12h ban. This watches for it
+// and CLOSES THE TAB the moment it appears, so no farm action fires into an
+// active captcha and you can't rack up strikes. It does NOT solve/evade the
+// captcha — it STOPS (closes). If the browser refuses to close the tab, it
+// shows a full-screen red STOP overlay + beep so you can't miss it.
+// Harmless in the app (Botschutz doesn't appear there).
+(function () {
+  if (window.__tw_botschutz_watch) return;
+  window.__tw_botschutz_watch = true;
+
+  function active() {
+    var b = document.body;
+    if (b) {
+      var bp = (b.getAttribute('data-bot-protect') || '').toLowerCase();
+      if (bp === 'forced' || bp === 'needed') return true;
+    }
+    if (document.querySelector('.bot_check, #bot_check, [class*="botprotect"], iframe[src*="hcaptcha"], iframe[src*="captcha"]')) return true;
+    return false;
+  }
+
+  function overlay() {
+    if (document.getElementById('tw_bs_overlay')) return;
+    var o = document.createElement('div');
+    o.id = 'tw_bs_overlay';
+    o.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:rgba(180,0,0,.93);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;font:bold 22px/1.4 Arial,sans-serif;text-align:center;padding:20px';
+    o.innerHTML = '🛑 BOTSCHUTZ AKTIV<br><span style="font-size:14px;font-weight:normal">Tab konnte nicht automatisch geschlossen werden.<br>SOFORT lösen oder Tab schließen!</span><div id="tw_bs_x" style="margin-top:18px;padding:10px 22px;background:#fff;color:#b00;border-radius:6px;cursor:pointer;font-size:16px">Tab schließen</div>';
+    document.body.appendChild(o);
+    document.getElementById('tw_bs_x').onclick = function () { tryClose(); };
+    try {
+      var ctx = new (window.AudioContext || window.webkitAudioContext)();
+      var beep = function () { var osc = ctx.createOscillator(), g = ctx.createGain(); osc.connect(g); g.connect(ctx.destination); osc.frequency.value = 880; g.gain.value = 0.2; osc.start(); osc.stop(ctx.currentTime + 0.2); };
+      beep(); setInterval(beep, 1500);
+    } catch (e) {}
+  }
+
+  function tryClose() {
+    try { window.close(); } catch (e) {}
+    setTimeout(function () { if (!window.closed) overlay(); }, 300);
+  }
+
+  function check() {
+    if (active()) { console.warn('[farmgod] BOTSCHUTZ → closing tab'); clearInterval(window.__tw_bs_iv); tryClose(); }
+  }
+
+  window.__tw_bs_iv = setInterval(check, 1500);
+  try { new MutationObserver(check).observe(document.documentElement, { attributes: true, attributeFilter: ['data-bot-protect'], subtree: true, childList: true }); } catch (e) {}
+  check();
+  console.log('[farmgod] botschutz watcher active');
+})();
 
 (() => {
   window.FarmGod.Main.init();
