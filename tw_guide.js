@@ -262,17 +262,40 @@
   function countdown(ts){ var s=Math.max(0,Math.round(ts-Date.now()/1000)),m=Math.floor(s/60),h=Math.floor(m/60); return h>0?h+"h"+(m%60)+"m":(m>0?m+"m"+(s%60)+"s":s+"s"); }
 
   // ── live fetch (read-only) ──────────────────────────────────────────────
+  // Extract the inline `var village = {...}` object by BRACE-MATCHING (not a
+  // non-greedy regex to the first "};", which truncates when a nested value
+  // contains "};" — that bug hid tier 3/4 and made the guide think they were
+  // still locked). Walk from the opening "{" counting braces (string-aware).
+  function extractVillageJSON(h){
+    var i=h.indexOf("var village"); if(i<0) return null;
+    var s=h.indexOf("{", i); if(s<0) return null;
+    var depth=0, instr=false, esc=false;
+    for(var j=s;j<h.length;j++){
+      var c=h[j];
+      if(instr){ if(esc){esc=false;} else if(c==="\\"){esc=true;} else if(c==='"'){instr=false;} continue; }
+      if(c==='"'){ instr=true; continue; }
+      if(c==="{") depth++;
+      else if(c==="}"){ depth--; if(depth===0) return h.slice(s, j+1); }
+    }
+    return null;
+  }
   function fetchScav(){
     return fetch("/game.php?village="+vid()+"&screen=place&mode=scavenge",{credentials:"include"})
       .then(function(r){return r.text();}).then(function(h){
-        var m=h.match(/var\s+village\s*=\s*(\{[\s\S]*?\});/); if(!m) return;
-        var d; try{ d=JSON.parse(m[1]); }catch(e){ return; }
+        var raw=extractVillageJSON(h); if(!raw) return;
+        var d; try{ d=JSON.parse(raw); }catch(e){ return; }
         var cm=h.match(/csrf_token\s*[:=]\s*['"]([a-f0-9]+)['"]/i)||h.match(/"csrf"\s*:\s*"([a-f0-9]+)"/i); if(cm) W.__twnl_csrf=cm[1];
         var home=d.unit_counts_home||{}; var t={}; Object.keys(home).forEach(function(u){t[u]=parseInt(home[u],10)||0;}); if(Object.keys(t).length)W.__twnl_troops=t;
         if(d.res) W.__twnl_res={wood:Math.floor(+d.res.wood||0),stone:Math.floor(+d.res.stone||0),iron:Math.floor(+d.res.iron||0)};
-        var opts=d.options||{}, n=0, busy={}, ret={}, out={};
+        // A tier is UNLOCKED when is_locked is falsy (false / "false" / 0 / null).
+        // Count the highest CONTIGUOUS unlocked tier (1,2,3,4) — tiers unlock in
+        // order, and a mid-unlock tier (unlock_time set, still locked) does NOT
+        // count yet. This is robust to is_locked being bool/string/number.
+        var opts=d.options||{}, busy={}, ret={}, out={};
+        function unlocked(o){ var L=o.is_locked; return !(L===true||L==="true"||L===1||L==="1"); }
+        var n=0;
+        for(var ti=1;ti<=4;ti++){ var o=opts[ti]||opts[String(ti)]; if(o&&unlocked(o)) n=ti; else break; }
         Object.keys(opts).forEach(function(k){ var o=opts[k]; if(!o)return;
-          if(o.is_locked===false||o.is_locked==="false") n++;
           var sq=o.scavenging_squad; if(sq){ busy[k]=true; var rt=parseFloat(sq.return_time||0); if(rt>0)ret[k]=rt;
             var uc=sq.unit_counts||{}; Object.keys(uc).forEach(function(u){out[u]=(out[u]||0)+(parseInt(uc[u],10)||0);}); }
         });
