@@ -226,10 +226,12 @@
   // YOU recruit (so the guide never double-asks even if the queue read fails).
   // The optimistic count is cleared once those spears show up home/out/queue.
   function totalSpears(){
+    // MANUAL-TRUST: auto-counting spears across home/out/queue proved fragile
+    // (home≠total when troops are out, queue markup varies by skin). Instead the
+    // guide trusts the recruit TARGET once you tap recruit (W.__twnl_spear_target)
+    // and you confirm/adjust with the in-panel +/- if it's off. Best-effort live
+    // read is still used as a floor when available, but the target wins.
     var q=W.__twnl_spear_q||0;                       // in barracks queue (training)
-    // Prefer the authoritative "Insgesamt" total (all spears everywhere, home+
-    // out) from the barracks page if we have it; else fall back to home+out from
-    // the scavenge JSON. Then add the training queue.
     var owned=(typeof W.__twnl_spear_owned==="number")
       ? W.__twnl_spear_owned
       : ((troopsHome()||{}).spear||0)+((W.__twnl_scav_out||{}).spear||0);
@@ -570,13 +572,13 @@
       go3.textContent=AUTO_BUILD?(canNow>0?"⚡ RECRUIT "+canNow:"recruit (not ready)"):"→ open barracks";
       go3.onclick=function(){ if(canNow>0) doRecruit(haveSp+canNow); };
       step.appendChild(go3);
-      // DEBUG: show exactly what the count is built from, so troop-count bugs
-      // are visible, not black-box. owned = "Insgesamt" total; q = barracks queue.
-      var dbg=document.createElement("div"); dbg.style.cssText="margin-top:4px;font-size:9px;opacity:.55";
-      dbg.textContent="count: owned "+(W.__twnl_spear_owned!=null?W.__twnl_spear_owned:"?")+
-        " + queue "+(W.__twnl_spear_q||0)+" + JSONhome "+((troopsHome()||{}).spear||0)+
-        " /out "+((W.__twnl_scav_out||{}).spear||0)+" → total "+haveSp;
-      step.appendChild(dbg);
+      // MANUAL-TRUST override: the auto-count can be off (troops out / queue not
+      // read). If you ALREADY have enough spears, tap this to mark the step done
+      // and move on. The guide trusts you over its own count.
+      var skipR=document.createElement("div"); skipR.style.cssText="margin-top:5px;text-align:center;font-size:10px;color:#36c;cursor:pointer";
+      skipR.textContent="✓ I already have "+lvl+"+ spears — skip this step";
+      skipR.onclick=function(){ W.__twnl_spear_target=Math.max(W.__twnl_spear_target||0, lvl); render(); };
+      step.appendChild(skipR);
     }
     p.appendChild(step);
 
@@ -673,7 +675,15 @@
     document.body.appendChild(p);
   }
 
-  render();
-  Promise.all([fetchScav(),fetchQueue(),fetchBarbs(),fetchFarmTpl(),fetchBarracksQ()]).then(render);
-  console.log("[noble-guide] "+TL.length+" steps");
+  // Render now; if document.body or game_data isn't ready yet (can happen in the
+  // app webview at script-load), retry a few times so the panel always appears.
+  function safeRender(){ try{ if(document.body) render(); }catch(e){ console.error("[noble-guide] render error:",e); } }
+  safeRender();
+  var tries=0, iv=setInterval(function(){
+    tries++;
+    if(document.getElementById("twng")||tries>10){ clearInterval(iv); }
+    else safeRender();
+  }, 500);
+  Promise.all([fetchScav(),fetchQueue(),fetchBarbs(),fetchFarmTpl(),fetchBarracksQ()]).then(safeRender).catch(function(e){console.error("[noble-guide] fetch error:",e);});
+  console.log("[noble-guide] "+TL.length+" steps loaded; panel:", !!document.getElementById("twng"));
 })();
