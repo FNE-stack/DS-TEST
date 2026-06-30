@@ -294,7 +294,39 @@
         W.__twnl_qused=used; W.__twnl_qbuild=qb;   // {slug: countInQueue}
       }).catch(function(){});
   }
-  function refreshAll(){ GD=W.game_data||GD; return Promise.all([fetchScav(),fetchQueue()]).then(render); }
+  // Point-blank barbs (owner 0, within ~2 fields) — SUPPLEMENTARY income: farm
+  // these with a SMALL spear pack ALONGSIDE the main scavenge run (the bulk army
+  // scavenges; a handful hits the adjacent barb for ~80 free res, troops back in
+  // minutes). Not farm-vs-scavenge — farm is the leftover-handful bonus.
+  var FARM_FIELDS=2.0;
+  function fetchBarbs(){
+    var v=GD.village||{}, mx=+v.x, my=+v.y; if(!mx||!my) return Promise.resolve();
+    return fetch(location.protocol+"//"+location.host+"/map/village.txt",{credentials:"include"})
+      .then(function(r){return r.text();}).then(function(txt){
+        var near=[], lines=txt.split("\n");
+        for(var i=0;i<lines.length;i++){ var pp=lines[i].split(","); if(pp.length<5||pp[4]!=="0")continue;
+          var d=Math.sqrt((+pp[2]-mx)*(+pp[2]-mx)+(+pp[3]-my)*(+pp[3]-my));
+          if(d<=FARM_FIELDS+0.5) near.push({x:+pp[2],y:+pp[3],dist:d,id:pp[0]}); }
+        near.sort(function(a,b){return a.dist-b.dist;}); W.__twnl_barbs=near;
+      }).catch(function(){});
+  }
+  function fetchFarmTpl(){
+    return fetch("/game.php?village="+vid()+"&screen=am_farm",{credentials:"include"})
+      .then(function(r){return r.text();}).then(function(h){
+        var su=h.match(/Accountmanager\.send_units_link\s*=\s*['"]([^'"]+)['"]/); if(su)W.__twnl_farm_sendurl=su[1].replace(/&amp;/g,"&");
+        var tblM=h.match(/<table[^>]*class="[^"]*loot_assistant_templates[^"]*"[^>]*>([\s\S]*?)<\/table>/i), body=tblM?tblM[1]:h;
+        var tpl={}, label=null, rowRe=/<tr([^>]*)>([\s\S]*?)<\/tr>/gi, rm;
+        while((rm=rowRe.exec(body))){ var rb=rm[2], ic=rb.match(/farm_icon_([ab])/i);
+          if(ic){ label=ic[1].toLowerCase(); continue; }
+          if(label&&/name="(?:spear|sword|axe|spy|light|heavy|ram|catapult)\[\d+\]"/i.test(rb)){
+            var idm=rb.match(/name="template\[(\d+)\]\[id\]"\s+value="(\d+)"/i), tid=idm?idm[2]:null;
+            var units={}, um, ure=/name="(spear|sword|axe|archer|spy|light|heavy|marcher|ram|catapult)\[\d+\]"[^>]*value="(\d+)"/gi;
+            while((um=ure.exec(rb)))units[um[1]]=parseInt(um[2],10)||0;
+            if(tid)tpl[label]={id:tid,units:units}; label=null; } }
+        if(Object.keys(tpl).length)W.__twnl_farm_tpl=tpl;
+      }).catch(function(){});
+  }
+  function refreshAll(){ GD=W.game_data||GD; W.__twnl_farm_sent={}; return Promise.all([fetchScav(),fetchQueue(),fetchBarbs(),fetchFarmTpl()]).then(render); }
 
   // ── ACTIONS (markup-independent AJAX; same request the game makes) ───────
   function toast(msg,good){
@@ -375,6 +407,23 @@
       }).catch(function(e){ toast("scavenge failed: "+e,false); });
   }
 
+  // Farm each fresh point-blank barb once with template A (or B), staggered.
+  // Supplementary income — run the leftover handful here while the army scavenges.
+  function doFarm(label){
+    var tpl=(W.__twnl_farm_tpl||{})[label], url=W.__twnl_farm_sendurl;
+    if(!tpl||!url){ toast("set Farm Assistant template "+label.toUpperCase()+" in am_farm, then 🔄",false); return; }
+    var sent=W.__twnl_farm_sent||{}, barbs=(W.__twnl_barbs||[]).filter(function(b){return !sent[b.id];});
+    if(!barbs.length){ toast("no fresh barbs (🔄 to reset)",false); return; }
+    toast("farming "+barbs.length+" barb(s) with "+label.toUpperCase()+"…",true);
+    var u=url.replace(/village=\d+/,"village="+vid()); if(u.charAt(0)!=="/")u="/"+u.replace(/^.*game\.php/,"game.php");
+    var ok=0,i=0;
+    (function nx(){ if(i>=barbs.length){ toast("✓ farmed "+ok+"/"+barbs.length,ok>0); setTimeout(refreshAll,600); return; }
+      var bb=barbs[i++], d=new URLSearchParams(); d.set("target",bb.id); d.set("template_id",tpl.id); d.set("source",vid());
+      fetch(u,{method:"POST",credentials:"include",headers:{"X-Requested-With":"XMLHttpRequest","TribalWars-Ajax":"1","Content-Type":"application/x-www-form-urlencoded; charset=UTF-8","Accept":"application/json, text/javascript, */*; q=0.01"},body:d.toString()})
+        .then(function(r){return r.json().catch(function(){return null;});}).then(function(j){ if(!(j&&(j.error||j.errors))){ok++;(W.__twnl_farm_sent=W.__twnl_farm_sent||{})[bb.id]=true;} setTimeout(nx,350); })
+        .catch(function(){ setTimeout(nx,350); }); })();
+  }
+
   // ── THE GUIDE — one current step ─────────────────────────────────────────
   function render(){
     var r=liveRes(), lv=liveLevels(), idx=currentIndex(lv), done=idx>=TL.length;
@@ -431,14 +480,24 @@
       go2.style.cssText="display:block;margin-top:7px;text-align:center;padding:7px;border-radius:5px;background:#789;color:#fff;font-weight:bold;text-decoration:none";
       go2.textContent="→ open Raubzug & unlock";
       step.appendChild(go2);
-    } else { // recruit
-      var haveSp=totalSpears(), nNeed=lvl-haveSp;
+    } else { // recruit — target is the plan's perfect count for this stage;
+             // recruit toward it but CLAMP to what's affordable + fits pop now
+             // (never ask for more spears than buildable right this moment).
+      var haveSp=totalSpears(), nNeed=Math.max(0,lvl-haveSp);
+      var spearCost={w:50,s:30,i:10};
+      var affordN=Math.min(Math.floor(r.wood/spearCost.w),Math.floor(r.stone/spearCost.s),Math.floor(r.iron/spearCost.i));
+      var popRoom=Math.max(0,r.popMax-r.pop);
+      var canNow=Math.min(nNeed, affordN, popRoom);
+      var popFull=popRoom<=0;
       step.innerHTML="<div style='font-size:10px;opacity:.6'>"+stepN+" · NEXT</div>"+
         "<div style='font-size:16px;font-weight:bold;margin:2px 0'>⚔️ Recruit spears → "+lvl+"</div>"+
-        "<div style='font-size:11px;opacity:.7'>have "+haveSp+", recruit "+Math.max(0,nNeed)+" more · feeds scavenge carry</div>";
-      var go3=document.createElement("div"); go3.style.cssText="margin-top:7px;text-align:center;padding:7px;border-radius:5px;cursor:pointer;font-weight:bold;background:#b97;color:#fff";
-      go3.textContent=AUTO_BUILD?"⚡ RECRUIT to "+lvl:"→ open barracks";
-      go3.onclick=function(){ doRecruit(lvl); };
+        "<div style='font-size:11px;opacity:.7'>have "+haveSp+", plan wants "+lvl+" · feeds scavenge carry</div>"+
+        (popFull?"<div style='color:#b00;font-size:12px;margin-top:3px'>⚠ pop full — build a Bauernhof first</div>"
+          :canNow>0?"<div style='color:#2a8;font-size:12px;margin-top:3px;font-weight:bold'>✓ recruit "+canNow+" now"+(canNow<nNeed?" ("+(nNeed-canNow)+" more once affordable)":"")+"</div>"
+              :"<div style='font-size:12px;margin-top:3px;opacity:.8'>⏳ save "+(nNeed*spearCost.w)+"/"+(nNeed*spearCost.s)+"/"+(nNeed*spearCost.i)+" — keep scavenging</div>");
+      var go3=document.createElement("div"); go3.style.cssText="margin-top:7px;text-align:center;padding:7px;border-radius:5px;cursor:pointer;font-weight:bold;"+(canNow>0?"background:#b97;color:#fff":"background:#ddd;color:#777");
+      go3.textContent=AUTO_BUILD?(canNow>0?"⚡ RECRUIT "+canNow:"recruit (not ready)"):"→ open barracks";
+      go3.onclick=function(){ if(canNow>0) doRecruit(haveSp+canNow); };
       step.appendChild(go3);
     }
     p.appendChild(step);
@@ -465,28 +524,58 @@
       } else if(!outT.length){ html+="<br><span style='opacity:.7'>troops home — send them</span>"; }
       sc.innerHTML=html;
       if(AUTO_BUILD && idleTiers.length && carry>0){
-        // primary: unblock the CURRENT step if it's a build that needs resources
-        if(typ===1){
-          var needW=Math.max(0,cur[T_CW]-r.wood),needS=Math.max(0,cur[T_CS]-r.stone),needI=Math.max(0,cur[T_CI]-r.iron);
-          var needPer=Math.max(needW,needS,needI);
-          if(needPer>0){
-            var bestLf=Math.max.apply(null,idleTiers.map(function(t){return SCAV_LOOT[t];}));
-            var sub=troopsForCarry(th,carryForLoot(needPer*3,bestLf)), subC=0; Object.keys(sub).forEach(function(u){subC+=sub[u]*CARRY[u];});
-            var bU=document.createElement("div"); bU.style.cssText="margin-top:5px;text-align:center;padding:5px;background:#5a9;border-radius:5px;cursor:pointer;font-weight:bold;color:#fff";
-            bU.innerHTML="⚡ scavenge to unblock this step<div style='font-size:10px;font-weight:normal'>"+(scavDuration(subC,bestLf)/3600).toFixed(1)+"h → +~"+Math.round(subC*bestLf)+"</div>";
-            bU.onclick=function(){ doScavenge({troops:sub}); }; sc.appendChild(bU);
-          }
+        // Decide the RECOMMENDED action. Build-blocked rush → if the current
+        // step needs resources, the build-sized "unblock" run is the default
+        // (build sooner). Only if the step is already affordable does max-loot/h
+        // become the default (throughput for future steps).
+        var unblockNeed=0, sub=null, subC=0, bestLf=Math.max.apply(null,idleTiers.map(function(t){return SCAV_LOOT[t];}));
+        if(typ===1){ var needPer=Math.max(0,cur[T_CW]-r.wood,cur[T_CS]-r.stone,cur[T_CI]-r.iron); unblockNeed=needPer;
+          if(needPer>0){ sub=troopsForCarry(th,carryForLoot(needPer*3,bestLf)); Object.keys(sub).forEach(function(u){subC+=sub[u]*CARRY[u];}); } }
+
+        if(unblockNeed>0 && subC>0){
+          // PRIMARY: build-sized run
+          var bU=document.createElement("div"); bU.style.cssText="margin-top:5px;text-align:center;padding:6px;background:#5a9;border-radius:5px;cursor:pointer;font-weight:bold;color:#fff";
+          bU.innerHTML="⚡ scavenge to unblock this step <span style='opacity:.85'>(recommended)</span><div style='font-size:10px;font-weight:normal'>"+(scavDuration(subC,bestLf)/3600).toFixed(1)+"h → +~"+Math.round(subC*bestLf)+", rest stay home</div>";
+          bU.onclick=function(){ doScavenge({troops:sub}); }; sc.appendChild(bU);
+          // SECONDARY: max-loot, small
+          var bMaxS=document.createElement("div"); bMaxS.style.cssText="margin-top:4px;text-align:center;font-size:10px;color:#36c;cursor:pointer";
+          bMaxS.textContent="or send all (max loot/h — if you'll re-send soon)"; bMaxS.onclick=function(){ doScavenge({}); }; sc.appendChild(bMaxS);
+        } else {
+          // step already affordable → max-loot IS the right default
+          var bMax=document.createElement("div"); bMax.style.cssText="margin-top:5px;text-align:center;padding:6px;background:#5a9;border-radius:5px;cursor:pointer;font-weight:bold;color:#fff";
+          bMax.innerHTML="⚡ send all scavenging <span style='opacity:.85'>(recommended)</span><div style='font-size:10px;font-weight:normal'>next step's affordable — bank loot for later</div>";
+          bMax.onclick=function(){ doScavenge({}); }; sc.appendChild(bMax);
         }
-        var bMax=document.createElement("div"); bMax.style.cssText="margin-top:5px;text-align:center;padding:4px;background:#9bbf7a;border-radius:5px;cursor:pointer";
-        bMax.textContent="⚡ send all (max loot/h)"; bMax.onclick=function(){ doScavenge({}); }; sc.appendChild(bMax);
-        // overnight
-        var ov=document.createElement("div"); ov.style.cssText="margin-top:4px;font-size:10px;opacity:.8"; ov.innerHTML="🌙 overnight: ";
+        // overnight (always available, small)
+        var ov=document.createElement("div"); ov.style.cssText="margin-top:5px;font-size:10px;opacity:.8"; ov.innerHTML="🌙 going AFK? overnight run: ";
         [6,8,10].forEach(function(hrs){ var bb=document.createElement("span"); bb.textContent=hrs+"h"; bb.style.cssText="cursor:pointer;padding:1px 5px;margin:0 2px;border:1px solid #789;border-radius:3px";
-          bb.onclick=function(){ var bestLf=Math.max.apply(null,idleTiers.map(function(t){return SCAV_LOOT[t];})); doScavenge({troops:troopsForCarry(th,carryForDuration(hrs*3600,bestLf))}); }; ov.appendChild(bb); });
+          bb.onclick=function(){ doScavenge({troops:troopsForCarry(th,carryForDuration(hrs*3600,bestLf))}); }; ov.appendChild(bb); });
         sc.appendChild(ov);
       }
     }
     p.appendChild(sc);
+
+    // ── STANDING: farm point-blank barbs (supplementary bonus income) ──
+    // Only show once you have a barracks + spears + a nearby barb. This is the
+    // leftover-handful bonus run ALONGSIDE scavenge (~80 res/barb, fast return).
+    var barbs=W.__twnl_barbs||[];
+    if((lv.barracks||0)>=1 && th && (th.spear||0)>0){
+      if(barbs.length){
+        var fc=document.createElement("div"); fc.style.cssText="background:#f3e8e8;border:1px solid #c89;border-radius:6px;padding:6px;margin-bottom:5px;font-size:11px";
+        var sent=W.__twnl_farm_sent||{}, fresh=barbs.filter(function(b){return !sent[b.id];});
+        fc.innerHTML="<b>🐺 Bonus farm</b> <span style='opacity:.6'>("+barbs.length+" point-blank barb"+(barbs.length>1?"s":"")+", ~80 res each)</span>";
+        var tpls=W.__twnl_farm_tpl||{};
+        if(AUTO_BUILD && Object.keys(tpls).length){
+          ["a","b"].forEach(function(lab){ if(!tpls[lab])return;
+            var fb=document.createElement("span"); fb.style.cssText="display:inline-block;margin:4px 4px 0 0;padding:3px 8px;background:#c89;color:#fff;border-radius:4px;cursor:pointer;font-weight:bold;font-size:11px";
+            fb.textContent=fresh.length?"⚡ "+lab.toUpperCase()+" → "+fresh.length+" barb"+(fresh.length>1?"s":""):"⚡ "+lab.toUpperCase()+" (all hit)";
+            if(!fresh.length)fb.style.opacity="0.5";
+            fb.onclick=function(){ doFarm(lab); }; fc.appendChild(fb); });
+        } else if(AUTO_BUILD){ fc.innerHTML+="<br><span style='font-size:10px;color:#a60'>set a Farm Assistant template (A/B), then 🔄</span>"; }
+        p.appendChild(fc);
+      }
+      // if no barbs nearby, we stay silent (scavenge is strictly better — no clutter)
+    }
 
     // footer: res + ETA + plan-check
     var foot=document.createElement("div"); foot.style.cssText="font-size:10px;opacity:.7";
@@ -507,6 +596,6 @@
   }
 
   render();
-  Promise.all([fetchScav(),fetchQueue()]).then(render);
+  Promise.all([fetchScav(),fetchQueue(),fetchBarbs(),fetchFarmTpl()]).then(render);
   console.log("[noble-guide] "+TL.length+" steps");
 })();
