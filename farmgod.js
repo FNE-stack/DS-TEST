@@ -1164,43 +1164,79 @@ window.FarmGod.Main = (function (Library, Translation) {
   window.__tw_botschutz_watch = true;
 
   function active() {
-    var b = document.body;
-    if (b) {
-      var bp = (b.getAttribute('data-bot-protect') || '').toLowerCase();
+    // 1) the authoritative marker TW sets on <body> / <html>
+    var els = [document.body, document.documentElement];
+    for (var i = 0; i < els.length; i++) {
+      if (!els[i]) continue;
+      var bp = (els[i].getAttribute('data-bot-protect') || '').toLowerCase();
       if (bp === 'forced' || bp === 'needed') return true;
     }
-    if (document.querySelector('.bot_check, #bot_check, [class*="botprotect"], iframe[src*="hcaptcha"], iframe[src*="captcha"]')) return true;
+    // 2) the captcha widget / bot-check DOM (hcaptcha iframe, bot_check box)
+    if (document.querySelector('.bot_check, #bot_check, #botprotect, [class*="botprotect"], [class*="bot-protect"], iframe[src*="hcaptcha"], iframe[src*="captcha"], .captcha')) return true;
+    // 3) the popup TW shows: "Bist du ein Mensch?" / bot-protection text + a
+    //    visible challenge (avoid matching the word in hidden scripts)
+    var pop = document.querySelector('#popup_box_BotProtection, .popup_box_container, #bot_check_quest');
+    if (pop && /bist du ein mensch|bot.?schutz|bot.?protection|not a robot/i.test(pop.textContent || '')) return true;
     return false;
+  }
+
+  var stopped = false;
+  function stop() {
+    if (stopped) return; stopped = true;
+    if (window.__tw_bs_iv) clearInterval(window.__tw_bs_iv);
+    console.warn('[farmgod] BOTSCHUTZ detected → stopping');
+    // Try to close (works only if THIS tab was script-opened); otherwise the
+    // overlay below is the real stop. We show the overlay UNCONDITIONALLY so
+    // there is always a loud, unmissable signal even when close() is blocked.
+    overlay();
+    try { window.close(); } catch (e) {}
   }
 
   function overlay() {
     if (document.getElementById('tw_bs_overlay')) return;
     var o = document.createElement('div');
     o.id = 'tw_bs_overlay';
-    o.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:rgba(180,0,0,.93);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;font:bold 22px/1.4 Arial,sans-serif;text-align:center;padding:20px';
-    o.innerHTML = '🛑 BOTSCHUTZ AKTIV<br><span style="font-size:14px;font-weight:normal">Tab konnte nicht automatisch geschlossen werden.<br>SOFORT lösen oder Tab schließen!</span><div id="tw_bs_x" style="margin-top:18px;padding:10px 22px;background:#fff;color:#b00;border-radius:6px;cursor:pointer;font-size:16px">Tab schließen</div>';
-    document.body.appendChild(o);
-    document.getElementById('tw_bs_x').onclick = function () { tryClose(); };
+    o.style.cssText = 'position:fixed;inset:0;z-index:2147483647;background:rgba(190,0,0,.95);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;font:bold 24px/1.4 Arial,sans-serif;text-align:center;padding:20px';
+    o.innerHTML = '🛑 BOTSCHUTZ AKTIV — STOP!<br><span style="font-size:15px;font-weight:normal;margin-top:8px;display:block">Botschutz JETZT lösen, oder diesen Tab schließen.<br>Keine weiteren Farms senden!</span><div id="tw_bs_x" style="margin-top:20px;padding:11px 26px;background:#fff;color:#b00;border-radius:6px;cursor:pointer;font-size:17px;font-weight:bold">Tab schließen</div>';
+    (document.body || document.documentElement).appendChild(o);
+    var x = document.getElementById('tw_bs_x');
+    if (x) x.onclick = function () { try { window.close(); } catch (e) {} };
+    // blink the title bar so it's visible even on another tab
+    try {
+      var on = false;
+      window.__tw_bs_title = setInterval(function () {
+        document.title = (on = !on) ? '🛑 BOTSCHUTZ!' : 'BOTSCHUTZ LÖSEN!';
+      }, 700);
+    } catch (e) {}
+    // beep loop
     try {
       var ctx = new (window.AudioContext || window.webkitAudioContext)();
-      var beep = function () { var osc = ctx.createOscillator(), g = ctx.createGain(); osc.connect(g); g.connect(ctx.destination); osc.frequency.value = 880; g.gain.value = 0.2; osc.start(); osc.stop(ctx.currentTime + 0.2); };
-      beep(); setInterval(beep, 1500);
+      var beep = function () { var osc = ctx.createOscillator(), g = ctx.createGain(); osc.connect(g); g.connect(ctx.destination); osc.frequency.value = 920; g.gain.value = 0.25; osc.start(); osc.stop(ctx.currentTime + 0.25); };
+      beep(); window.__tw_bs_beep = setInterval(beep, 1200);
     } catch (e) {}
   }
 
-  function tryClose() {
-    try { window.close(); } catch (e) {}
-    setTimeout(function () { if (!window.closed) overlay(); }, 300);
-  }
+  function check() { if (active()) stop(); }
 
-  function check() {
-    if (active()) { console.warn('[farmgod] BOTSCHUTZ → closing tab'); clearInterval(window.__tw_bs_iv); tryClose(); }
-  }
-
-  window.__tw_bs_iv = setInterval(check, 1500);
-  try { new MutationObserver(check).observe(document.documentElement, { attributes: true, attributeFilter: ['data-bot-protect'], subtree: true, childList: true }); } catch (e) {}
-  check();
-  console.log('[farmgod] botschutz watcher active');
+  // poll fast + watch DOM mutations (captcha is injected late / after actions)
+  window.__tw_bs_iv = setInterval(check, 1000);
+  try {
+    new MutationObserver(check).observe(document.documentElement, {
+      attributes: true, attributeFilter: ['data-bot-protect'],
+      subtree: true, childList: true
+    });
+  } catch (e) {}
+  // also re-check whenever a network response comes back (farm sends), since
+  // TW often injects Botschutz right after an action — catches it without a refresh.
+  try {
+    var of = window.fetch;
+    if (of && !of.__twbs) {
+      window.fetch = function () { return of.apply(this, arguments).then(function (r) { setTimeout(check, 50); return r; }); };
+      window.fetch.__twbs = true;
+    }
+  } catch (e) {}
+  check();   // immediate check on load (in case Botschutz is already up)
+  console.log('[farmgod] botschutz watcher active (overlay+beep+title on detect)');
 })();
 
 (() => {
