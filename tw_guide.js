@@ -226,9 +226,15 @@
   // YOU recruit (so the guide never double-asks even if the queue read fails).
   // The optimistic count is cleared once those spears show up home/out/queue.
   function totalSpears(){
-    var h=(troopsHome()||{}).spear||0, o=(W.__twnl_scav_out||{}).spear||0;
-    var real=h+o+(W.__twnl_spear_q||0);            // home+out+parsed-queue (parse may be 0)
-    var tgt=W.__twnl_spear_target||0;              // optimistic: last recruit target
+    var q=W.__twnl_spear_q||0;                       // in barracks queue (training)
+    // Prefer the authoritative "Insgesamt" total (all spears everywhere, home+
+    // out) from the barracks page if we have it; else fall back to home+out from
+    // the scavenge JSON. Then add the training queue.
+    var owned=(typeof W.__twnl_spear_owned==="number")
+      ? W.__twnl_spear_owned
+      : ((troopsHome()||{}).spear||0)+((W.__twnl_scav_out||{}).spear||0);
+    var real=owned+q;
+    var tgt=W.__twnl_spear_target||0;               // optimistic: last recruit target
     // Hold at the recruited target until the real count catches up — so we never
     // re-ask while mid-train spears are invisible to the markup parser.
     return Math.max(real, tgt);
@@ -370,18 +376,18 @@
     return fetch("/game.php?village="+vid()+"&screen=barracks",{credentials:"include"})
       .then(function(r){return r.text();}).then(function(h){
         var q=0;
-        // scope to the train queue block if present
-        var wm=h.match(/id="trainqueue_wrap_barracks"([\s\S]*?)(?:<\/div>\s*<\/div>|$)/i);
-        var scope=wm?wm[1]:h;
-        // each spear order row: a unit_sprite ... spear, with a leading count
-        // like ">12 Speerträger" or "<strong>12</strong> ... spear".
-        var re=/(\d+)\s*[^<]*?<[^>]*unit[^>]*\bspear\b/gi, m;
-        while((m=re.exec(scope))) q+=parseInt(m[1],10)||0;
-        if(q===0){ // alt: "unit_sprite ... spear" then a number cell
-          var re2=/unit_sprite[^>]*\bspear\b[\s\S]{0,120}?(\d+)\s*(?:Speer|spear|<)/gi, m2;
-          while((m2=re2.exec(scope))) q+=parseInt(m2[1],10)||0;
-        }
+        // The training queue rows render as "<N> Speerträger" (verified from the
+        // live de256 barracks screenshot). Sum every "<number> Speerträger" in
+        // the training/Ausbildung area. We match the number + unit name directly.
+        var re=/(\d+)\s*Speertr(?:ä|&auml;)ger/gi, m;
+        while((m=re.exec(h))) q+=parseInt(m[1],10)||0;
         W.__twnl_spear_q=q;
+        // ALSO grab the authoritative "Im Dorf/Insgesamt: 64/68" total — that's
+        // ALL your spears everywhere (home + out), which sidesteps the home-vs-
+        // out accounting. The spear recruit row shows ".../68" as the total. We
+        // capture the second number of the "N/M" pair on the spear cost row.
+        var tot=h.match(/Speertr(?:ä|&auml;)ger[\s\S]{0,400}?(\d+)\s*\/\s*(\d+)/i);
+        if(tot){ W.__twnl_spear_owned=parseInt(tot[2],10)||0; }   // the /68 total
       }).catch(function(){ W.__twnl_spear_q=0; });
   }
   function refreshAll(){ GD=W.game_data||GD; W.__twnl_farm_sent={}; return Promise.all([fetchScav(),fetchQueue(),fetchBarbs(),fetchFarmTpl(),fetchBarracksQ()]).then(render); }
