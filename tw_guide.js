@@ -225,20 +225,19 @@
   // markup-dependent), and (b) an OPTIMISTIC local counter we bump the instant
   // YOU recruit (so the guide never double-asks even if the queue read fails).
   // The optimistic count is cleared once those spears show up home/out/queue.
+  // TOTAL spears = home (scavenge JSON unit_counts_home, verified correct)
+  //              + out scavenging (scavenge JSON squads)
+  //              + training in the barracks queue (parsed "N Speerträger")
+  // There is NO single "total" line on the barracks page (the earlier /68 parse
+  // matched a date, not a count), so we sum the three real sources. A recruit
+  // TARGET (set when you tap recruit) acts as an optimistic floor so the step
+  // doesn't re-ask before the new spears show up in home/queue.
   function totalSpears(){
-    // MANUAL-TRUST: auto-counting spears across home/out/queue proved fragile
-    // (home≠total when troops are out, queue markup varies by skin). Instead the
-    // guide trusts the recruit TARGET once you tap recruit (W.__twnl_spear_target)
-    // and you confirm/adjust with the in-panel +/- if it's off. Best-effort live
-    // read is still used as a floor when available, but the target wins.
-    var q=W.__twnl_spear_q||0;                       // in barracks queue (training)
-    var owned=(typeof W.__twnl_spear_owned==="number")
-      ? W.__twnl_spear_owned
-      : ((troopsHome()||{}).spear||0)+((W.__twnl_scav_out||{}).spear||0);
-    var real=owned+q;
-    var tgt=W.__twnl_spear_target||0;               // optimistic: last recruit target
-    // Hold at the recruited target until the real count catches up — so we never
-    // re-ask while mid-train spears are invisible to the markup parser.
+    var home=(troopsHome()||{}).spear||0;            // scavenge JSON home count
+    var out=(W.__twnl_scav_out||{}).spear||0;        // out scavenging
+    var q=W.__twnl_spear_q||0;                        // training queue
+    var real=home+out+q;
+    var tgt=W.__twnl_spear_target||0;
     return Math.max(real, tgt);
   }
 
@@ -377,19 +376,13 @@
     if((liveLevels().barracks||0)<1){ W.__twnl_spear_q=0; return Promise.resolve(); }
     return fetch("/game.php?village="+vid()+"&screen=barracks",{credentials:"include"})
       .then(function(r){return r.text();}).then(function(h){
-        var q=0;
-        // The training queue rows render as "<N> Speerträger" (verified from the
-        // live de256 barracks screenshot). Sum every "<number> Speerträger" in
-        // the training/Ausbildung area. We match the number + unit name directly.
-        var re=/(\d+)\s*Speertr(?:ä|&auml;)ger/gi, m;
+        // Training queue renders each order as "<N> Speerträger" (verified live).
+        // Sum them = spears currently in training. (There is NO reliable single
+        // "total" line on this page — the old /68 parse matched a DATE, not a
+        // count — so home+out come from the scavenge JSON instead, in totalSpears.)
+        var q=0, re=/(\d+)\s*Speertr(?:ä|&auml;)ger/gi, m;
         while((m=re.exec(h))) q+=parseInt(m[1],10)||0;
         W.__twnl_spear_q=q;
-        // ALSO grab the authoritative "Im Dorf/Insgesamt: 64/68" total — that's
-        // ALL your spears everywhere (home + out), which sidesteps the home-vs-
-        // out accounting. The spear recruit row shows ".../68" as the total. We
-        // capture the second number of the "N/M" pair on the spear cost row.
-        var tot=h.match(/Speertr(?:ä|&auml;)ger[\s\S]{0,400}?(\d+)\s*\/\s*(\d+)/i);
-        if(tot){ W.__twnl_spear_owned=parseInt(tot[2],10)||0; }   // the /68 total
       }).catch(function(){ W.__twnl_spear_q=0; });
   }
   function refreshAll(){ GD=W.game_data||GD; W.__twnl_farm_sent={}; return Promise.all([fetchScav(),fetchQueue(),fetchBarbs(),fetchFarmTpl(),fetchBarracksQ()]).then(render); }
