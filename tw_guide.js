@@ -220,7 +220,19 @@
   function liveLevels(){ var b=(GD.village&&GD.village.buildings)||{}, o={}; Object.keys(b).forEach(function(k){o[k]=parseInt(b[k],10)||0;}); return o; }
   function scavTiers(){ return (typeof W.__twnl_scav==="number")?W.__twnl_scav:0; }
   function troopsHome(){ return (GD.village&&GD.village.unit_counts)||W.__twnl_troops||null; }
-  function totalSpears(){ var h=(troopsHome()||{}).spear||0, o=(W.__twnl_scav_out||{}).spear||0; return h+o; }
+  // TOTAL spears = home + out scavenging + IN-TRAINING. In-training comes from
+  // two sources, whichever is higher: (a) the barracks-queue parse (fetchBarracksQ,
+  // markup-dependent), and (b) an OPTIMISTIC local counter we bump the instant
+  // YOU recruit (so the guide never double-asks even if the queue read fails).
+  // The optimistic count is cleared once those spears show up home/out/queue.
+  function totalSpears(){
+    var h=(troopsHome()||{}).spear||0, o=(W.__twnl_scav_out||{}).spear||0;
+    var real=h+o+(W.__twnl_spear_q||0);            // home+out+parsed-queue (parse may be 0)
+    var tgt=W.__twnl_spear_target||0;              // optimistic: last recruit target
+    // Hold at the recruited target until the real count catches up — so we never
+    // re-ask while mid-train spears are invisible to the markup parser.
+    return Math.max(real, tgt);
+  }
 
   // The current step = first TL row not yet satisfied. A build counts as done
   // when finished OR sitting in the QUEUE (effective level = live + queued), so
@@ -349,7 +361,30 @@
         if(Object.keys(tpl).length)W.__twnl_farm_tpl=tpl;
       }).catch(function(){});
   }
-  function refreshAll(){ GD=W.game_data||GD; W.__twnl_farm_sent={}; return Promise.all([fetchScav(),fetchQueue(),fetchBarbs(),fetchFarmTpl()]).then(render); }
+  // Count spears CURRENTLY TRAINING in the barracks queue, so totalSpears()
+  // includes them and the recruit step doesn't double-ask. The train queue rows
+  // carry a unit sprite + a count; we sum the spear rows. (Markup varies; we try
+  // the common patterns and fall back to 0.)
+  function fetchBarracksQ(){
+    if((liveLevels().barracks||0)<1){ W.__twnl_spear_q=0; return Promise.resolve(); }
+    return fetch("/game.php?village="+vid()+"&screen=barracks",{credentials:"include"})
+      .then(function(r){return r.text();}).then(function(h){
+        var q=0;
+        // scope to the train queue block if present
+        var wm=h.match(/id="trainqueue_wrap_barracks"([\s\S]*?)(?:<\/div>\s*<\/div>|$)/i);
+        var scope=wm?wm[1]:h;
+        // each spear order row: a unit_sprite ... spear, with a leading count
+        // like ">12 Speerträger" or "<strong>12</strong> ... spear".
+        var re=/(\d+)\s*[^<]*?<[^>]*unit[^>]*\bspear\b/gi, m;
+        while((m=re.exec(scope))) q+=parseInt(m[1],10)||0;
+        if(q===0){ // alt: "unit_sprite ... spear" then a number cell
+          var re2=/unit_sprite[^>]*\bspear\b[\s\S]{0,120}?(\d+)\s*(?:Speer|spear|<)/gi, m2;
+          while((m2=re2.exec(scope))) q+=parseInt(m2[1],10)||0;
+        }
+        W.__twnl_spear_q=q;
+      }).catch(function(){ W.__twnl_spear_q=0; });
+  }
+  function refreshAll(){ GD=W.game_data||GD; W.__twnl_farm_sent={}; return Promise.all([fetchScav(),fetchQueue(),fetchBarbs(),fetchFarmTpl(),fetchBarracksQ()]).then(render); }
 
   // ── ACTIONS (markup-independent AJAX; same request the game makes) ───────
   function toast(msg,good){
@@ -396,7 +431,14 @@
       ["sword","axe","archer","spy","light","heavy","marcher","ram","catapult"].forEach(function(u){ if(new RegExp('name="'+u+'"').test(body))data.set(u,"0"); });
       if(action.charAt(0)!=="/")action="/"+action.replace(/^.*game\.php/,"game.php");
       return fetch(action,{method:"POST",credentials:"include",headers:{"Content-Type":"application/x-www-form-urlencoded"},body:data.toString()})
-        .then(function(){ toast("✓ queued "+n+" spears",true); setTimeout(refreshAll,700); });
+        .then(function(){
+          // optimistic: record the TARGET spear total we just recruited toward,
+          // so the guide treats the step as satisfied immediately (the queued
+          // spears are invisible until the markup parse or they land). Decays in
+          // fetchScav once real (home+out+queue) catches up to this target.
+          W.__twnl_spear_target=toN;
+          toast("✓ queued "+n+" spears",true); setTimeout(refreshAll,700);
+        });
     }).catch(function(e){ toast("recruit failed: "+e,false); });
   }
   function packSquads(th,tiers){
@@ -619,6 +661,6 @@
   }
 
   render();
-  Promise.all([fetchScav(),fetchQueue(),fetchBarbs(),fetchFarmTpl()]).then(render);
+  Promise.all([fetchScav(),fetchQueue(),fetchBarbs(),fetchFarmTpl(),fetchBarracksQ()]).then(render);
   console.log("[noble-guide] "+TL.length+" steps");
 })();
