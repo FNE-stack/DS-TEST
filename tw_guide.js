@@ -358,7 +358,16 @@
         // telling you to build something already queued.
         var scope=qm?qm[1]:h, used=0, qb={}, mm, re=/buildorder_([a-z_]+)/gi;
         while((mm=re.exec(scope))){ var slug=mm[1].toLowerCase(); qb[slug]=(qb[slug]||0)+1; used++; }
-        W.__twnl_qused=used; W.__twnl_qbuild=qb;   // {slug: countInQueue}
+        // MERGE with optimistic bumps (doBuild recorded builds we just queued).
+        // On the APP the HTML parse above finds NOTHING (different markup), so
+        // without this merge the optimistic count is wiped and the step snaps
+        // back — the "app doesn't advance" bug. Keep the MAX of parsed vs
+        // optimistic per building. Optimistic entries are cleared in render()
+        // once your real level reaches the plan's target for that step.
+        var optq=W.__twnl_optq||{};
+        Object.keys(optq).forEach(function(sl){ if((optq[sl]||0)>(qb[sl]||0)){ qb[sl]=optq[sl]; used=Math.max(used, Object.keys(qb).reduce(function(a,k){return a+qb[k];},0)); } });
+        W.__twnl_qused=Math.max(used, W.__twnl_qused||0, Object.keys(qb).reduce(function(a,k){return a+qb[k];},0));
+        W.__twnl_qbuild=qb;   // {slug: countInQueue} (parsed ⊔ optimistic)
         // ── REAL build DURATIONS straight from the game (the numbers you see on
         // the Hauptgebäude screen, e.g. "0:00:06"). We DON'T trust a build-time
         // formula (this world's buildtime_formula=2 + a 6s floor doesn't match any
@@ -487,6 +496,30 @@
       p.insertBefore(el, p.children[1]||null); }
     el.style.background=good?"#d7e9c8":"#f6d3d3"; el.style.color=good?"#2a6":"#a00"; el.textContent=msg;
   }
+  // Optimistically record that we just queued `b` — bumps the queued-count so
+  // effLevel() counts it and the step ADVANCES immediately, WITHOUT parsing the
+  // build-queue HTML (which differs on the app skin — the reason the app didn't
+  // advance after building). fetchQueue's real parse will confirm/replace this
+  // on the next refresh (desktop); on the app this optimistic bump is what makes
+  // the step move on. Keyed per (building) as a count; cleared once the real
+  // level catches up in render.
+  function bumpQueued(b){
+    W.__twnl_qbuild=W.__twnl_qbuild||{}; W.__twnl_qbuild[b]=(W.__twnl_qbuild[b]||0)+1;
+    W.__twnl_qused=(W.__twnl_qused||0)+1;
+    W.__twnl_optq=W.__twnl_optq||{}; W.__twnl_optq[b]=(W.__twnl_optq[b]||0)+1;
+    // remember the live level at bump time so we can clear the optimistic count
+    // once the real build finishes (live level rises past it).
+    W.__twnl_optbase=W.__twnl_optbase||{};
+    if(W.__twnl_optbase[b]===undefined) W.__twnl_optbase[b]=(liveLevels()[b]||0);
+  }
+  // Drop optimistic bumps that the real game has now caught up on (build done):
+  // if live level >= base + optimistic count, the builds landed → clear.
+  function reconcileOptimistic(){
+    var opt=W.__twnl_optq||{}, base=W.__twnl_optbase||{}, lv=liveLevels();
+    Object.keys(opt).forEach(function(b){
+      if((lv[b]||0) >= (base[b]||0)+(opt[b]||0)){ delete opt[b]; delete base[b]; }
+    });
+  }
   function doBuild(b,lvl){
     if(!AUTO_BUILD){ W.location.href="/game.php?village="+vid()+"&screen="+(b==="place"?"place":"main"); return; }
     toast("building "+(BLABEL[b]||b)+" "+lvl+"…",true);
@@ -497,7 +530,7 @@
       return fetch(u,{method:"POST",credentials:"include",headers:{"X-Requested-With":"XMLHttpRequest","TribalWars-Ajax":"1","Content-Type":"application/x-www-form-urlencoded; charset=UTF-8","Accept":"application/json, text/javascript, */*; q=0.01"},body:body.toString()})
         .then(function(r){return r.text();}).then(function(txt){ var j=null; try{j=JSON.parse(txt);}catch(e){}
           if(j&&(j.error||j.errors)){ toast("build: "+String(j.error||j.errors).slice(0,90),false); return; }
-          toast("✓ queued "+(BLABEL[b]||b)+" "+lvl,true); setTimeout(refreshAll,700); });
+          bumpQueued(b); toast("✓ queued "+(BLABEL[b]||b)+" "+lvl,true); render(); setTimeout(refreshAll,700); });
     }
     fetch(mu,{credentials:"include"}).then(function(r){return r.text();}).then(function(h){
       var cm=h.match(/csrf_token\s*[:=]\s*['"]([a-f0-9]+)['"]/i)||h.match(/"csrf"\s*:\s*"([a-f0-9]+)"/i)||h.match(/&h=([a-f0-9]+)/i); if(cm)W.__twnl_csrf=cm[1];
@@ -505,7 +538,7 @@
       while((hm=hre.exec(h))){ var href=hm[1].replace(/&amp;/g,"&"); var idm=href.match(/[?&]id=([a-z_]+)/i); var tym=href.match(/[?&]type=([a-z_]+)/i);
         if(!idm||idm[1].toLowerCase()!==b)continue; if(tym&&BAD.test(tym[1]))continue; link=href; break; }
       if(link){ if(link.charAt(0)!=="/")link="/"+link.replace(/^.*game\.php/,"game.php");
-        return fetch(link,{credentials:"include"}).then(function(){ toast("✓ queued "+(BLABEL[b]||b)+" "+lvl,true); setTimeout(refreshAll,700); }); }
+        return fetch(link,{credentials:"include"}).then(function(){ bumpQueued(b); toast("✓ queued "+(BLABEL[b]||b)+" "+lvl,true); render(); setTimeout(refreshAll,700); }); }
       return direct();
     }).catch(function(e){ toast("build failed: "+e,false); });
   }
@@ -584,6 +617,7 @@
 
   // ── THE GUIDE — one current step ─────────────────────────────────────────
   function render(){
+    reconcileOptimistic();   // clear optimistic build bumps the game has finished
     var r=liveRes(), lv=liveLevels(), idx=currentIndex(lv), done=idx>=TL.length;
     var old=document.getElementById("twng"); if(old)old.remove();
     var p=document.createElement("div"); p.id="twng";
