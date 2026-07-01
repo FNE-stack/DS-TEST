@@ -215,6 +215,13 @@ window.FarmGod.Library = (function () {
   // page_size collapses that to 1-2 fetches. (TW accepts page_size as a GET
   // param on these overview/am_farm screens.)
   const BIG_PAGE_SIZE = 1000;
+  // The app/mobile skin IGNORES page_size (always 10 rows/page) — so appending
+  // it there is pure dead weight. Only add it on DESKTOP, where it actually
+  // collapses a list into 1-2 fetches. Detect app via #mobileHeader.
+  const isMobile = function () { return $('#mobileHeader').length > 0; };
+  const pageSizeParam = function () {
+    return isMobile() ? '' : `&page_size=${BIG_PAGE_SIZE}`;
+  };
   const processPage = function (url, page, wrapFn) {
     let pageText = url.match('am_farm')
       ? `&Farm_page=${page}`
@@ -222,7 +229,7 @@ window.FarmGod.Library = (function () {
 
     return twLib
       .ajax({
-        url: url + pageText + `&page_size=${BIG_PAGE_SIZE}`,
+        url: url + pageText + pageSizeParam(),
       })
       .then((html) => {
         return wrapFn(page, $(html));
@@ -238,7 +245,7 @@ window.FarmGod.Library = (function () {
   // called once per page (order doesn't matter — it just accumulates into data).
   const fetchOnePage = function (url, page) {
     let pageText = url.match('am_farm') ? `&Farm_page=${page}` : `&page=${page}`;
-    return twLib.ajax({ url: url + pageText + `&page_size=${BIG_PAGE_SIZE}` })
+    return twLib.ajax({ url: url + pageText + pageSizeParam() })
       .then((html) => $(html));
   };
   // Read the MAX page index directly from a page's nav widget — the same value
@@ -248,7 +255,10 @@ window.FarmGod.Library = (function () {
     if ($html.find('#am_widget_Farm').length > 0) {
       // am_farm plunder list: pages numbered in #plunder_list_nav; last item is
       // the highest page number (1-based in the UI → subtract 1 for 0-based).
-      let items = $('#plunder_list_nav').first()
+      // BUGFIX: read the nav out of the FETCHED $html, not the live page
+      // ($('#plunder_list_nav') hit the DOM of whatever screen you were on, so
+      // on a fresh load it misread and silently fell back to the slow path).
+      let items = $html.find('#plunder_list_nav').first()
         .find('a.paged-nav-item, strong.paged-nav-item');
       if (!items.length) return 0;
       let lastTxt = items[items.length - 1].textContent.replace(/\D/g, '');
@@ -1163,14 +1173,26 @@ window.FarmGod.Main = (function (Library, Translation) {
   if (window.__tw_botschutz_watch) return;
   window.__tw_botschutz_watch = true;
 
+  var __bs_n = 0;   // throttles the heavy DOM-widget scan in active() (below)
   function active() {
-    // 1) the authoritative marker TW sets on <body> / <html>
+    // 1) the authoritative marker TW sets on <body> / <html>. CATCH IT AT ANY
+    //    VALUE, not just "forced"/"needed": TW flags the account (data-bot-protect
+    //    appears + a "new_quest" notification fires) BEFORE the captcha widget is
+    //    actually rendered/solvable. Waiting for "forced" or the visible widget
+    //    misses that early window — which is why farming kept firing into a
+    //    pending Botschutz. Any non-empty data-bot-protect => stop NOW.
     var els = [document.body, document.documentElement];
     for (var i = 0; i < els.length; i++) {
       if (!els[i]) continue;
-      var bp = (els[i].getAttribute('data-bot-protect') || '').toLowerCase();
-      if (bp === 'forced' || bp === 'needed') return true;
+      var bp = (els[i].getAttribute('data-bot-protect') || '').trim().toLowerCase();
+      if (bp && bp !== 'false' && bp !== '0' && bp !== 'none') return true;
     }
+    // The attribute above is the authoritative, INSTANT signal (set the moment
+    // TW flags the account). The DOM-widget scans below are a much heavier
+    // fallback (whole-document querySelector), so only run them every ~5th call
+    // — enough to catch a widget-only case, cheap enough not to jank FarmGod.
+    __bs_n = (__bs_n + 1) % 5;
+    if (__bs_n !== 0) return false;
     // 2) the captcha widget / bot-check DOM (hcaptcha iframe, bot_check box)
     if (document.querySelector('.bot_check, #bot_check, #botprotect, [class*="botprotect"], [class*="bot-protect"], iframe[src*="hcaptcha"], iframe[src*="captcha"], .captcha')) return true;
     // 3) the popup TW shows: "Bist du ein Mensch?" / bot-protection text + a
@@ -1218,20 +1240,31 @@ window.FarmGod.Main = (function (Library, Translation) {
 
   function check() { if (active()) stop(); }
 
-  // poll fast + watch DOM mutations (captcha is injected late / after actions)
+  // DETECTION LAYERS (cheap → the MutationObserver does the real work):
+  //  * MutationObserver on data-bot-protect = INSTANT detection the moment TW
+  //    sets the flag, zero polling cost. This is the primary signal.
+  //  * A slow 1s poll as a backstop (in case the attribute is set before the
+  //    observer attaches).
+  //  * A DEBOUNCED post-network re-check: TW can inject Botschutz right after an
+  //    action, but firing check() after EVERY response tanked FarmGod (50+ page
+  //    fetches → 50+ DOM-wide captcha scans = the "got slower" jank). We coalesce
+  //    bursts of responses into ONE check ~120ms after the last one settles.
   window.__tw_bs_iv = setInterval(check, 1000);
+  try { document.addEventListener('visibilitychange', check); } catch (e) {}
   try {
     new MutationObserver(check).observe(document.documentElement, {
       attributes: true, attributeFilter: ['data-bot-protect'],
       subtree: true, childList: true
     });
   } catch (e) {}
-  // also re-check whenever a network response comes back (farm sends), since
-  // TW often injects Botschutz right after an action — catches it without a refresh.
   try {
-    var of = window.fetch;
+    var of = window.fetch, dbt = null;
+    var debouncedCheck = function () {
+      if (dbt) clearTimeout(dbt);
+      dbt = setTimeout(check, 120);   // one check after the burst settles
+    };
     if (of && !of.__twbs) {
-      window.fetch = function () { return of.apply(this, arguments).then(function (r) { setTimeout(check, 50); return r; }); };
+      window.fetch = function () { return of.apply(this, arguments).then(function (r) { debouncedCheck(); return r; }); };
       window.fetch.__twbs = true;
     }
   } catch (e) {}
