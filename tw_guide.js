@@ -292,6 +292,9 @@
     return picked;
   }
   function countdown(ts){ var s=Math.max(0,Math.round(ts-Date.now()/1000)),m=Math.floor(s/60),h=Math.floor(m/60); return h>0?h+"h"+(m%60)+"m":(m>0?m+"m"+(s%60)+"s":s+"s"); }
+  // format a DURATION in seconds as the game shows it (H:MM:SS or M:SS / Ns)
+  function fmtDur(s){ s=Math.round(s); var h=Math.floor(s/3600),m=Math.floor((s%3600)/60),sec=s%60;
+    if(h>0)return h+"h"+(m<10?"0":"")+m+"m"; if(m>0)return m+"m"+(sec<10?"0":"")+sec+"s"; return sec+"s"; }
 
   // ── live fetch (read-only) ──────────────────────────────────────────────
   // Extract the inline `var village = {...}` object by BRACE-MATCHING (not a
@@ -356,6 +359,23 @@
         var scope=qm?qm[1]:h, used=0, qb={}, mm, re=/buildorder_([a-z_]+)/gi;
         while((mm=re.exec(scope))){ var slug=mm[1].toLowerCase(); qb[slug]=(qb[slug]||0)+1; used++; }
         W.__twnl_qused=used; W.__twnl_qbuild=qb;   // {slug: countInQueue}
+        // ── REAL build DURATIONS straight from the game (the numbers you see on
+        // the Hauptgebäude screen, e.g. "0:00:06"). We DON'T trust a build-time
+        // formula (this world's buildtime_formula=2 + a 6s floor doesn't match any
+        // standard formula) — we read the game's own shown duration per building
+        // row, so the guide's ETA/timing is exactly what the game will do.
+        // Each buildable row is <tr id="main_buildrow_<slug>"> and contains the
+        // upgrade duration as HH:MM:SS (or H:MM:SS) somewhere in the row.
+        var dur={}, rowRe=/id="(?:main_)?buildrow_([a-z_]+)"([\s\S]*?)<\/tr>/gi, rm;
+        while((rm=rowRe.exec(h))){
+          var slug=rm[1].toLowerCase(), rowHtml=rm[2];
+          // the build-time cell: the FIRST H:MM:SS in the row that isn't a clock
+          // "finish at" time. TW puts the duration in a cell before the build
+          // button; grab the first \d+:\d\d:\d\d match.
+          var tm=rowHtml.match(/(\d+):([0-5]\d):([0-5]\d)/);
+          if(tm){ dur[slug]=(+tm[1])*3600+(+tm[2])*60+(+tm[3]); }
+        }
+        W.__twnl_builddur=dur;   // {slug: seconds} — REAL game durations
       }).catch(function(){});
   }
   // Point-blank barbs (owner 0, within ~2 fields) — SUPPLEMENTARY income: farm
@@ -605,9 +625,12 @@
       // X" and disable the button — the plan is prereq-valid, but this protects
       // against your live state diverging from it (partial builds, manual play).
       var pm=missingPrereq(lv,b);
+      // REAL build time from the game (scraped off the main screen), not a formula.
+      var realDur=(W.__twnl_builddur||{})[b];
+      var durStr=(typeof realDur==="number")?" · ⏱ "+fmtDur(realDur):"";
       step.innerHTML="<div style='font-size:10px;opacity:.6'>"+stepN+" · NEXT</div>"+
         "<div style='font-size:16px;font-weight:bold;margin:2px 0'>🏗️ "+(BLABEL[b]||b)+" → "+lvl+"</div>"+
-        "<div style='font-size:11px;opacity:.7'>cost "+cw+"/"+cs+"/"+ci+(cp?" · "+cp+" pop":"")+"</div>"+
+        "<div style='font-size:11px;opacity:.7'>cost "+cw+"/"+cs+"/"+ci+(cp?" · "+cp+" pop":"")+durStr+"</div>"+
         (pm?"<div style='color:#b00;font-size:12px;margin-top:3px'>⛔ needs "+(BLABEL[pm.b]||pm.b)+" "+pm.lvl+" first (you have "+pm.have+") — build that</div>"
           :qFull?"<div style='font-size:12px;margin-top:3px;opacity:.8'>⏳ both build slots busy — finishing queued builds first</div>"
           :popBlock?"<div style='color:#b00;font-size:12px;margin-top:3px'>⚠ pop-capped — a Bauernhof step should come first</div>"
@@ -738,8 +761,13 @@
     var foot=document.createElement("div"); foot.style.cssText="font-size:10px;opacity:.7";
     var etaH=(NOBLE_H-cur[T_AT]); var dW=r.wood-cur[T_EW],dS=r.stone-cur[T_ES],dI=r.iron-cur[T_EI];
     var drift=(dW< -800||dS< -800||dI< -800)?"<span style='color:#b00'> · behind plan, scavenge more</span>":"<span style='color:#2a8'> · on track</span>";
+    // NOTE: the "~Xh to noble" is a rough PLAN estimate (from the optimizer's
+    // timeline). The per-step ⏱ time shown on the build card above is the REAL
+    // game duration (scraped live) — trust that for the current step. The total
+    // is dominated by the big late builds (Academy ~102h etc.), so it's a
+    // ballpark, marked with "~".
     foot.innerHTML="🪵"+r.wood+" 🧱"+r.stone+" ⚙️"+r.iron+" · pop "+r.pop+"/"+r.popMax+
-      "<br>~"+Math.round(etaH)+"h to noble"+drift;
+      "<br>~"+Math.round(etaH)+"h to noble <span style='opacity:.6'>(plan est.)</span>"+drift;
     p.appendChild(foot);
 
     // skip override (in case auto-detect lags)
