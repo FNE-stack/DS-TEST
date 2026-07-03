@@ -609,6 +609,8 @@ window.FarmGod.Main = (function (Library, Translation) {
     $('.farmGod_icon')
       .off('click')
       .on('click', function () {
+        // BOTSCHUTZ GUARD: never farm while a bot-check is active.
+        if (window.__tw_bs_stopped) { return; }
         if (
           game_data.market != 'nl' ||
           $(this).data('origin') == curVillage
@@ -622,6 +624,9 @@ window.FarmGod.Main = (function (Library, Translation) {
     $(document)
       .off('keydown')
       .on('keydown', (event) => {
+        // BOTSCHUTZ GUARD: swallow Enter-to-farm while a bot-check is active,
+        // so hammering Enter behind the red window can't fire farms into it.
+        if (window.__tw_bs_stopped) { return; }
         if ((event.keyCode || event.which) == 13) {
           $('.farmGod_icon').first().trigger('click');
         }
@@ -1107,6 +1112,7 @@ window.FarmGod.Main = (function (Library, Translation) {
   };
 
   const sendFarm = function ($this) {
+    if (window.__tw_bs_stopped) { return; }   // BOTSCHUTZ GUARD (last line of defense)
     let n = Timing.getElapsedTimeSinceLoad();
     if (
       !farmBusy &&
@@ -1205,13 +1211,50 @@ window.FarmGod.Main = (function (Library, Translation) {
   var stopped = false;
   function stop() {
     if (stopped) return; stopped = true;
+    // HARD STOP FLAG — blocks farming (the overlay is only visual).
+    window.__tw_bs_stopped = true;
     if (window.__tw_bs_iv) clearInterval(window.__tw_bs_iv);
-    console.warn('[farmgod] BOTSCHUTZ detected → stopping');
-    // Try to close (works only if THIS tab was script-opened); otherwise the
-    // overlay below is the real stop. We show the overlay UNCONDITIONALLY so
-    // there is always a loud, unmissable signal even when close() is blocked.
+    console.warn('[farmgod] BOTSCHUTZ detected → farming BLOCKED');
+
+    // ── CAPTURE-PHASE ENTER/CLICK KILLER ─────────────────────────────────────
+    // This is the real guarantee. window.close() only works on script-opened
+    // tabs (so "Tab schließen" often can't close a normal tab). But we CAN make
+    // sure no Enter — from you, an auto-clicker, or a candle on the key — ever
+    // reaches a farm. We install listeners in the CAPTURE phase on window, so
+    // they run BEFORE FarmGod's handler or any auto-send script, and hard-kill
+    // the event. Result: even if the tab stays open, farming is impossible.
+    var killEnter = function (e) {
+      var k = e.keyCode || e.which;
+      if (k === 13) {   // Enter
+        e.preventDefault(); e.stopPropagation();
+        if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+        return false;
+      }
+    };
+    var killFarmClick = function (e) {
+      // block clicks that would trigger a farm (the farm icons + our overlay-safe)
+      var el = e.target;
+      if (el && el.closest && el.closest('.farmGod_icon, .farm_icon')) {
+        e.preventDefault(); e.stopPropagation();
+        if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+        return false;
+      }
+    };
+    try {
+      window.addEventListener('keydown', killEnter, true);   // capture=true
+      window.addEventListener('keypress', killEnter, true);
+      window.addEventListener('keyup', killEnter, true);
+      window.addEventListener('click', killFarmClick, true);
+    } catch (e) {}
+    try { $(document).off('keydown'); } catch (e) {}  // also remove FarmGod's own
+
     overlay();
-    try { window.close(); } catch (e) {}
+    // keep trying to close (works if script-opened); harmless otherwise.
+    var tries = 0;
+    var closeIv = setInterval(function () {
+      try { window.close(); } catch (e) {}
+      if (window.closed || ++tries > 10) clearInterval(closeIv);
+    }, 300);
   }
 
   function overlay() {
@@ -1222,7 +1265,20 @@ window.FarmGod.Main = (function (Library, Translation) {
     o.innerHTML = '🛑 BOTSCHUTZ AKTIV — STOP!<br><span style="font-size:15px;font-weight:normal;margin-top:8px;display:block">Botschutz JETZT lösen, oder diesen Tab schließen.<br>Keine weiteren Farms senden!</span><div id="tw_bs_x" style="margin-top:20px;padding:11px 26px;background:#fff;color:#b00;border-radius:6px;cursor:pointer;font-size:17px;font-weight:bold">Tab schließen</div>';
     (document.body || document.documentElement).appendChild(o);
     var x = document.getElementById('tw_bs_x');
-    if (x) x.onclick = function () { try { window.close(); } catch (e) {} };
+    if (x) x.onclick = function () {
+      // window.close() only works on tabs THIS script opened — on a normal tab
+      // it silently does nothing (why the button "didn't work"). Fallback: if we
+      // can't close, at least LEAVE the farm screen so no farm can be sent, and
+      // land on the overview (where you'll see/solve the Botschutz).
+      try { window.close(); } catch (e) {}
+      setTimeout(function () {
+        if (!window.closed) {
+          try { window.location.href = '/game.php?screen=overview'; } catch (e) {}
+        }
+      }, 200);
+    };
+    // relabel so the button's real behaviour is clear
+    if (x) x.textContent = 'Tab schließen / weg vom Farmen';
     // blink the title bar so it's visible even on another tab
     try {
       var on = false;
