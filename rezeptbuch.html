@@ -20,2173 +20,809 @@
 <div id="root"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/lucide/0.383.0/umd/lucide.min.js"></script>
 <script>
-// Polyfill lucide icons for UMD usage
 const { createElement: h, useState, useEffect, useRef } = React;
-const { ArrowLeft, ArrowRight, Play, Pause, RotateCcw, Check, X, Plus, Clock, Search, Users, Lightbulb, Trash2 } = lucide;
-
 const RECIPES_KEY = "rezeptbuch_v13";
-
-const defaultRecipes = [{
-  id: 1,
-  emoji: "🌶️",
-  title: "Chipotle Tofu",
-  desc: "Würziger, rauchiger Tofu – schnell, vegan",
-  servings: 3,
-  tags: ["vegan", "tofu"],
-  ingredients: [{
-    amount: 400,
-    unit: "g",
-    name: "Super Firm Tofu, in Stücke gerissen"
-  }, {
-    amount: 2,
-    unit: "EL",
-    name: "Öl"
-  }, {
-    amount: 2,
-    unit: "EL",
-    name: "Sojasoße (oder Tamari)"
-  }, {
-    amount: 1,
-    unit: "EL",
-    name: "Limettensaft"
-  }, {
-    amount: 1.5,
-    unit: "EL",
-    name: "Chipotle in Adobo, fein gehackt"
-  }, {
-    amount: 1,
-    unit: "EL",
-    name: "Hefeflocken"
-  }, {
-    amount: 1,
-    unit: "TL",
-    name: "Geräuchertes Paprikapulver"
-  }, {
-    amount: 0.5,
-    unit: "TL",
-    name: "Zwiebelpulver"
-  }, {
-    amount: 0.5,
-    unit: "TL",
-    name: "Knoblauchpulver"
-  }, {
-    amount: 0.5,
-    unit: "TL",
-    name: "Kreuzkümmel"
-  }, {
-    amount: 0.5,
-    unit: "TL",
-    name: "Oregano"
-  }, {
-    amount: 1,
-    unit: "Prise",
-    name: "Salz & Pfeffer"
-  }],
-  steps: [{
-    title: "Marinade zubereiten",
-    desc: "Alle Marinadenzutaten in einer Schüssel verquirlen, am besten kurz mit einem Mixer pürieren für eine glatte Marinade.",
-    timer: null
-  }, {
-    title: "Tofu marinieren",
-    desc: "Tofu trocken tupfen, von Hand in Stücke brechen. Marinade drübergießen und vermengen. Mindestens 30 Min., besser 2–4 Std. oder über Nacht im Kühlschrank marinieren.",
-    timer: 7200
-  }, {
-    title: "Tofu anbraten",
-    desc: "Große Pfanne bei mittlerer Hitze 3–4 Min. vorheizen. Tofu portionsweise hineingeben (nicht überladen!) und je 2–3 Min. pro Seite anbraten bis schön gebräunt.",
-    timer: 180
-  }],
-  notes: "Tofu-Tipp: Super Firm muss nicht gepresst werden. Extra Firm mindestens 30 Min. pressen."
-}, {
-  id: 2,
-  emoji: "🌮",
-  title: "Baked Chipotle Tofu Tacos",
-  desc: "Knusprige Tacos mit Chipotle-Tofu und rauchiger Sauce",
-  servings: 4,
-  tags: ["vegan", "tofu", "tacos"],
-  ingredients: [{
-    amount: 400,
-    unit: "g",
-    name: "Super Firm Tofu, in Stücke gerissen"
-  }, {
-    amount: 2,
-    unit: "EL",
-    name: "Öl"
-  }, {
-    amount: 2,
-    unit: "EL",
-    name: "Sojasoße"
-  }, {
-    amount: 1,
-    unit: "EL",
-    name: "Limettensaft"
-  }, {
-    amount: 1.5,
-    unit: "EL",
-    name: "Chipotle in Adobo, fein gehackt"
-  }, {
-    amount: 1,
-    unit: "EL",
-    name: "Hefeflocken"
-  }, {
-    amount: 1,
-    unit: "TL",
-    name: "Geräuchertes Paprikapulver"
-  }, {
-    amount: 0.5,
-    unit: "TL",
-    name: "Zwiebelpulver"
-  }, {
-    amount: 0.5,
-    unit: "TL",
-    name: "Knoblauchpulver"
-  }, {
-    amount: 0.5,
-    unit: "TL",
-    name: "Kreuzkümmel"
-  }, {
-    amount: 0.5,
-    unit: "TL",
-    name: "Oregano"
-  }, {
-    amount: 150,
-    unit: "g",
-    name: "Gemischte Paprika, gewürfelt"
-  }, {
-    amount: 75,
-    unit: "g",
-    name: "Mais, gekocht"
-  }, {
-    amount: 1,
-    unit: "",
-    name: "Gelbe Zwiebel, gewürfelt"
-  }, {
-    amount: 1,
-    unit: "",
-    name: "Jalapeño, gehackt (optional)"
-  }, {
-    amount: 8,
-    unit: "EL",
-    name: "Mayonnaise"
-  }, {
-    amount: 8,
-    unit: "EL",
-    name: "Saure Sahne"
-  }, {
-    amount: 1,
-    unit: "EL",
-    name: "Geräuchertes Paprikapulver (Sauce)"
-  }, {
-    amount: 1,
-    unit: "TL",
-    name: "Knoblauchpulver (Sauce)"
-  }, {
-    amount: 1,
-    unit: "TL",
-    name: "Cajun-Gewürz"
-  }, {
-    amount: 1,
-    unit: "EL",
-    name: "Limettensaft (Sauce)"
-  }, {
-    amount: 1,
-    unit: "TL",
-    name: "Scharfe Sauce"
-  }, {
-    amount: 2,
-    unit: "EL",
-    name: "Frischer Koriander, gehackt"
-  }, {
-    amount: 10,
-    unit: "",
-    name: "Kleine Mehl-Tortillas"
-  }, {
-    amount: 100,
-    unit: "g",
-    name: "Geriebener Käse (Mozzarella & Cheddar)"
-  }, {
-    amount: 2,
-    unit: "EL",
-    name: "Öl (zum Bestreichen der Tortillas)"
-  }],
-  steps: [{
-    title: "Sauce zubereiten",
-    desc: "Alle Saucenzutaten verrühren, abschmecken und im Kühlschrank kühlen.",
-    timer: null
-  }, {
-    title: "Chipotle-Marinade zubereiten",
-    desc: "Öl, Sojasoße, Limettensaft, Chipotle, Hefeflocken und Gewürze verquirlen, am besten pürieren.",
-    timer: null
-  }, {
-    title: "Tofu marinieren",
-    desc: "Tofu trocken tupfen, in Stücke brechen, Marinade drüber und mindestens 30 Min. – besser 2–4 Std. – marinieren.",
-    timer: 7200
-  }, {
-    title: "Tofu anbraten",
-    desc: "Große Pfanne bei mittlerer Hitze vorheizen. Tofu portionsweise 2–3 Min. pro Seite anbraten bis goldbraun. Herausnehmen.",
-    timer: 180
-  }, {
-    title: "Gemüse anbraten",
-    desc: "In derselben Pfanne Zwiebel, Paprika, Mais und Jalapeño 3–4 Min. anbraten. Tofu wieder dazugeben und vermengen.",
-    timer: 240
-  }, {
-    title: "Ofen vorheizen",
-    desc: "Ofen auf 200°C Ober-/Unterhitze (180°C Umluft) vorheizen.",
-    timer: 600
-  }, {
-    title: "Tacos befüllen & backen",
-    desc: "Tortillas auf einer Seite mit Öl bestreichen. Umdrehen, Tofu-Füllung drauf, Käse drüber, zuklappen. Auf Backblech 10–15 Min. backen bis knusprig.",
-    timer: 750
-  }, {
-    title: "Servieren",
-    desc: "Tacos mit Sauce beträufeln oder zum Dippen servieren. Guten Appetit! 🌮",
-    timer: null
-  }],
-  notes: "Ofen: 200°C = ca. 400°F. Vegan: vegane Mayo, Saure Sahne und Käse verwenden."
-}, {
-  id: 3,
-  emoji: "🍊",
-  title: "Orange Tofu mit Reis",
-  desc: "Knuspriger Tofu in süß-scharfer Orangensauce",
-  servings: 4,
-  tags: ["vegan", "tofu", "asiatisch"],
-  ingredients: [{
-    amount: 600,
-    unit: "g",
-    name: "Tofu, ausgepresst und in Stücke gerissen (3 Packungen à 200g)"
-  }, {
-    amount: 4,
-    unit: "EL",
-    name: "Speisestärke"
-  }, {
-    amount: 1,
-    unit: "Prise",
-    name: "Salz, Pfeffer & Knoblauchpulver"
-  }, {
-    amount: 2,
-    unit: "EL",
-    name: "Öl zum Braten"
-  }, {
-    amount: 350,
-    unit: "ml",
-    name: "Orangensaft"
-  }, {
-    amount: 4,
-    unit: "EL",
-    name: "Sojasoße"
-  }, {
-    amount: 8,
-    unit: "EL",
-    name: "Agavendicksaft oder Ahornsirup"
-  }, {
-    amount: 2,
-    unit: "TL",
-    name: "Chiliflocken"
-  }, {
-    amount: 2,
-    unit: "TL",
-    name: "Ingwer, gerieben"
-  }, {
-    amount: 3,
-    unit: "EL",
-    name: "Speisestärke (zum Andicken)"
-  }, {
-    amount: 5,
-    unit: "EL",
-    name: "Wasser (zum Andicken)"
-  }, {
-    amount: 300,
-    unit: "g",
-    name: "Reis (Basmati oder Jasmin)"
-  }, {
-    amount: 2,
-    unit: "EL",
-    name: "Sesam"
-  }, {
-    amount: 3,
-    unit: "",
-    name: "Frühlingszwiebeln, in Ringe geschnitten"
-  }],
-  steps: [{
-    title: "Reis kochen",
-    desc: "Reis nach Packungsanleitung kochen, salzen und warmhalten.",
-    timer: 900
-  }, {
-    title: "Tofu panieren",
-    desc: "Tofu in Stücke reißen. Mit Speisestärke, Salz, Pfeffer und Knoblauchpulver vermengen bis alles bedeckt ist.",
-    timer: null
-  }, {
-    title: "Sauce vormischen",
-    desc: "Orangensaft, Sojasoße, Agavendicksaft, Chiliflocken und Ingwer verrühren. Speisestärke separat mit Wasser glatt rühren (kommt später dazu!).",
-    timer: null
-  }, {
-    title: "Tofu knusprig anbraten",
-    desc: "Öl in großer Pfanne bei hoher Hitze erhitzen. Tofu portionsweise goldbraun braten – 3–4 Min. pro Seite. Herausnehmen.",
-    timer: 480
-  }, {
-    title: "Sauce leicht andicken",
-    desc: "Sauce in die heiße Pfanne gießen, aufkochen. Stärke-Slurry dazugeben und rühren bis die Sauce leicht eindickt und glänzt – nur kurz!",
-    timer: 90
-  }, {
-    title: "Tofu glasieren",
-    desc: "Tofu zurück in die Pfanne, durchschwenken. Sesam und die Hälfte der Frühlingszwiebeln einrühren.",
-    timer: null
-  }, {
-    title: "Servieren",
-    desc: "Reis verteilen, Tofu drauf, restliche Frühlingszwiebeln und Sesam drüber. Guten Appetit! 🍊",
-    timer: null
-  }],
-  notes: "Aufbewahren: Tofu, Sauce und Reis getrennt – so bleibt der Tofu knusprig."
-}, {
-  id: 4,
-  emoji: "🥦",
-  title: "Blumenkohl-Wings",
-  desc: "Knusprig im Airfryer mit Maple-Chili Sauce",
-  servings: 4,
-  tags: ["vegan", "airfryer", "snack"],
-  ingredients: [{
-    amount: 1,
-    unit: "",
-    name: "Kopf Blumenkohl, in Röschen"
-  }, {
-    amount: 300,
-    unit: "ml",
-    name: "Milch"
-  }, {
-    amount: 80,
-    unit: "g",
-    name: "Mehl"
-  }, {
-    amount: 40,
-    unit: "g",
-    name: "Speisestärke"
-  }, {
-    amount: 35,
-    unit: "g",
-    name: "Panko"
-  }, {
-    amount: 1,
-    unit: "TL",
-    name: "Knoblauchpulver"
-  }, {
-    amount: 1,
-    unit: "TL",
-    name: "Zwiebelpulver"
-  }, {
-    amount: 1,
-    unit: "TL",
-    name: "Geräuchertes Paprikapulver"
-  }, {
-    amount: 1,
-    unit: "TL",
-    name: "Sambal Oelek"
-  }, {
-    amount: 1,
-    unit: "Prise",
-    name: "Salz & Pfeffer"
-  }, {
-    amount: 1,
-    unit: "EL",
-    name: "Öl (Spray oder Pinsel)"
-  }, {
-    amount: 60,
-    unit: "ml",
-    name: "Ahornsirup"
-  }, {
-    amount: 1.5,
-    unit: "TL",
-    name: "Sambal Oelek (Sauce)"
-  }, {
-    amount: 2,
-    unit: "EL",
-    name: "Butter"
-  }, {
-    amount: 1,
-    unit: "EL",
-    name: "Zitronensaft"
-  }, {
-    amount: 1,
-    unit: "Prise",
-    name: "Salz (Sauce)"
-  }],
-  steps: [{
-    title: "Blumenkohl vorbereiten",
-    desc: "Blumenkohl in mittelgroße Röschen schneiden – nicht zu klein, sonst matschig!",
-    timer: null
-  }, {
-    title: "Teig anrühren",
-    desc: "Milch, Mehl, Stärke, Knoblauchpulver, Zwiebelpulver, Paprikapulver, Sambal und Salz zu einem dickflüssigen Teig verrühren (wie Pfannkuchen).",
-    timer: null
-  }, {
-    title: "Panieren & ruhen lassen",
-    desc: "Jede Röschen in den Teig tauchen, gut abtropfen, dann in Panko wälzen. 5 Min. ruhen lassen – der wichtigste Knusper-Schritt!",
-    timer: 300
-  }, {
-    title: "Im Airfryer backen",
-    desc: "Airfryer auf 200°C vorheizen. Wings leicht mit Öl besprühen, hineingeben (nicht zu voll!). Nach 7–8 Min. schütteln, dann nochmal 5–7 Min. bis goldbraun.",
-    timer: 840
-  }, {
-    title: "Maple-Chili Sauce einkochen",
-    desc: "Ahornsirup, Sambal, Butter, Zitronensaft und Salz in eine Pfanne geben, 3–5 Min. köcheln bis die Sauce dick, glänzend und klebrig ist.",
-    timer: 240
-  }, {
-    title: "Glasieren & fertig!",
-    desc: "Wings in eine Schüssel, Sauce drüber, gut schwenken. 2–3 Min. zurück in den Airfryer. Sofort servieren! 🥦🔥",
-    timer: 150
-  }],
-  notes: "Für sehr mild: nur 1 TL Sambal in die Sauce. Goodbake Ölspray funktioniert perfekt zum Einsprühen!"
-}, {
-  id: 5,
-  emoji: "🥦🍝",
-  title: "Brokkoli-Champignon-Nudelauflauf",
-  desc: "Cremiger vegetarischer Auflauf – simpel & für 2 Tage",
-  servings: 4,
-  tags: ["vegetarisch", "auflauf", "meal-prep"],
-  ingredients: [{
-    amount: 300,
-    unit: "g",
-    name: "Nudeln (Penne oder Fusilli)"
-  }, {
-    amount: 400,
-    unit: "g",
-    name: "Brokkoli, in Röschen"
-  }, {
-    amount: 200,
-    unit: "g",
-    name: "Champignons, in Scheiben"
-  }, {
-    amount: 1,
-    unit: "",
-    name: "Zwiebel, gewürfelt"
-  }, {
-    amount: 2,
-    unit: "",
-    name: "Knoblauchzehen, fein gehackt"
-  }, {
-    amount: 200,
-    unit: "ml",
-    name: "Sahne"
-  }, {
-    amount: 100,
-    unit: "g",
-    name: "Kräuterfrischkäse"
-  }, {
-    amount: 1,
-    unit: "TL",
-    name: "Senf"
-  }, {
-    amount: 150,
-    unit: "g",
-    name: "Geriebener Käse (Gouda, Emmentaler oder Mozzarella)"
-  }, {
-    amount: 1,
-    unit: "Prise",
-    name: "Salz, Pfeffer, Muskat, Paprikapulver"
-  }, {
-    amount: 1,
-    unit: "EL",
-    name: "Öl zum Anbraten"
-  }],
-  steps: [{
-    title: "Nudeln kochen",
-    desc: "Nudeln in Salzwasser 2 Min. kürzer kochen als auf der Packung angegeben. Abgießen.",
-    timer: 480
-  }, {
-    title: "Brokkoli blanchieren",
-    desc: "Brokkoli in kochendem Salzwasser 3 Min. blanchieren, abgießen.",
-    timer: 180
-  }, {
-    title: "Ofen vorheizen",
-    desc: "Ofen auf 200°C Ober-/Unterhitze (180°C Umluft) vorheizen.",
-    timer: 600
-  }, {
-    title: "Gemüse anbraten",
-    desc: "Öl erhitzen. Zwiebel 2 Min. anbraten. Champignons 4–5 Min. braten bis leicht gebräunt. Knoblauch kurz mitbraten.",
-    timer: 420
-  }, {
-    title: "Cremige Sauce",
-    desc: "Sahne, Kräuterfrischkäse und Senf dazugeben, verrühren bis der Frischkäse schmilzt. Mit Salz, Pfeffer, Muskat und Paprikapulver abschmecken. Kurz aufkochen, dann vom Herd.",
-    timer: 60
-  }, {
-    title: "Auflauf zusammenstellen",
-    desc: "Gefettete Auflaufform: Nudeln, Brokkoli und Sauce hineingeben und gut vermengen.",
-    timer: null
-  }, {
-    title: "Käse drauf & backen",
-    desc: "Käse gleichmäßig drüber streuen. 25–30 Min. backen bis goldbraun. Guten Appetit! 🥦",
-    timer: 1650
-  }],
-  notes: "Meal Prep: 2–3 Tage im Kühlschrank. Bei 160°C aufwärmen."
-}, {
-  id: 6,
-  emoji: "🧀🔥",
-  title: "Tortellini-Auflauf mit Panko-Kruste",
-  desc: "Cremig, gut gewürzt, mit unschlagbarer Doppelkruste",
-  servings: 2,
-  tags: ["vegetarisch", "auflauf", "meal-prep"],
-  ingredients: [{
-    amount: 300,
-    unit: "g",
-    name: "Käse-Tortellini (Kühlregal)"
-  }, {
-    amount: 1,
-    unit: "",
-    name: "Stange Lauch, in Ringe geschnitten"
-  }, {
-    amount: 200,
-    unit: "g",
-    name: "Champignons, in Scheiben"
-  }, {
-    amount: 1,
-    unit: "",
-    name: "Dose Erbsen & Karotten, abgetropft (~280g)"
-  }, {
-    amount: 2,
-    unit: "",
-    name: "Knoblauchzehen, fein gehackt"
-  }, {
-    amount: 1,
-    unit: "EL",
-    name: "Olivenöl"
-  }, {
-    amount: 150,
-    unit: "ml",
-    name: "Sahne"
-  }, {
-    amount: 150,
-    unit: "ml",
-    name: "Gemüsebrühe"
-  }, {
-    amount: 75,
-    unit: "g",
-    name: "Kräuterfrischkäse"
-  }, {
-    amount: 1,
-    unit: "TL",
-    name: "Senf (gehäuft!)"
-  }, {
-    amount: 1,
-    unit: "TL",
-    name: "Geräuchertes Paprikapulver"
-  }, {
-    amount: 0.5,
-    unit: "TL",
-    name: "Paprikapulver edelsüß"
-  }, {
-    amount: 1,
-    unit: "TL",
-    name: "Oregano"
-  }, {
-    amount: 0.5,
-    unit: "TL",
-    name: "Thymian"
-  }, {
-    amount: 0.5,
-    unit: "TL",
-    name: "Zwiebelpulver"
-  }, {
-    amount: 0.5,
-    unit: "TL",
-    name: "Knoblauchpulver"
-  }, {
-    amount: 1,
-    unit: "TL",
-    name: "Worcestershiresauce (oder Sojasoße)"
-  }, {
-    amount: 1,
-    unit: "Prise",
-    name: "Cayennepfeffer, Muskat, Salz & Pfeffer"
-  }, {
-    amount: 80,
-    unit: "g",
-    name: "Streukäse (Gouda, Emmentaler oder Mozzarella)"
-  }, {
-    amount: 3,
-    unit: "EL",
-    name: "Panko"
-  }, {
-    amount: 1,
-    unit: "EL",
-    name: "Öl (für Panko)"
-  }],
-  steps: [{
-    title: "Ofen vorheizen",
-    desc: "Ofen auf 200°C Ober-/Unterhitze (180°C Umluft) vorheizen.",
-    timer: 600
-  }, {
-    title: "Gemüse anbraten",
-    desc: "Öl erhitzen. Lauch und Champignons 5–6 Min. anbraten bis Lauch weich und Champignons gebräunt. Knoblauch 30 Sek. mitbraten.",
-    timer: 360
-  }, {
-    title: "Kräftige Sauce zubereiten",
-    desc: "Sahne, Gemüsebrühe, Frischkäse, Senf, alle Gewürze und Worcestershiresauce dazugeben. Verrühren bis Frischkäse schmilzt. Kurz aufkochen lassen, dann sofort vom Herd – nicht lange köcheln!",
-    timer: 60
-  }, {
-    title: "Auflauf zusammenstellen",
-    desc: "Erbsen & Karotten und Tortellini in eine gefettete Auflaufform. Sauce drüber und gut vermengen.",
-    timer: null
-  }, {
-    title: "Doppelkruste vorbereiten",
-    desc: "Panko mit Öl vermischen. Zuerst Streukäse gleichmäßig drüber, dann Panko-Mischung drüber streuen.",
-    timer: null
-  }, {
-    title: "Backen",
-    desc: "25–30 Min. backen bis Sauce blubbert und Kruste goldbraun ist. Die letzten 3–5 Min. Grill zuschalten für extra Knusper! Guten Appetit! 🧀",
-    timer: 1650
-  }],
-  notes: "Tortellini nicht vorkochen! Sie garen im Ofen in der Sauce durch. Aufwärmen: Schuss Sahne dazu, bei 160°C."
-}, {
-  id: 7,
-  emoji: "🍄🧀",
-  title: "Butter-Spätzle mit Champignon-Rahmsauce",
-  desc: "Goldbraune Spätzle mit cremiger Sauce und Parmesan",
-  servings: 4,
-  tags: ["vegetarisch", "pasta"],
-  ingredients: [{
-    amount: 500,
-    unit: "g",
-    name: "Spätzle (Kühlregal)"
-  }, {
-    amount: 2,
-    unit: "EL",
-    name: "Butter (zum Anbraten)"
-  }, {
-    amount: 1,
-    unit: "",
-    name: "Zwiebel, fein gewürfelt"
-  }, {
-    amount: 3,
-    unit: "",
-    name: "Knoblauchzehen, fein gehackt"
-  }, {
-    amount: 1,
-    unit: "EL",
-    name: "Butter (zum Andünsten)"
-  }, {
-    amount: 400,
-    unit: "g",
-    name: "Champignons, in Scheiben"
-  }, {
-    amount: 300,
-    unit: "ml",
-    name: "Sahne"
-  }, {
-    amount: 100,
-    unit: "g",
-    name: "Kräuterfrischkäse"
-  }, {
-    amount: 1,
-    unit: "EL",
-    name: "Mehl"
-  }, {
-    amount: 30,
-    unit: "ml",
-    name: "Wasser (für Mehlwasser)"
-  }, {
-    amount: 50,
-    unit: "g",
-    name: "Parmesan, gerieben"
-  }, {
-    amount: 1,
-    unit: "TL",
-    name: "Paprikapulver edelsüß"
-  }, {
-    amount: 0.5,
-    unit: "TL",
-    name: "Geräuchertes Paprikapulver"
-  }, {
-    amount: 1,
-    unit: "TL",
-    name: "Thymian"
-  }, {
-    amount: 0.5,
-    unit: "TL",
-    name: "Chiliflocken"
-  }, {
-    amount: 1,
-    unit: "Prise",
-    name: "Muskat, Salz & Pfeffer"
-  }, {
-    amount: 1,
-    unit: "",
-    name: "Handvoll frische Petersilie"
-  }, {
-    amount: 30,
-    unit: "g",
-    name: "Parmesan extra zum Drüberreiben"
-  }],
-  steps: [{
-    title: "Spätzle goldbraun anbraten",
-    desc: "Spätzle portionsweise in Butter bei hoher Hitze goldbraun anbraten – nicht rühren! Herausnehmen und beiseite stellen.",
-    timer: null
-  }, {
-    title: "Zwiebel & Knoblauch andünsten",
-    desc: "Butter erhitzen. Zwiebel 2 Min. andünsten. Knoblauch 30 Sek. mitbraten bis er duftet.",
-    timer: 120
-  }, {
-    title: "Champignons goldbraun braten",
-    desc: "Champignons bei hoher Hitze dazugeben und NICHT sofort salzen! 5–6 Min. braten bis schön goldbraun. Erst dann würzen.",
-    timer: 360
-  }, {
-    title: "Cremige Sauce zubereiten",
-    desc: "Sahne, Frischkäse, Senf und alle Gewürze dazugeben, verrühren bis Frischkäse schmilzt. Mehl mit Wasser glatt rühren, dazugeben. 4–5 Min. auf kleiner Hitze sämig köcheln.",
-    timer: 300
-  }, {
-    title: "Parmesan einrühren & Spätzle dazu",
-    desc: "Parmesan einrühren, nochmal abschmecken. Gebratene Spätzle zurück in die Pfanne und vorsichtig vermengen.",
-    timer: null
-  }, {
-    title: "Servieren",
-    desc: "In Schüsseln verteilen, mit Petersilie und extra Parmesan toppen. Sofort servieren! 🍄",
-    timer: null
-  }],
-  notes: "Champignon-Trick: Nie zu früh salzen – sonst ziehen sie Wasser! Aufwärmen: Schuss Sahne oder Wasser dazu."
-}, {
-  id: 8,
-  emoji: "🍜",
-  title: "One Pot Ramen Dumpling Suppe",
-  desc: "Perfektes Comfort Food bei Regenwetter",
-  servings: 2,
-  tags: ["vegetarisch", "suppe", "asian"],
-  ingredients: [{
-    amount: 2,
-    unit: "EL",
-    name: "Rote Currypaste"
-  }, {
-    amount: 2,
-    unit: "EL",
-    name: "Erdnussbutter"
-  }, {
-    amount: 2,
-    unit: "",
-    name: "Knoblauchzehen, gepresst"
-  }, {
-    amount: 1,
-    unit: "",
-    name: "Stück Ingwer (2–3 cm), gerieben"
-  }, {
-    amount: 400,
-    unit: "ml",
-    name: "Kokosmilch"
-  }, {
-    amount: 800,
-    unit: "ml",
-    name: "Gemüsebrühe"
-  }, {
-    amount: 1,
-    unit: "",
-    name: "Stange Zitronengras (optional)"
-  }, {
-    amount: 2,
-    unit: "EL",
-    name: "Sojasoße"
-  }, {
-    amount: 1,
-    unit: "",
-    name: "Limette, Saft"
-  }, {
-    amount: 200,
-    unit: "g",
-    name: "Champignons, in Scheiben"
-  }, {
-    amount: 6,
-    unit: "",
-    name: "Vegetarische Dumplings (TK)"
-  }, {
-    amount: 200,
-    unit: "g",
-    name: "Ramen Nudeln"
-  }, {
-    amount: 2,
-    unit: "",
-    name: "Eier, gekocht und halbiert"
-  }, {
-    amount: 1,
-    unit: "",
-    name: "Handvoll frischer Koriander oder Petersilie"
-  }, {
-    amount: 1,
-    unit: "Prise",
-    name: "Schwarzer Sesam"
-  }, {
-    amount: 1,
-    unit: "",
-    name: "Chiliöl nach Geschmack"
-  }],
-  steps: [{
-    title: "Eier kochen",
-    desc: "Eier in kochendem Wasser 7 Min. kochen für cremiges Eigelb. In kaltem Wasser abschrecken, pellen und halbieren.",
-    timer: 420
-  }, {
-    title: "Knoblauch & Ingwer anbraten",
-    desc: "Etwas Öl erhitzen. Knoblauch und Ingwer ca. 1 Min. anbraten bis sie duften.",
-    timer: 60
-  }, {
-    title: "Currypaste & Erdnussbutter rösten",
-    desc: "Currypaste und Erdnussbutter dazugeben und 1–2 Min. unter Rühren mitbraten bis leicht karamellisiert.",
-    timer: 120
-  }, {
-    title: "Ablöschen & köcheln",
-    desc: "Mit Kokosmilch und Gemüsebrühe ablöschen. Zitronengras (falls verwendet), Sojasoße und Limettensaft einrühren. 5–8 Min. köcheln.",
-    timer: 480
-  }, {
-    title: "Einlage rein",
-    desc: "Champignons, Dumplings und Ramen Nudeln dazugeben. 4–5 Min. garziehen lassen. Zitronengras rausfischen.",
-    timer: 300
-  }, {
-    title: "Servieren",
-    desc: "In Schüsseln verteilen. Mit Eiern, Koriander, Sesam und Chiliöl toppen. Sofort servieren! 🍜",
-    timer: null
-  }],
-  notes: "Ingwer unbedingt nehmen – macht einen riesigen Unterschied! Schärfe mit Chiliöl beim Servieren regulieren."
-}, {
-  id: 9,
-  emoji: "🧄",
-  title: "Lángos",
-  desc: "Fluffig-knusprig mit Knoblauchcreme & Bergkäse",
-  servings: 6,
-  tags: ["backen", "frittiert"],
-  ingredients: [{
-    amount: 500,
-    unit: "g",
-    name: "Weizenmehl (Type 00 oder 405)"
-  }, {
-    amount: 200,
-    unit: "g",
-    name: "Milch, lauwarm"
-  }, {
-    amount: 120,
-    unit: "g",
-    name: "Wasser, lauwarm"
-  }, {
-    amount: 15,
-    unit: "g",
-    name: "Frische Hefe (oder 5g Trockenhefe)"
-  }, {
-    amount: 7,
-    unit: "g",
-    name: "Zucker"
-  }, {
-    amount: 15,
-    unit: "g",
-    name: "Salz"
-  }, {
-    amount: 400,
-    unit: "g",
-    name: "Sauerrahm"
-  }, {
-    amount: 3,
-    unit: "",
-    name: "Zehen Knoblauch, fein gehackt"
-  }, {
-    amount: 1,
-    unit: "Prise",
-    name: "Salz & Pfeffer (Creme)"
-  }, {
-    amount: 150,
-    unit: "g",
-    name: "Bergkäse, gerieben"
-  }, {
-    amount: 3,
-    unit: "",
-    name: "Stangen Frühlingszwiebeln, in Ringe geschnitten"
-  }, {
-    amount: 1,
-    unit: "",
-    name: "Sonnenblumen- oder Rapsöl zum Frittieren"
-  }],
-  steps: [{
-    title: "Teig kneten & ruhen – 60 Min.",
-    desc: "Alle Teigzutaten in eine Schüssel geben und 10–12 Min. kneten bis schön geschmeidig. Dehnen & falten, rund schleifen, in geölter Schüssel locker abdecken und 60 Min. gehen lassen.",
-    timer: 3600
-  }, {
-    title: "Knoblauchcreme zubereiten",
-    desc: "Knoblauch fein hacken und mit Sauerrahm, Salz und Pfeffer zu einer Creme verrühren. Kühl stellen.",
-    timer: null
-  }, {
-    title: "Teig teilen & entspannen – 15 Min.",
-    desc: "Teig entgasen, auf Arbeitsfläche stürzen, in 6 gleiche Stücke teilen. Rund schleifen, abdecken und 15 Min. entspannen lassen.",
-    timer: 900
-  }, {
-    title: "Lángos frittieren",
-    desc: "Reichlich Öl in einem hohen Topf auf 170–180°C erhitzen (Zahnstocher-Test: sofort Bläschen = passt). Teiglinge mit Fingerkuppen flach drücken (Mitte dünner, Rand dicker). Portionsweise von beiden Seiten ca. 2 Min. goldbraun frittieren. Auf Küchenpapier abtropfen.",
-    timer: 120
-  }, {
-    title: "Toppen & servieren",
-    desc: "Heiße Lángos mit Knoblauchcreme bestreichen, Bergkäse drüber, Frühlingszwiebeln obendrauf. Sofort servieren – frisch sind sie am besten! 😍",
-    timer: null
-  }],
-  notes: "Öl: 170–180°C ist wichtig! Zu heiß = außen verbrannt, innen roh. Zu kalt = fettig. Übriges Öl durch Sieb abseihen und wiederverwenden!"
-}, {
-  id: 10,
-  emoji: "🥔",
-  title: "Klassischer Kartoffelsalat",
-  desc: "Bayerischer Stil ohne Mayo – schlonzig & würzig",
-  servings: 4,
-  tags: ["vegetarisch", "salat", "klassiker"],
-  ingredients: [{
-    amount: 1000,
-    unit: "g",
-    name: "Kartoffeln, festkochend"
-  }, {
-    amount: 2,
-    unit: "",
-    name: "Zwiebeln, fein gewürfelt"
-  }, {
-    amount: 300,
-    unit: "ml",
-    name: "Gemüsebrühe, heiß"
-  }, {
-    amount: 4,
-    unit: "EL",
-    name: "Weißweinessig"
-  }, {
-    amount: 1,
-    unit: "EL",
-    name: "Senf"
-  }, {
-    amount: 1,
-    unit: "TL",
-    name: "Zucker"
-  }, {
-    amount: 4,
-    unit: "EL",
-    name: "Rapsöl oder Sonnenblumenöl"
-  }, {
-    amount: 1,
-    unit: "",
-    name: "Bund Schnittlauch, gehackt"
-  }, {
-    amount: 1,
-    unit: "Prise",
-    name: "Salz & Pfeffer"
-  }],
-  steps: [{
-    title: "Kartoffeln kochen",
-    desc: "Kartoffeln in der Schale in Salzwasser weich kochen (ca. 20–25 Min.). Noch warm pellen und in gleichmäßige Scheiben schneiden.",
-    timer: 1500
-  }, {
-    title: "Marinade zubereiten",
-    desc: "Etwas Öl in einem Topf erhitzen. Zwiebeln andünsten bis glasig. Gemüsebrühe dazugeben und aufkochen. Vom Herd nehmen und Essig, Senf, Zucker, Salz und Pfeffer einrühren.",
-    timer: null
-  }, {
-    title: "Ziehen lassen – mind. 1 Std.",
-    desc: "Warme Kartoffelscheiben in eine Schüssel geben, heiße Marinade sofort drübergießen. Vorsichtig vermengen, abdecken und mind. 1 Std. ziehen lassen. Zwischendurch umrühren.",
-    timer: 3600
-  }, {
-    title: "Öl unterheben & servieren",
-    desc: "Nach der Ziehzeit das Öl unterheben – das macht den Salat schön schlonzig! Nochmal abschmecken, mit Schnittlauch garnieren. Guten Appetit! 🥔",
-    timer: null
-  }],
-  notes: "Wichtigster Tipp: Öl erst NACH der Ziehzeit unterheben! Je länger er zieht, desto besser wird er."
-}, {
-  id: 11,
-  emoji: "🥖",
-  title: "Frühstücksbrötchen",
-  desc: "Knusprig mit Übernacht-Gare – wie vom Bäcker",
-  servings: 8,
-  tags: ["backen", "brot"],
-  ingredients: [{
-    amount: 450,
-    unit: "g",
-    name: "Weizenmehl (Type 00 oder 550)"
-  }, {
-    amount: 280,
-    unit: "g",
-    name: "Wasser"
-  }, {
-    amount: 10,
-    unit: "g",
-    name: "Salz"
-  }, {
-    amount: 10,
-    unit: "g",
-    name: "Olivenöl"
-  }, {
-    amount: 5,
-    unit: "g",
-    name: "Honig"
-  }, {
-    amount: 5,
-    unit: "g",
-    name: "Frische Hefe (oder 1,6g Trockenhefe)"
-  }],
-  steps: [{
-    title: "Teig kneten – 12 Minuten",
-    desc: "Alle Zutaten in eine Schüssel geben und ca. 12 Min. kneten (Maschine oder von Hand) bis schön glatt und geschmeidig.",
-    timer: 720
-  }, {
-    title: "Dehnen, falten & entspannen – 15 Min.",
-    desc: "Teig auf Arbeitsfläche, ein paar Mal dehnen & falten, zu einer Kugel schleifen. Locker abdecken und 15 Min. entspannen.",
-    timer: 900
-  }, {
-    title: "Teiglinge formen",
-    desc: "Teig in 8 gleiche Stücke teilen. Jedes rund schleifen, etwas platt drücken, dann mit der Handfläche unter Druck zur Stange rollen.",
-    timer: null
-  }, {
-    title: "Übernacht-Gare – 8 bis 12 Std.",
-    desc: "Teiglinge mit etwas Abstand in eine Form, luftdicht verschließen und 8–12 Std. im Kühlschrank ruhen lassen.",
-    timer: 36000
-  }, {
-    title: "Backen – 18 bis 20 Min. bei 250°C",
-    desc: "Ofen auf 250°C vorheizen. Tasse heißes Wasser auf den Ofenboden für Dampf. Teiglinge auf Backpapier, mittig einschneiden und 18–20 Min. backen.",
-    timer: 1200
-  }, {
-    title: "Auskühlen & genießen",
-    desc: "Auf einem Gitter auskühlen lassen. Guten Appetit! ❤️🥖",
-    timer: null
-  }],
-  notes: "Timing: Abends kneten, über Nacht in den Kühlschrank, morgens frisch backen! Aufwärmen: kurz unter Wasser abspülen, bei 180°C 5–8 Min."
-}, {
-  id: 12,
-  emoji: "🧄🫓",
-  title: "Gefüllte Fladenbrote mit Chipotle Tofu",
-  desc: "Hausgemachte Fladen mit knusprigem Tofu & Joghurtsauce",
-  servings: 4,
-  tags: ["backen", "tofu", "vegan"],
-  ingredients: [{
-    amount: 500,
-    unit: "g",
-    name: "Weizenmehl (Type 00 oder 405)"
-  }, {
-    amount: 200,
-    unit: "g",
-    name: "Milch, lauwarm"
-  }, {
-    amount: 120,
-    unit: "g",
-    name: "Wasser, lauwarm"
-  }, {
-    amount: 15,
-    unit: "g",
-    name: "Frische Hefe"
-  }, {
-    amount: 7,
-    unit: "g",
-    name: "Zucker"
-  }, {
-    amount: 15,
-    unit: "g",
-    name: "Salz"
-  }, {
-    amount: 400,
-    unit: "g",
-    name: "Extra fester Tofu, in dünne Streifen"
-  }, {
-    amount: 1.25,
-    unit: "TL",
-    name: "Knoblauchpulver"
-  }, {
-    amount: 1.25,
-    unit: "TL",
-    name: "Zwiebelpulver"
-  }, {
-    amount: 2,
-    unit: "TL",
-    name: "Geräuchertes Paprikapulver"
-  }, {
-    amount: 2.5,
-    unit: "TL",
-    name: "Getrocknete Petersilie"
-  }, {
-    amount: 1.25,
-    unit: "TL",
-    name: "Kreuzkümmel"
-  }, {
-    amount: 2,
-    unit: "EL",
-    name: "Sojasoße"
-  }, {
-    amount: 1.5,
-    unit: "EL",
-    name: "Ahornsirup oder Honig"
-  }, {
-    amount: 1,
-    unit: "EL",
-    name: "Olivenöl (Tofu)"
-  }, {
-    amount: 1,
-    unit: "EL",
-    name: "Speisestärke"
-  }, {
-    amount: 1,
-    unit: "",
-    name: "Kleine rote Zwiebel, fein geschnitten"
-  }, {
-    amount: 1,
-    unit: "",
-    name: "Bund Petersilie"
-  }, {
-    amount: 1,
-    unit: "",
-    name: "Gurke, fein geschnitten"
-  }, {
-    amount: 1,
-    unit: "",
-    name: "Große Tomate, fein geschnitten"
-  }, {
-    amount: 1,
-    unit: "",
-    name: "Kleine Zitrone, Saft"
-  }, {
-    amount: 200,
-    unit: "g",
-    name: "Naturjoghurt"
-  }, {
-    amount: 1.5,
-    unit: "TL",
-    name: "Sambal Oelek"
-  }, {
-    amount: 1,
-    unit: "",
-    name: "Knoblauchzehe (Sauce)"
-  }, {
-    amount: 0.5,
-    unit: "",
-    name: "Zitrone, Saft (Sauce)"
-  }],
-  steps: [{
-    title: "Sauce zubereiten",
-    desc: "Joghurt, Sambal Oelek, Knoblauch, Zitronensaft und Salz verrühren. Im Kühlschrank ziehen lassen.",
-    timer: null
-  }, {
-    title: "Teig kneten & ruhen – 60 Min.",
-    desc: "Alle Teigzutaten 10–12 Min. kneten bis schön geschmeidig. Dehnen & falten, rund schleifen, locker abdecken und 60 Min. gehen lassen.",
-    timer: 3600
-  }, {
-    title: "Tofu marinieren",
-    desc: "Tofu in dünne Streifen schneiden. Mit allen Gewürzen, Sojasoße, Ahornsirup und Öl vermengen. Speisestärke drüber, vorsichtig untermischen.",
-    timer: null
-  }, {
-    title: "Tofu im Airfryer – 10 bis 14 Min.",
-    desc: "Airfryer auf 190°C. Tofu hineingeben, nach der Hälfte einmal schütteln. Bis knusprig backen.",
-    timer: 720
-  }, {
-    title: "Teig teilen & entspannen – 15 Min.",
-    desc: "Teig entgasen, in 4 Stücke teilen, rund schleifen, abdecken und 15 Min. entspannen.",
-    timer: 900
-  }, {
-    title: "Salat zubereiten",
-    desc: "Zwiebel, Petersilie, Gurke und Tomate fein schneiden. Mit Zitronensaft, Olivenöl und Salz vermengen.",
-    timer: null
-  }, {
-    title: "Fladen backen – 16 bis 20 Min.",
-    desc: "Ofen auf 250°C. Tasse Wasser auf den Ofenboden. Fladen mit Eigelb-Joghurt-Mischung bestreichen, Mulden eindrücken, Sesam drüber. 16–20 Min. backen.",
-    timer: 1080
-  }, {
-    title: "Füllen & servieren",
-    desc: "Fladen aufschneiden, Sauce rein, Salat drauf, Tofu drüber, nochmal Sauce. Guten Appetit! 🫓🔥",
-    timer: null
-  }],
-  notes: "Timing: Teig und Tofu parallel vorbereiten. Je länger der Tofu mariniert, desto besser!"
-}, {
-  id: 13,
-  emoji: "🍫",
-  title: "Chocolate Chip Brioche Buns",
-  desc: "Fluffige Brioche mit Vanillecreme & Schokodrops",
-  servings: 9,
-  tags: ["backen", "süß"],
-  ingredients: [{
-    amount: 250,
-    unit: "ml",
-    name: "Vollmilch, lauwarm (38°C)"
-  }, {
-    amount: 50,
-    unit: "ml",
-    name: "Sahne (Schlagsahne)"
-  }, {
-    amount: 75,
-    unit: "g",
-    name: "Zucker"
-  }, {
-    amount: 40,
-    unit: "g",
-    name: "Aktiver Sauerteig-Starter (optional)"
-  }, {
-    amount: 7,
-    unit: "g",
-    name: "Trockenhefe (Instanthefe)"
-  }, {
-    amount: 3,
-    unit: "g",
-    name: "Salz"
-  }, {
-    amount: 165,
-    unit: "g",
-    name: "Weizenmehl Type 550"
-  }, {
-    amount: 385,
-    unit: "g",
-    name: "Weizenmehl Type 405"
-  }, {
-    amount: 70,
-    unit: "g",
-    name: "Ungesalzene Butter, gewürfelt und weich"
-  }, {
-    amount: 240,
-    unit: "ml",
-    name: "Dicke Vanillecreme"
-  }, {
-    amount: 130,
-    unit: "g",
-    name: "Dunkle Schokodrops"
-  }, {
-    amount: 1,
-    unit: "",
-    name: "Ei, verquirlt (Eistreiche)"
-  }, {
-    amount: 2,
-    unit: "TL",
-    name: "Zucker (für Sirup, optional)"
-  }, {
-    amount: 2,
-    unit: "TL",
-    name: "Kochendes Wasser (für Sirup, optional)"
-  }],
-  steps: [{
-    title: "Teig ankneten – 6 Minuten",
-    desc: "Milch, Sahne, Zucker, Starter und Hefe in der Küchenmaschine mischen. Beide Mehle und Salz dazugeben. 3 Min. auf niedriger, dann 3 Min. auf mittlerer Stufe kneten.",
-    timer: 360
-  }, {
-    title: "Butter einkneten – 10 bis 12 Min.",
-    desc: "Auf niedrige Stufe schalten, Butter stückchenweise dazugeben. Weiter 10–12 Min. kneten bis glatt und Butter vollständig eingearbeitet.",
-    timer: 660
-  }, {
-    title: "Erste Ruhe – 75 bis 90 Min.",
-    desc: "Teig in geölte Schüssel, locker abdecken und an warmem Ort (25–28°C) 75–90 Min. gehen lassen bis fast verdoppelt.",
-    timer: 5400
-  }, {
-    title: "Füllen & einfrieren – 5 bis 10 Min.",
-    desc: "Teig auf ca. 60×40 cm ausrollen. Vanillecreme gleichmäßig verstreichen, Schokodrops drüber. Zweimal wie einen Briefumschlag falten. 5–10 Min. ins Tiefkühlfach.",
-    timer: 600
-  }, {
-    title: "Formen & gehen – 60 Min.",
-    desc: "In 8–9 lange Streifen schneiden. Jeden Streifen mehrfach verdrehen und zur Schnecke formen. Auf Backpapier legen, abdecken und ca. 60 Min. gehen lassen.",
-    timer: 3600
-  }, {
-    title: "Backen – 13 bis 15 Min.",
-    desc: "Ofen auf 200°C. Buns vorsichtig mit Ei bestreichen. 13–15 Min. backen bis leicht goldbraun.",
-    timer: 840
-  }, {
-    title: "Glänzen & genießen",
-    desc: "Optional: Zucker mit kochendem Wasser mischen, heiße Buns damit bestreichen für Glanzeffekt. Guten Appetit! 🍫✨",
-    timer: null
-  }],
-  notes: "Sauerteig-Starter ist komplett optional. Frische Hefe: 21g statt 7g Trockenhefe."
-}, {
-  id: 14,
-  emoji: "🌯",
-  title: "Tofu-Hack Wraps mit Guacamole",
-  desc: "Knusprige Tofubrösel mit Guacamole und frischer Tomatensalsa",
-  servings: 2,
-  tags: ["vegan", "tofu", "wraps"],
-  ingredients: [{
-    amount: 400,
-    unit: "g",
-    name: "Naturtofu"
-  }, {
-    amount: 2,
-    unit: "EL",
-    name: "Tomatenmark"
-  }, {
-    amount: 4,
-    unit: "EL",
-    name: "Dunkle Sojasoße (alternativ helle)"
-  }, {
-    amount: 1,
-    unit: "TL",
-    name: "Getrockneter Oregano"
-  }, {
-    amount: 1,
-    unit: "TL",
-    name: "Paprikapulver (edelsüß oder geräuchert)"
-  }, {
-    amount: 1,
-    unit: "EL",
-    name: "Neutrales Öl"
-  }, {
-    amount: 1,
-    unit: "Prise",
-    name: "Salz & Pfeffer (Tofu)"
-  }, {
-    amount: 1,
-    unit: "",
-    name: "Tortilla Wrap (pro Person)"
-  }, {
-    amount: 1,
-    unit: "",
-    name: "Avocado"
-  }, {
-    amount: 1,
-    unit: "Spritzer",
-    name: "Zitronensaft (Guacamole)"
-  }, {
-    amount: 1,
-    unit: "Prise",
-    name: "Salz (Guacamole)"
-  }, {
-    amount: 2,
-    unit: "",
-    name: "Tomaten"
-  }, {
-    amount: 1,
-    unit: "",
-    name: "Rote Zwiebel"
-  }, {
-    amount: 1,
-    unit: "Handvoll",
-    name: "Koriander oder Petersilie"
-  }, {
-    amount: 1,
-    unit: "EL",
-    name: "Zitronensaft (Salsa)"
-  }, {
-    amount: 1,
-    unit: "Prise",
-    name: "Salz (Salsa)"
-  }],
-  steps: [{
-    title: "Tofumarinade vorbereiten",
-    desc: "Tomatenmark mit Sojasoße, Oregano, Paprikapulver, Salz, Pfeffer und Öl in einer Schüssel glatt rühren.",
-    timer: null
-  }, {
-    title: "Tofu vorbereiten",
-    desc: "Naturtofu mit einem Küchentuch trocken tupfen, fein zerbröseln und in die Marinade geben. Gut vermengen und einige Minuten ziehen lassen.",
-    timer: null
-  }, {
-    title: "Tofu backen",
-    desc: "Marinierte Tofubrösel entweder im Airfryer bei 180°C ca. 20 Min. backen (alle 5 Min. umrühren) ODER im Backofen bei 200°C (Ober-/Unterhitze) 25–30 Min. backen, gelegentlich wenden. Ziel: knusprig gebräunte, leicht karamellisierte Tofubrösel.",
-    timer: 1200
-  }, {
-    title: "Salsa & Guacamole zubereiten",
-    desc: "Tomaten und Zwiebel würfeln, Kräuter hacken, alles mit Zitronensaft und Salz vermischen. Avocado mit Zitronensaft und Salz zerdrücken.",
-    timer: null
-  }, {
-    title: "Wraps füllen & genießen",
-    desc: "Avocadocreme auf einem Wrap verstreichen, das Tofu-Hack und die frische Salsa daraufgeben, einrollen – und genießen! 🌯",
-    timer: null
-  }],
-  notes: "Tipp: Geräuchertes Paprikapulver gibt dem Tofu-Hack extra Rauchnote! Tofubrösel ruhig richtig knusprig backen für die beste Textur."
-}, {
-  id: 15,
-  emoji: "🍕",
-  title: "Pizzateig",
-  desc: "Klassischer Pizzateig für 2 Pizzen – schnell & einfach",
-  servings: 2,
-  tags: ["backen", "teig", "vegetarisch"],
-  ingredients: [{
-    amount: 250,
-    unit: "ml",
-    name: "Wasser, lauwarm"
-  }, {
-    amount: 42,
-    unit: "g",
-    name: "Frische Hefe (1 Würfel)"
-  }, {
-    amount: 1,
-    unit: "Prise",
-    name: "Zucker"
-  }, {
-    amount: 2,
-    unit: "EL",
-    name: "Olivenöl"
-  }, {
-    amount: 500,
-    unit: "g",
-    name: "Mehl (+ etwas zum Arbeiten)"
-  }, {
-    amount: 1,
-    unit: "TL",
-    name: "Salz"
-  }],
-  steps: [{
-    title: "Hefe aktivieren – 10 bis 15 Min.",
-    desc: "Lauwarmes Wasser in einen Messbecher füllen. Hefe hineinbröseln, Prise Zucker dazugeben und verrühren. 10–15 Minuten gehen lassen bis die Hefe schäumt.",
-    timer: 900
-  }, {
-    title: "Teig kneten – mind. 5 Min.",
-    desc: "Mehl und Salz in eine Schüssel geben. Hefewasser und Olivenöl dazugeben und mit den Knethaken mindestens 5 Min. kneten (von Hand mindestens 10 Min.). Zum Schluss nochmal mit den Händen weiterkneten bis der Teig geschmeidig ist.",
-    timer: 600
-  }, {
-    title: "Teig gehen lassen – 40 Min.",
-    desc: "Teigschüssel mit einem Tuch abdecken und an einem warmen Ort (ca. 35°C) etwa 40 Minuten gehen lassen bis der Teig sich verdoppelt hat.",
-    timer: 2400
-  }, {
-    title: "Formen & Ofen vorheizen",
-    desc: "Teig halbieren und auf bemehlter Arbeitsfläche rund (Ø ca. 28–30 cm) ausrollen. Ofen auf 240°C Ober-/Unterhitze (Umluft: 220°C) vorheizen. Zwei Bleche mit Backpapier belegen und Teige drauflegen.",
-    timer: 600
-  }, {
-    title: "Belegen & backen – 15 Min.",
-    desc: "Pizzateig nach Belieben mit Tomatensoße und Zutaten belegen. Im vorgeheizten Ofen ca. 15 Minuten backen bis der Rand goldbraun ist. Guten Appetit! 🍕",
-    timer: 900
-  }],
-  notes: "Je länger du knetest, desto besser der Teig! Für extra Geschmack den fertigen Teig über Nacht im Kühlschrank gehen lassen."
-}, {
-  id: 16,
-  emoji: "🥐",
-  title: "Übernacht-Brötchen",
-  desc: "Knusprige Brötchen mit Übernacht-Gare im Kühlschrank",
-  servings: 6,
-  tags: ["backen", "brot", "übernacht"],
-  ingredients: [{
-    amount: 410,
-    unit: "g",
-    name: "Mehl"
-  }, {
-    amount: 308,
-    unit: "g",
-    name: "Wasser"
-  }, {
-    amount: 1,
-    unit: "TL",
-    name: "Hefe (Trockenhefe)"
-  }, {
-    amount: 1,
-    unit: "TL",
-    name: "Salz"
-  }],
-  steps: [{
-    title: "Teig kneten",
-    desc: "Hefe mit Wasser vermischen, dann Mehl dazugeben und verrühren. Salz darüber streuen und mehrmals dehnen und falten bis sich der Teig glatt anfühlt.",
-    timer: null
-  }, {
-    title: "Über Nacht in den Kühlschrank",
-    desc: "Teig abdecken und bis zum nächsten Tag in den Kühlschrank stellen.",
-    timer: 43200
-  }, {
-    title: "Akklimatisieren – 30 bis 45 Min.",
-    desc: "Am nächsten Tag den Teig ca. 30–45 Minuten bei Raumtemperatur stehen lassen.",
-    timer: 2400
-  }, {
-    title: "Teig falten & teilen",
-    desc: "Teig auf eine bemehlte Arbeitsfläche geben und von den Seiten falten. Umdrehen und in 6 Stücke teilen.",
-    timer: null
-  }, {
-    title: "Formen & ruhen lassen – 20 Min.",
-    desc: "Jedes Stück gut verschließen und auf Backpapier legen. Etwas Mehl darüber streuen und 20 Minuten abdecken.",
-    timer: 1200
-  }, {
-    title: "Einschneiden & bestreichen",
-    desc: "Brötchen einschneiden und leicht mit Wasser bestreichen.",
-    timer: null
-  }, {
-    title: "Backen – 30 Min.",
-    desc: "Bei 250°C mit Dampf 10 Minuten backen, dann Hitze auf 195°C reduzieren und weitere 20 Minuten backen bis goldbraun.",
-    timer: 1800
-  }],
-  notes: "Dampf: Eine Tasse heißes Wasser auf den Ofenboden stellen für die ersten 10 Minuten."
-}, {
-  id: 17,
-  emoji: "🌯",
-  title: "Sommerrollen mit Chipotle Tofu",
-  desc: "Erfrischend kalt mit Erdnusssauce – perfekt für heißes Wetter",
-  servings: 4,
-  tags: ["vegan", "tofu", "sommer", "kalt"],
-  ingredients: [{
-    amount: 1,
-    unit: "h",
-    name: "—— TOFU ——"
-  }, {
-    amount: 300,
-    unit: "g",
-    name: "Super Firm Tofu, in dünne Streifen geschnitten"
-  }, {
-    amount: 1.5,
-    unit: "EL",
-    name: "Öl"
-  }, {
-    amount: 1.5,
-    unit: "EL",
-    name: "Sojasoße"
-  }, {
-    amount: 0.75,
-    unit: "EL",
-    name: "Limettensaft"
-  }, {
-    amount: 1,
-    unit: "EL",
-    name: "Chipotle in Adobo, fein gehackt"
-  }, {
-    amount: 0.75,
-    unit: "EL",
-    name: "Hefeflocken"
-  }, {
-    amount: 0.75,
-    unit: "TL",
-    name: "Geräuchertes Paprikapulver"
-  }, {
-    amount: 1,
-    unit: "Prise",
-    name: "Knoblauchpulver, Salz & Pfeffer"
-  }, {
-    amount: 1,
-    unit: "h",
-    name: "—— ROLLEN ——"
-  }, {
-    amount: 8,
-    unit: "",
-    name: "Reispapier-Blätter"
-  }, {
-    amount: 1,
-    unit: "",
-    name: "Karotte, in dünne Streifen"
-  }, {
-    amount: 1,
-    unit: "",
-    name: "Gurke, in dünne Streifen"
-  }, {
-    amount: 1,
-    unit: "",
-    name: "Rote Paprika, in dünne Streifen"
-  }, {
-    amount: 1,
-    unit: "",
-    name: "Avocado, in Scheiben"
-  }, {
-    amount: 1,
-    unit: "Handvoll",
-    name: "Salatblätter oder Krautsalat"
-  }, {
-    amount: 1,
-    unit: "Handvoll",
-    name: "Frische Minze oder Koriander"
-  }, {
-    amount: 1,
-    unit: "h",
-    name: "—— ERDNUSSSAUCE ——"
-  }, {
-    amount: 3,
-    unit: "EL",
-    name: "Erdnussbutter"
-  }, {
-    amount: 1.5,
-    unit: "EL",
-    name: "Sojasoße"
-  }, {
-    amount: 1,
-    unit: "EL",
-    name: "Limettensaft"
-  }, {
-    amount: 1,
-    unit: "EL",
-    name: "Ahornsirup oder Agavendicksaft"
-  }, {
-    amount: 1,
-    unit: "TL",
-    name: "Sambal Oelek oder Chiliflocken (optional)"
-  }, {
-    amount: 3,
-    unit: "EL",
-    name: "Wasser (zum Verdünnen)"
-  }],
-  steps: [{
-    title: "Erdnusssauce zubereiten",
-    desc: "Erdnussbutter, Sojasoße, Limettensaft, Ahornsirup und Sambal Oelek verrühren. Mit Wasser nach und nach verdünnen bis eine cremige, dippbare Sauce entsteht.",
-    timer: null
-  }, {
-    title: "Tofu marinieren",
-    desc: "Öl, Sojasoße, Limettensaft, Chipotle, Hefeflocken und Gewürze verquirlen. Tofustreifen darin marinieren – mindestens 15 Minuten.",
-    timer: 900
-  }, {
-    title: "Tofu knusprig anbraten",
-    desc: "Tofu in einer Pfanne bei mittlerer Hitze von beiden Seiten goldbraun anbraten, ca. 2–3 Minuten pro Seite. Komplett abkühlen lassen – wichtig für die Rollen!",
-    timer: 180
-  }, {
-    title: "Gemüse vorbereiten",
-    desc: "Karotte, Gurke und Paprika in dünne Streifen schneiden. Avocado in Scheiben schneiden. Kräuter bereitlegen.",
-    timer: null
-  }, {
-    title: "Reispapier einweichen",
-    desc: "Ein Reispapier-Blatt für ca. 10–15 Sekunden in warmes Wasser tauchen bis es weich wird, dann auf eine flache Unterlage legen.",
-    timer: null
-  }, {
-    title: "Rollen füllen & wickeln",
-    desc: "Etwas Salat, Gemüsestreifen, Avocado, Tofu und Kräuter ins untere Drittel des Reispapiers legen. Seiten einklappen und von unten fest aufrollen.",
-    timer: null
-  }, {
-    title: "Servieren",
-    desc: "Mit der Erdnusssauce zum Dippen servieren. Am besten frisch genießen – schmeckt erfrischend kühl! 🌯❄️",
-    timer: null
-  }],
-  notes: "Tofu muss komplett abgekühlt sein, sonst wird das Reispapier beim Füllen zu weich. Reispapier nicht zu lange einweichen – es wird beim Rollen noch weicher!"
-}, {
-  id: 18,
-  emoji: "🥗",
-  title: "Knusprige Kichererbsen-Bowl",
-  desc: "Der leckerste Salat für die Hitzewelle – mit extra Kick",
-  servings: 4,
-  tags: ["vegetarisch", "salat", "sommer", "kalt"],
-  ingredients: [{
-    amount: 1,
-    unit: "h",
-    name: "—— KICHERERBSEN ——"
-  }, {
-    amount: 220,
-    unit: "g",
-    name: "Kichererbsen, abgetropft und trocken getupft (1 Glas)"
-  }, {
-    amount: 2,
-    unit: "EL",
-    name: "Öl"
-  }, {
-    amount: 1,
-    unit: "TL",
-    name: "Paprikapulver edelsüß"
-  }, {
-    amount: 1,
-    unit: "TL",
-    name: "Kreuzkümmel"
-  }, {
-    amount: 0.5,
-    unit: "TL",
-    name: "Knoblauchpulver"
-  }, {
-    amount: 0.25,
-    unit: "TL",
-    name: "Cayennepfeffer"
-  }, {
-    amount: 0.5,
-    unit: "TL",
-    name: "Chiliflocken"
-  }, {
-    amount: 1,
-    unit: "Prise",
-    name: "Salz"
-  }, {
-    amount: 1,
-    unit: "h",
-    name: "—— SALAT ——"
-  }, {
-    amount: 1,
-    unit: "",
-    name: "Gurke, in Scheiben geschnitten"
-  }, {
-    amount: 2,
-    unit: "",
-    name: "Kleine Avocados, gewürfelt"
-  }, {
-    amount: 1,
-    unit: "",
-    name: "Rote Zwiebel, gewürfelt"
-  }, {
-    amount: 1,
-    unit: "",
-    name: "Feta Light, zerkrümelt"
-  }, {
-    amount: 1,
-    unit: "Packung",
-    name: "Pinienkerne, geröstet"
-  }, {
-    amount: 5,
-    unit: "Stiele",
-    name: "Dill, gehackt"
-  }, {
-    amount: 5,
-    unit: "Stiele",
-    name: "Petersilie, gehackt"
-  }, {
-    amount: 1,
-    unit: "h",
-    name: "—— DRESSING ——"
-  }, {
-    amount: 4,
-    unit: "EL",
-    name: "Olivenöl"
-  }, {
-    amount: 1,
-    unit: "",
-    name: "Bio-Zitrone, Saft"
-  }, {
-    amount: 1,
-    unit: "TL",
-    name: "Senf"
-  }, {
-    amount: 1,
-    unit: "EL",
-    name: "Agavensirup"
-  }, {
-    amount: 1,
-    unit: "Prise",
-    name: "Salz & Pfeffer"
-  }],
-  steps: [{
-    title: "Ofen vorheizen",
-    desc: "Ofen auf 190°C Heißluft vorheizen.",
-    timer: 600
-  }, {
-    title: "Kichererbsen würzen",
-    desc: "Gut abgetrocknete Kichererbsen auf ein Backblech legen, mit Öl, Paprikapulver, Kreuzkümmel, Knoblauchpulver, Cayennepfeffer, Chiliflocken und Salz vermischen.",
-    timer: null
-  }, {
-    title: "Kichererbsen rösten – 20 bis 25 Min.",
-    desc: "Im Ofen bei 190°C Heißluft ca. 20–25 Minuten backen bis sie leicht kross sind. Alternativ im Airfryer – hier regelmäßig umrühren!",
-    timer: 1500
-  }, {
-    title: "Abkühlen lassen",
-    desc: "Kichererbsen etwas abkühlen lassen, damit sie beim Mischen kross bleiben.",
-    timer: null
-  }, {
-    title: "Dressing zubereiten",
-    desc: "Olivenöl, Zitronensaft, Senf, Agavensirup, Salz und Pfeffer gut verrühren.",
-    timer: null
-  }, {
-    title: "Alles vermischen & servieren",
-    desc: "Kichererbsen zusammen mit Gurke, Avocados, Zwiebel, Pinienkernen, Kräutern, Feta und Dressing gut miteinander vermischen. Sofort servieren! 🥗❄️",
-    timer: null
-  }],
-  notes: "Extra Kick: Cayennepfeffer und Chiliflocken geben den Kichererbsen ordentlich Schärfe – nach Geschmack auch mehr nehmen! Kichererbsen müssen wirklich gut trocken sein, sonst werden sie im Ofen nicht kross."
-}, {
-  id: 19,
-  emoji: "🧄",
-  title: "Pull Apart Garlic Bread",
-  desc: "Zum Auseinanderziehen – mit Knoblauchbutter und Cheddar",
-  servings: 6,
-  tags: ["backen", "brot", "vegetarisch"],
-  ingredients: [{
-    amount: 1,
-    unit: "h",
-    name: "—— TEIG ——"
-  }, {
-    amount: 1,
-    unit: "TL",
-    name: "Trockenhefe"
-  }, {
-    amount: 1,
-    unit: "EL",
-    name: "Zucker"
-  }, {
-    amount: 270,
-    unit: "g",
-    name: "Milch"
-  }, {
-    amount: 380,
-    unit: "g",
-    name: "Mehl"
-  }, {
-    amount: 1,
-    unit: "TL",
-    name: "Salz"
-  }, {
-    amount: 43,
-    unit: "g",
-    name: "Butter, weich"
-  }, {
-    amount: 1,
-    unit: "h",
-    name: "—— KNOBLAUCHBUTTER ——"
-  }, {
-    amount: 100,
-    unit: "g",
-    name: "Butter, weich"
-  }, {
-    amount: 1,
-    unit: "EL",
-    name: "Koriander, gehackt"
-  }, {
-    amount: 1,
-    unit: "",
-    name: "Knoblauchzehe, fein gehackt"
-  }, {
-    amount: 1,
-    unit: "Handvoll",
-    name: "Geriebener Cheddar"
-  }],
-  steps: [{
-    title: "Hefe aktivieren",
-    desc: "Zucker und Hefe in einer Schüssel mischen. Milch dazugeben, dann Mehl hinzufügen und verrühren bis alles verbunden ist.",
-    timer: null
-  }, {
-    title: "Teig kneten – mit Knetmaschine",
-    desc: "Salz und weiche Butter dazugeben. Mit dem Knethaken der Küchenmaschine 8–10 Minuten kneten bis die Butter vollständig eingearbeitet und der Teig glatt und elastisch ist.",
-    timer: 600
-  }, {
-    title: "Gehen lassen – 2 Stunden",
-    desc: "Teig abdecken und ca. 2 Stunden gehen lassen bis er sich verdoppelt hat.",
-    timer: 7200
-  }, {
-    title: "Knoblauchbutter zubereiten",
-    desc: "Weiche Butter mit Koriander und gehacktem Knoblauch vermischen.",
-    timer: null
-  }, {
-    title: "Teig ausrollen & belegen",
-    desc: "Teig zu einem Rechteck ausrollen und die Knoblauchbutter gleichmäßig darauf verstreichen. Mit geriebenem Cheddar bestreuen.",
-    timer: null
-  }, {
-    title: "Schneiden & in Form legen",
-    desc: "Teig in der Mitte durchschneiden, eine Hälfte auf die andere stapeln, dann in Streifen schneiden. Die Stücke in eine Kastenform setzen.",
-    timer: null
-  }, {
-    title: "Ruhen lassen – 20 Min.",
-    desc: "Abdecken und 20 Minuten ruhen lassen.",
-    timer: 1200
-  }, {
-    title: "Backen – 30 Min. bei 190°C",
-    desc: "Bei 190°C (370°F) ca. 30 Minuten backen bis goldbraun.",
-    timer: 1800
-  }, {
-    title: "Mit Knoblauchbutter bestreichen",
-    desc: "Noch warm mit der restlichen Knoblauchbutter bestreichen. Guten Appetit! 🧄✨",
-    timer: null
-  }],
-  notes: "Tipp: Frischen Koriander durch Petersilie ersetzen, falls Koriander nicht so dein Ding ist. Schmeckt am besten frisch und noch warm!"
-}, {
-  id: 20,
-  emoji: "🍞",
-  title: "Ciabatta",
-  desc: "Kein Kneten – nur Zeit. Luftig, knusprig, wie vom Bäcker",
-  servings: 12,
-  tags: ["backen", "brot", "übernacht", "vegan"],
-  ingredients: [{
-    amount: 800,
-    unit: "ml",
-    name: "Lauwarmes Wasser (nicht heiß!)"
-  }, {
-    amount: 10,
-    unit: "g",
-    name: "Trockenhefe (Instanthefe)"
-  }, {
-    amount: 60,
-    unit: "ml",
-    name: "Olivenöl"
-  }, {
-    amount: 1000,
-    unit: "g",
-    name: "Weizenmehl (Type 550 oder Manitoba-Mehl)"
-  }, {
-    amount: 20,
-    unit: "g",
-    name: "Salz"
-  }],
-  steps: [{
-    title: "Teig mischen – kein Kneten!",
-    desc: "Lauwarmes Wasser in eine große Schüssel geben und die Hefe darin auflösen. Olivenöl dazugeben. Mehl hinzufügen und zuletzt das Salz. Alles verrühren bis ein feuchter, homogener Teig entsteht – nicht kneten!",
-    timer: null
-  }, {
-    title: "1. Ruhe – 1 Stunde",
-    desc: "Schüssel abdecken und den Teig 1 Stunde ruhen lassen.",
-    timer: 3600
-  }, {
-    title: "1. Faltung",
-    desc: "Hände leicht anfeuchten. Den Teig von einer Seite greifen, nach oben ziehen und über sich selbst falten. Das von allen 4 Seiten wiederholen. Abdecken und 30 Minuten ruhen lassen.",
-    timer: 1800
-  }, {
-    title: "2. Faltung",
-    desc: "Gleiche Technik wie bei der 1. Faltung. Abdecken und 30 Minuten ruhen lassen.",
-    timer: 1800
-  }, {
-    title: "3. Faltung",
-    desc: "Gleiche Technik. Abdecken und 30 Minuten ruhen lassen.",
-    timer: 1800
-  }, {
-    title: "4. Faltung & Kühlschrank – 24 Std.",
-    desc: "Letzte Faltung durchführen, dann den Teig abgedeckt für 24 Stunden in den Kühlschrank stellen.",
-    timer: 86400
-  }, {
-    title: "Akklimatisieren – 1 Stunde",
-    desc: "Am nächsten Tag den Teig aus dem Kühlschrank nehmen und 1 Stunde bei Raumtemperatur stehen lassen. Arbeitsfläche großzügig bemehlen.",
-    timer: 3600
-  }, {
-    title: "Teig aufteilen",
-    desc: "Den Teig vorsichtig auf die bemehlte Arbeitsfläche kippen – ohne zu drücken, damit die Luft drin bleibt! Sanft in 12 Stücke schneiden.",
-    timer: null
-  }, {
-    title: "Ruhen lassen – 30 Min.",
-    desc: "Stücke auf ein mit Backpapier belegtes Blech legen, mit einem Tuch abdecken und 30 Minuten ruhen lassen. Ofen auf 230°C vorheizen – dabei ein leeres Backblech unten mit einheizen.",
-    timer: 1800
-  }, {
-    title: "Backen – 24 Min.",
-    desc: "Ciabattas ins Blech setzen. Sofort eine Tasse heißes Wasser auf das untere heiße Blech schütten und Ofen schnell schließen (Dampf!). 12 Minuten backen. Dann Dampfblech rausnehmen, auf Umluft schalten und nochmal 12 Minuten bei 230°C backen bis goldbraun. Guten Appetit! 🍞",
-    timer: 1440
-  }],
-  notes: "Manitoba-Mehl (z.B. Mulino Caputo) macht das Brot noch luftiger – normales 550er funktioniert aber auch! Dampf-Tipp: Ein leeres Blech beim Vorheizen in den Ofen, dann beim Backen heißes Wasser reinschütten und schnell schließen."
-}, {
-  id: 21,
-  emoji: "🧅",
-  title: "Rote Zwiebel Chutney",
-  desc: "Süß-säuerlich, dicklich und klebrig – perfekt zu Brot & Käse",
-  servings: 1,
-  tags: ["vegetarisch", "aufstrich", "beilage"],
-  ingredients: [{
-    amount: 253,
-    unit: "g",
-    name: "Rote Zwiebel (ca. 1 große), in dünne Ringe geschnitten"
-  }, {
-    amount: 1,
-    unit: "EL",
-    name: "Öl oder Butter"
-  }, {
-    amount: 1,
-    unit: "EL",
-    name: "Zucker"
-  }, {
-    amount: 1.5,
-    unit: "EL",
-    name: "Essig (normaler Haushaltsessig)"
-  }, {
-    amount: 1,
-    unit: "Prise",
-    name: "Salz"
-  }, {
-    amount: 1,
-    unit: "Prise",
-    name: "Thymian oder Rosmarin (optional)"
-  }],
-  steps: [{
-    title: "Zwiebeln langsam anbraten – 15 Min.",
-    desc: "Zwiebeln in Öl oder Butter bei mittlerer Hitze ca. 15 Minuten langsam anbraten, bis sie weich und goldbraun sind. Nicht zu viel Hitze – sie sollen karamellisieren, nicht verbrennen.",
-    timer: 900
-  }, {
-    title: "Karamellisieren – 3 bis 4 Min.",
-    desc: "Zucker über die Zwiebeln streuen und unter Rühren 3–4 Minuten karamellisieren lassen bis er sich auflöst und die Zwiebeln glänzen.",
-    timer: 240
-  }, {
-    title: "Ablöschen & einkochen – 10 bis 15 Min.",
-    desc: "Mit Essig ablöschen, Salz und Kräuter dazugeben. Auf kleiner Hitze 10–15 Minuten einkochen lassen bis das Chutney dicklich und klebrig ist.",
-    timer: 750
-  }, {
-    title: "Abfüllen",
-    desc: "In ein sauberes Glas füllen und abkühlen lassen. Hält sich im Kühlschrank ca. 2 Wochen. 🧅",
-    timer: null
-  }],
-  notes: "Hält im Kühlschrank ca. 2 Wochen. Passt mega zu frischem Brot, Käse, oder als Burger-Topping!"
-}, {
-  id: 22,
-  emoji: "🥪",
-  title: "BBQ Pulled Tofu Sandwich",
-  desc: "Pulled Tofu Style mit Kartoffelreibe – karamellisiert & rauchig",
-  servings: 2,
-  tags: ["vegan", "tofu", "sandwich"],
-  ingredients: [{
-    amount: 1,
-    unit: "h",
-    name: "—— PULLED TOFU ——"
-  }, {
-    amount: 400,
-    unit: "g",
-    name: "Super Firm Tofu"
-  }, {
-    amount: 1,
-    unit: "TL",
-    name: "Salz (für Kochwasser)"
-  }, {
-    amount: 3,
-    unit: "EL",
-    name: "Sojasoße"
-  }, {
-    amount: 2,
-    unit: "EL",
-    name: "Ahornsirup oder Agavendicksaft"
-  }, {
-    amount: 2,
-    unit: "EL",
-    name: "Tomatenmark"
-  }, {
-    amount: 1,
-    unit: "EL",
-    name: "Apfelessig oder Essig"
-  }, {
-    amount: 1.5,
-    unit: "TL",
-    name: "Geräuchertes Paprikapulver"
-  }, {
-    amount: 1,
-    unit: "TL",
-    name: "Knoblauchpulver"
-  }, {
-    amount: 0.5,
-    unit: "TL",
-    name: "Zwiebelpulver"
-  }, {
-    amount: 0.5,
-    unit: "TL",
-    name: "Chiliflocken"
-  }, {
-    amount: 1,
-    unit: "Prise",
-    name: "Salz & Pfeffer"
-  }, {
-    amount: 1,
-    unit: "h",
-    name: "—— SANDWICH ——"
-  }, {
-    amount: 2,
-    unit: "",
-    name: "Ciabatta oder Brötchen, aufgeschnitten"
-  }, {
-    amount: 2,
-    unit: "EL",
-    name: "Mayonnaise (oder vegane Mayo)"
-  }, {
-    amount: 1,
-    unit: "Handvoll",
-    name: "Salatblätter"
-  }, {
-    amount: 2,
-    unit: "EL",
-    name: "Rote Zwiebel Chutney (aus dem Rezeptbuch!)"
-  }, {
-    amount: 1,
-    unit: "TL",
-    name: "Scharfe Sauce (optional)"
-  }],
-  steps: [{
-    title: "Tofu kochen – 10 bis 15 Min.",
-    desc: "Einen Topf Wasser mit reichlich Salz aufkochen. Tofu im ganzen Block 10–15 Minuten köcheln lassen. Rausnehmen und komplett abtropfen und abkühlen lassen.",
-    timer: 900
-  }, {
-    title: "Tofu reiben",
-    desc: "Den abgekühlten Tofu mit der groben Seite einer Kartoffelreibe reiben – gibt schöne faserige Stücke wie pulled pork! Auf Küchenpapier trocken tupfen.",
-    timer: null
-  }, {
-    title: "Marinade zubereiten",
-    desc: "Sojasoße, Ahornsirup, Tomatenmark, Essig, Paprikapulver, Knoblauchpulver, Zwiebelpulver, Chiliflocken, Salz und Pfeffer verrühren.",
-    timer: null
-  }, {
-    title: "Tofu marinieren",
-    desc: "Geriebenen Tofu in die Marinade geben und gut vermengen bis alles bedeckt ist. Mindestens 15 Minuten ziehen lassen.",
-    timer: 900
-  }, {
-    title: "Im Airfryer karamellisieren – 12 bis 15 Min.",
-    desc: "Airfryer auf 190°C vorheizen. Tofu hineingeben und 12–15 Minuten backen, nach der Hälfte umrühren. Er soll leicht karamellisiert und an den Rändern knusprig sein.",
-    timer: 840
-  }, {
-    title: "Sandwich zusammenbauen",
-    desc: "Ciabatta aufschneiden, mit Mayo bestreichen. Salatblätter rein, dann reichlich Pulled Tofu drauf, Zwiebel Chutney drüber und nach Belieben scharfe Sauce. Guten Appetit! 🥪🔥",
-    timer: null
-  }],
-  notes: "Tipp: Tofu muss wirklich gut trocken getupft sein bevor er gerieben wird. Je trockener, desto knuspriger wird er im Airfryer!"
-}, {
-  id: 23,
-  emoji: "🌀",
-  title: "Herzhafte Hefeschnecken",
-  desc: "Zwei Varianten – perfekt als Snack für die Arbeit",
-  servings: 9,
-  tags: ["backen", "snack", "vegetarisch"],
-  ingredients: [{
-    amount: 1,
-    unit: "h",
-    name: "—— TEIG (wie Brioche, ohne Zucker) ——"
-  }, {
-    amount: 250,
-    unit: "ml",
-    name: "Vollmilch, lauwarm (38°C)"
-  }, {
-    amount: 50,
-    unit: "ml",
-    name: "Sahne"
-  }, {
-    amount: 7,
-    unit: "g",
-    name: "Trockenhefe"
-  }, {
-    amount: 3,
-    unit: "g",
-    name: "Salz"
-  }, {
-    amount: 165,
-    unit: "g",
-    name: "Weizenmehl Type 550"
-  }, {
-    amount: 385,
-    unit: "g",
-    name: "Weizenmehl Type 405"
-  }, {
-    amount: 70,
-    unit: "g",
-    name: "Butter, weich (für Teig)"
-  }, {
-    amount: 1,
-    unit: "h",
-    name: "—— VARIANTE 1: Zwiebel & Gruyère ——"
-  }, {
-    amount: 3,
-    unit: "",
-    name: "Rote oder gelbe Zwiebeln, in dünne Ringe"
-  }, {
-    amount: 1,
-    unit: "EL",
-    name: "Butter (zum Anbraten)"
-  }, {
-    amount: 1,
-    unit: "TL",
-    name: "Zucker (zum Karamellisieren)"
-  }, {
-    amount: 1,
-    unit: "Prise",
-    name: "Salz & Pfeffer"
-  }, {
-    amount: 50,
-    unit: "g",
-    name: "Butter, weich (zum Bestreichen)"
-  }, {
-    amount: 200,
-    unit: "g",
-    name: "Gruyère, gerieben"
-  }, {
-    amount: 1,
-    unit: "h",
-    name: "—— VARIANTE 2: Frischkäse & getrocknete Tomaten ——"
-  }, {
-    amount: 250,
-    unit: "g",
-    name: "Frischkäse (Kräuter oder natur)"
-  }, {
-    amount: 80,
-    unit: "g",
-    name: "Getrocknete Tomaten in Öl, grob gehackt"
-  }, {
-    amount: 200,
-    unit: "g",
-    name: "Mozzarella, gerieben"
-  }, {
-    amount: 1,
-    unit: "Prise",
-    name: "Chiliflocken & Knoblauchpulver"
-  }, {
-    amount: 1,
-    unit: "h",
-    name: "—— FINISH ——"
-  }, {
-    amount: 1,
-    unit: "",
-    name: "Ei, verquirlt (Eistreiche)"
-  }],
-  steps: [{
-    title: "Teig ankneten – 6 Min.",
-    desc: "Milch, Sahne und Hefe mischen. Beide Mehle und Salz dazugeben. 3 Min. auf niedriger, dann 3 Min. auf mittlerer Stufe kneten.",
-    timer: 360
-  }, {
-    title: "Butter einkneten – 10 bis 12 Min.",
-    desc: "Butter stückchenweise auf niedriger Stufe einarbeiten und 10–12 Min. kneten bis der Teig glatt ist.",
-    timer: 660
-  }, {
-    title: "Erste Ruhe – 75 bis 90 Min.",
-    desc: "Teig in geölte Schüssel, locker abdecken und an warmem Ort (25–28°C) gehen lassen bis er sich fast verdoppelt hat.",
-    timer: 5400
-  }, {
-    title: "Zwiebeln karamellisieren (Variante 1)",
-    desc: "Butter in einer Pfanne bei mittlerer Hitze schmelzen. Zwiebeln dazugeben und 15–20 Min. langsam anbraten. Zucker drüber streuen, weitere 5 Min. karamellisieren bis sie goldbraun und süßlich sind. Mit Salz und Pfeffer würzen. Abkühlen lassen.",
-    timer: 1500
-  }, {
-    title: "Teig ausrollen & füllen",
-    desc: "Teig auf ca. 40×50 cm ausrollen. Für Variante 1: Butter gleichmäßig drauf streichen, karamellisierte Zwiebeln drauf, Gruyère drüber. Für Variante 2: Frischkäse streichen, getrocknete Tomaten drauf, Mozzarella drüber, Chiliflocken und Knoblauchpulver drüber.",
-    timer: null
-  }, {
-    title: "Rollen & schneiden",
-    desc: "Teig von der langen Seite fest aufrollen. In 8–9 gleich große Scheiben schneiden und in eine gefettete Form oder auf ein Backblech legen.",
-    timer: null
-  }, {
-    title: "Zweite Ruhe – 45 bis 60 Min.",
-    desc: "Abdecken und nochmal 45–60 Min. gehen lassen bis die Schnecken aufgegangen sind.",
-    timer: 3000
-  }, {
-    title: "Backen – 18 bis 20 Min.",
-    desc: "Ofen auf 190°C vorheizen. Mit Ei bestreichen und 18–20 Min. backen bis goldbraun. Am besten warm genießen! 🌀🧀",
-    timer: 1200
-  }],
-  notes: "Kalt auch noch lecker! Halten sich 2 Tage in einer Dose. Tipp: Schnecken eng nebeneinander in eine Form legen – so gehen sie schön nach oben auf statt auseinander."
-}];
+// Simple SVG icon components - no external dependency needed
+function Icon({ children, size = 20, color = "currentColor", style = {} }) {
+  return h('svg', { width: size, height: size, viewBox: "0 0 24 24", fill: "none", stroke: color, strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round", style: { flexShrink: 0, ...style } }, children);
+}
+function ArrowLeft({ size, color, style }) { return h(Icon, { size, color, style }, h('path', { d: "m12 19-7-7 7-7" }), h('path', { d: "M19 12H5" })); }
+function ArrowRight({ size, color, style }) { return h(Icon, { size, color, style }, h('path', { d: "m12 5 7 7-7 7" }), h('path', { d: "M5 12h14" })); }
+function Play({ size, color, style }) { return h(Icon, { size, color, style }, h('polygon', { points: "5 3 19 12 5 21 5 3" })); }
+function Pause({ size, color, style }) { return h(Icon, { size, color, style }, h('rect', { width: "4", height: "16", x: "6", y: "4" }), h('rect', { width: "4", height: "16", x: "14", y: "4" })); }
+function RotateCcw({ size, color, style }) { return h(Icon, { size, color, style }, h('path', { d: "M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" }), h('path', { d: "M3 3v5h5" })); }
+function Check({ size, color, style }) { return h(Icon, { size, color, style }, h('path', { d: "M20 6 9 17l-5-5" })); }
+function X({ size, color, style }) { return h(Icon, { size, color, style }, h('path', { d: "M18 6 6 18" }), h('path', { d: "m6 6 12 12" })); }
+function Plus({ size, color, style }) { return h(Icon, { size, color, style }, h('path', { d: "M5 12h14" }), h('path', { d: "M12 5v14" })); }
+function Clock({ size, color, style }) { return h(Icon, { size, color, style }, h('circle', { cx: "12", cy: "12", r: "10" }), h('polyline', { points: "12 6 12 12 16 14" })); }
+function Search({ size, color, style }) { return h(Icon, { size, color, style }, h('circle', { cx: "11", cy: "11", r: "8" }), h('path', { d: "m21 21-4.3-4.3" })); }
+function Users({ size, color, style }) { return h(Icon, { size, color, style }, h('path', { d: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" }), h('circle', { cx: "9", cy: "7", r: "4" }), h('path', { d: "M22 21v-2a4 4 0 0 0-3-3.87" }), h('path', { d: "M16 3.13a4 4 0 0 1 0 7.75" })); }
+function Lightbulb({ size, color, style }) { return h(Icon, { size, color, style }, h('path', { d: "M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5" }), h('path', { d: "M9 18h6" }), h('path', { d: "M10 22h4" })); }
+function Trash2({ size, color, style }) { return h(Icon, { size, color, style }, h('path', { d: "M3 6h18" }), h('path', { d: "M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" }), h('path', { d: "M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" }), h('line', { x1: "10", x2: "10", y1: "11", y2: "17" }), h('line', { x1: "14", x2: "14", y1: "11", y2: "17" })); }
+const defaultRecipes = [
+  {
+    id: 1,
+    emoji: "🌶️",
+    title: "Chipotle Tofu",
+    desc: "Würziger, rauchiger Tofu – schnell, vegan",
+    servings: 3,
+    tags: ["vegan", "tofu"],
+    ingredients: [
+      { amount: 400, unit: "g", name: "Super Firm Tofu, in Stücke gerissen" },
+      { amount: 2, unit: "EL", name: "Öl" },
+      { amount: 2, unit: "EL", name: "Sojasoße (oder Tamari)" },
+      { amount: 1, unit: "EL", name: "Limettensaft" },
+      { amount: 1.5, unit: "EL", name: "Chipotle in Adobo, fein gehackt" },
+      { amount: 1, unit: "EL", name: "Hefeflocken" },
+      { amount: 1, unit: "TL", name: "Geräuchertes Paprikapulver" },
+      { amount: 0.5, unit: "TL", name: "Zwiebelpulver" },
+      { amount: 0.5, unit: "TL", name: "Knoblauchpulver" },
+      { amount: 0.5, unit: "TL", name: "Kreuzkümmel" },
+      { amount: 0.5, unit: "TL", name: "Oregano" },
+      { amount: 1, unit: "Prise", name: "Salz & Pfeffer" },
+    ],
+    steps: [
+      { title: "Marinade zubereiten", desc: "Alle Marinadenzutaten in einer Schüssel verquirlen, am besten kurz mit einem Mixer pürieren für eine glatte Marinade.", timer: null },
+      { title: "Tofu marinieren", desc: "Tofu trocken tupfen, von Hand in Stücke brechen. Marinade drübergießen und vermengen. Mindestens 30 Min., besser 2–4 Std. oder über Nacht im Kühlschrank marinieren.", timer: 7200 },
+      { title: "Tofu anbraten", desc: "Große Pfanne bei mittlerer Hitze 3–4 Min. vorheizen. Tofu portionsweise hineingeben (nicht überladen!) und je 2–3 Min. pro Seite anbraten bis schön gebräunt.", timer: 180 },
+    ],
+    notes: "Tofu-Tipp: Super Firm muss nicht gepresst werden. Extra Firm mindestens 30 Min. pressen."
+  },
+  {
+    id: 2,
+    emoji: "🌮",
+    title: "Baked Chipotle Tofu Tacos",
+    desc: "Knusprige Tacos mit Chipotle-Tofu und rauchiger Sauce",
+    servings: 4,
+    tags: ["vegan", "tofu", "tacos"],
+    ingredients: [
+      { amount: 400, unit: "g", name: "Super Firm Tofu, in Stücke gerissen" },
+      { amount: 2, unit: "EL", name: "Öl" },
+      { amount: 2, unit: "EL", name: "Sojasoße" },
+      { amount: 1, unit: "EL", name: "Limettensaft" },
+      { amount: 1.5, unit: "EL", name: "Chipotle in Adobo, fein gehackt" },
+      { amount: 1, unit: "EL", name: "Hefeflocken" },
+      { amount: 1, unit: "TL", name: "Geräuchertes Paprikapulver" },
+      { amount: 0.5, unit: "TL", name: "Zwiebelpulver" },
+      { amount: 0.5, unit: "TL", name: "Knoblauchpulver" },
+      { amount: 0.5, unit: "TL", name: "Kreuzkümmel" },
+      { amount: 0.5, unit: "TL", name: "Oregano" },
+      { amount: 150, unit: "g", name: "Gemischte Paprika, gewürfelt" },
+      { amount: 75, unit: "g", name: "Mais, gekocht" },
+      { amount: 1, unit: "", name: "Gelbe Zwiebel, gewürfelt" },
+      { amount: 1, unit: "", name: "Jalapeño, gehackt (optional)" },
+      { amount: 8, unit: "EL", name: "Mayonnaise" },
+      { amount: 8, unit: "EL", name: "Saure Sahne" },
+      { amount: 1, unit: "EL", name: "Geräuchertes Paprikapulver (Sauce)" },
+      { amount: 1, unit: "TL", name: "Knoblauchpulver (Sauce)" },
+      { amount: 1, unit: "TL", name: "Cajun-Gewürz" },
+      { amount: 1, unit: "EL", name: "Limettensaft (Sauce)" },
+      { amount: 1, unit: "TL", name: "Scharfe Sauce" },
+      { amount: 2, unit: "EL", name: "Frischer Koriander, gehackt" },
+      { amount: 10, unit: "", name: "Kleine Mehl-Tortillas" },
+      { amount: 100, unit: "g", name: "Geriebener Käse (Mozzarella & Cheddar)" },
+      { amount: 2, unit: "EL", name: "Öl (zum Bestreichen der Tortillas)" },
+    ],
+    steps: [
+      { title: "Sauce zubereiten", desc: "Alle Saucenzutaten verrühren, abschmecken und im Kühlschrank kühlen.", timer: null },
+      { title: "Chipotle-Marinade zubereiten", desc: "Öl, Sojasoße, Limettensaft, Chipotle, Hefeflocken und Gewürze verquirlen, am besten pürieren.", timer: null },
+      { title: "Tofu marinieren", desc: "Tofu trocken tupfen, in Stücke brechen, Marinade drüber und mindestens 30 Min. – besser 2–4 Std. – marinieren.", timer: 7200 },
+      { title: "Tofu anbraten", desc: "Große Pfanne bei mittlerer Hitze vorheizen. Tofu portionsweise 2–3 Min. pro Seite anbraten bis goldbraun. Herausnehmen.", timer: 180 },
+      { title: "Gemüse anbraten", desc: "In derselben Pfanne Zwiebel, Paprika, Mais und Jalapeño 3–4 Min. anbraten. Tofu wieder dazugeben und vermengen.", timer: 240 },
+      { title: "Ofen vorheizen", desc: "Ofen auf 200°C Ober-/Unterhitze (180°C Umluft) vorheizen.", timer: 600 },
+      { title: "Tacos befüllen & backen", desc: "Tortillas auf einer Seite mit Öl bestreichen. Umdrehen, Tofu-Füllung drauf, Käse drüber, zuklappen. Auf Backblech 10–15 Min. backen bis knusprig.", timer: 750 },
+      { title: "Servieren", desc: "Tacos mit Sauce beträufeln oder zum Dippen servieren. Guten Appetit! 🌮", timer: null },
+    ],
+    notes: "Ofen: 200°C = ca. 400°F. Vegan: vegane Mayo, Saure Sahne und Käse verwenden."
+  },
+  {
+    id: 3,
+    emoji: "🍊",
+    title: "Orange Tofu mit Reis",
+    desc: "Knuspriger Tofu in süß-scharfer Orangensauce",
+    servings: 4,
+    tags: ["vegan", "tofu", "asiatisch"],
+    ingredients: [
+      { amount: 600, unit: "g", name: "Tofu, ausgepresst und in Stücke gerissen (3 Packungen à 200g)" },
+      { amount: 4, unit: "EL", name: "Speisestärke" },
+      { amount: 1, unit: "Prise", name: "Salz, Pfeffer & Knoblauchpulver" },
+      { amount: 2, unit: "EL", name: "Öl zum Braten" },
+      { amount: 350, unit: "ml", name: "Orangensaft" },
+      { amount: 4, unit: "EL", name: "Sojasoße" },
+      { amount: 8, unit: "EL", name: "Agavendicksaft oder Ahornsirup" },
+      { amount: 2, unit: "TL", name: "Chiliflocken" },
+      { amount: 2, unit: "TL", name: "Ingwer, gerieben" },
+      { amount: 3, unit: "EL", name: "Speisestärke (zum Andicken)" },
+      { amount: 5, unit: "EL", name: "Wasser (zum Andicken)" },
+      { amount: 300, unit: "g", name: "Reis (Basmati oder Jasmin)" },
+      { amount: 2, unit: "EL", name: "Sesam" },
+      { amount: 3, unit: "", name: "Frühlingszwiebeln, in Ringe geschnitten" },
+    ],
+    steps: [
+      { title: "Reis kochen", desc: "Reis nach Packungsanleitung kochen, salzen und warmhalten.", timer: 900 },
+      { title: "Tofu panieren", desc: "Tofu in Stücke reißen. Mit Speisestärke, Salz, Pfeffer und Knoblauchpulver vermengen bis alles bedeckt ist.", timer: null },
+      { title: "Sauce vormischen", desc: "Orangensaft, Sojasoße, Agavendicksaft, Chiliflocken und Ingwer verrühren. Speisestärke separat mit Wasser glatt rühren (kommt später dazu!).", timer: null },
+      { title: "Tofu knusprig anbraten", desc: "Öl in großer Pfanne bei hoher Hitze erhitzen. Tofu portionsweise goldbraun braten – 3–4 Min. pro Seite. Herausnehmen.", timer: 480 },
+      { title: "Sauce leicht andicken", desc: "Sauce in die heiße Pfanne gießen, aufkochen. Stärke-Slurry dazugeben und rühren bis die Sauce leicht eindickt und glänzt – nur kurz!", timer: 90 },
+      { title: "Tofu glasieren", desc: "Tofu zurück in die Pfanne, durchschwenken. Sesam und die Hälfte der Frühlingszwiebeln einrühren.", timer: null },
+      { title: "Servieren", desc: "Reis verteilen, Tofu drauf, restliche Frühlingszwiebeln und Sesam drüber. Guten Appetit! 🍊", timer: null },
+    ],
+    notes: "Aufbewahren: Tofu, Sauce und Reis getrennt – so bleibt der Tofu knusprig."
+  },
+  {
+    id: 4,
+    emoji: "🥦",
+    title: "Blumenkohl-Wings",
+    desc: "Knusprig im Airfryer mit Maple-Chili Sauce",
+    servings: 4,
+    tags: ["vegan", "airfryer", "snack"],
+    ingredients: [
+      { amount: 1, unit: "", name: "Kopf Blumenkohl, in Röschen" },
+      { amount: 300, unit: "ml", name: "Milch" },
+      { amount: 80, unit: "g", name: "Mehl" },
+      { amount: 40, unit: "g", name: "Speisestärke" },
+      { amount: 35, unit: "g", name: "Panko" },
+      { amount: 1, unit: "TL", name: "Knoblauchpulver" },
+      { amount: 1, unit: "TL", name: "Zwiebelpulver" },
+      { amount: 1, unit: "TL", name: "Geräuchertes Paprikapulver" },
+      { amount: 1, unit: "TL", name: "Sambal Oelek" },
+      { amount: 1, unit: "Prise", name: "Salz & Pfeffer" },
+      { amount: 1, unit: "EL", name: "Öl (Spray oder Pinsel)" },
+      { amount: 60, unit: "ml", name: "Ahornsirup" },
+      { amount: 1.5, unit: "TL", name: "Sambal Oelek (Sauce)" },
+      { amount: 2, unit: "EL", name: "Butter" },
+      { amount: 1, unit: "EL", name: "Zitronensaft" },
+      { amount: 1, unit: "Prise", name: "Salz (Sauce)" },
+    ],
+    steps: [
+      { title: "Blumenkohl vorbereiten", desc: "Blumenkohl in mittelgroße Röschen schneiden – nicht zu klein, sonst matschig!", timer: null },
+      { title: "Teig anrühren", desc: "Milch, Mehl, Stärke, Knoblauchpulver, Zwiebelpulver, Paprikapulver, Sambal und Salz zu einem dickflüssigen Teig verrühren (wie Pfannkuchen).", timer: null },
+      { title: "Panieren & ruhen lassen", desc: "Jede Röschen in den Teig tauchen, gut abtropfen, dann in Panko wälzen. 5 Min. ruhen lassen – der wichtigste Knusper-Schritt!", timer: 300 },
+      { title: "Im Airfryer backen", desc: "Airfryer auf 200°C vorheizen. Wings leicht mit Öl besprühen, hineingeben (nicht zu voll!). Nach 7–8 Min. schütteln, dann nochmal 5–7 Min. bis goldbraun.", timer: 840 },
+      { title: "Maple-Chili Sauce einkochen", desc: "Ahornsirup, Sambal, Butter, Zitronensaft und Salz in eine Pfanne geben, 3–5 Min. köcheln bis die Sauce dick, glänzend und klebrig ist.", timer: 240 },
+      { title: "Glasieren & fertig!", desc: "Wings in eine Schüssel, Sauce drüber, gut schwenken. 2–3 Min. zurück in den Airfryer. Sofort servieren! 🥦🔥", timer: 150 },
+    ],
+    notes: "Für sehr mild: nur 1 TL Sambal in die Sauce. Goodbake Ölspray funktioniert perfekt zum Einsprühen!"
+  },
+  {
+    id: 5,
+    emoji: "🥦🍝",
+    title: "Brokkoli-Champignon-Nudelauflauf",
+    desc: "Cremiger vegetarischer Auflauf – simpel & für 2 Tage",
+    servings: 4,
+    tags: ["vegetarisch", "auflauf", "meal-prep"],
+    ingredients: [
+      { amount: 300, unit: "g", name: "Nudeln (Penne oder Fusilli)" },
+      { amount: 400, unit: "g", name: "Brokkoli, in Röschen" },
+      { amount: 200, unit: "g", name: "Champignons, in Scheiben" },
+      { amount: 1, unit: "", name: "Zwiebel, gewürfelt" },
+      { amount: 2, unit: "", name: "Knoblauchzehen, fein gehackt" },
+      { amount: 200, unit: "ml", name: "Sahne" },
+      { amount: 100, unit: "g", name: "Kräuterfrischkäse" },
+      { amount: 1, unit: "TL", name: "Senf" },
+      { amount: 150, unit: "g", name: "Geriebener Käse (Gouda, Emmentaler oder Mozzarella)" },
+      { amount: 1, unit: "Prise", name: "Salz, Pfeffer, Muskat, Paprikapulver" },
+      { amount: 1, unit: "EL", name: "Öl zum Anbraten" },
+    ],
+    steps: [
+      { title: "Nudeln kochen", desc: "Nudeln in Salzwasser 2 Min. kürzer kochen als auf der Packung angegeben. Abgießen.", timer: 480 },
+      { title: "Brokkoli blanchieren", desc: "Brokkoli in kochendem Salzwasser 3 Min. blanchieren, abgießen.", timer: 180 },
+      { title: "Ofen vorheizen", desc: "Ofen auf 200°C Ober-/Unterhitze (180°C Umluft) vorheizen.", timer: 600 },
+      { title: "Gemüse anbraten", desc: "Öl erhitzen. Zwiebel 2 Min. anbraten. Champignons 4–5 Min. braten bis leicht gebräunt. Knoblauch kurz mitbraten.", timer: 420 },
+      { title: "Cremige Sauce", desc: "Sahne, Kräuterfrischkäse und Senf dazugeben, verrühren bis der Frischkäse schmilzt. Mit Salz, Pfeffer, Muskat und Paprikapulver abschmecken. Kurz aufkochen, dann vom Herd.", timer: 60 },
+      { title: "Auflauf zusammenstellen", desc: "Gefettete Auflaufform: Nudeln, Brokkoli und Sauce hineingeben und gut vermengen.", timer: null },
+      { title: "Käse drauf & backen", desc: "Käse gleichmäßig drüber streuen. 25–30 Min. backen bis goldbraun. Guten Appetit! 🥦", timer: 1650 },
+    ],
+    notes: "Meal Prep: 2–3 Tage im Kühlschrank. Bei 160°C aufwärmen."
+  },
+  {
+    id: 6,
+    emoji: "🧀🔥",
+    title: "Tortellini-Auflauf mit Panko-Kruste",
+    desc: "Cremig, gut gewürzt, mit unschlagbarer Doppelkruste",
+    servings: 2,
+    tags: ["vegetarisch", "auflauf", "meal-prep"],
+    ingredients: [
+      { amount: 300, unit: "g", name: "Käse-Tortellini (Kühlregal)" },
+      { amount: 1, unit: "", name: "Stange Lauch, in Ringe geschnitten" },
+      { amount: 200, unit: "g", name: "Champignons, in Scheiben" },
+      { amount: 1, unit: "", name: "Dose Erbsen & Karotten, abgetropft (~280g)" },
+      { amount: 2, unit: "", name: "Knoblauchzehen, fein gehackt" },
+      { amount: 1, unit: "EL", name: "Olivenöl" },
+      { amount: 150, unit: "ml", name: "Sahne" },
+      { amount: 150, unit: "ml", name: "Gemüsebrühe" },
+      { amount: 75, unit: "g", name: "Kräuterfrischkäse" },
+      { amount: 1, unit: "TL", name: "Senf (gehäuft!)" },
+      { amount: 1, unit: "TL", name: "Geräuchertes Paprikapulver" },
+      { amount: 0.5, unit: "TL", name: "Paprikapulver edelsüß" },
+      { amount: 1, unit: "TL", name: "Oregano" },
+      { amount: 0.5, unit: "TL", name: "Thymian" },
+      { amount: 0.5, unit: "TL", name: "Zwiebelpulver" },
+      { amount: 0.5, unit: "TL", name: "Knoblauchpulver" },
+      { amount: 1, unit: "TL", name: "Worcestershiresauce (oder Sojasoße)" },
+      { amount: 1, unit: "Prise", name: "Cayennepfeffer, Muskat, Salz & Pfeffer" },
+      { amount: 80, unit: "g", name: "Streukäse (Gouda, Emmentaler oder Mozzarella)" },
+      { amount: 3, unit: "EL", name: "Panko" },
+      { amount: 1, unit: "EL", name: "Öl (für Panko)" },
+    ],
+    steps: [
+      { title: "Ofen vorheizen", desc: "Ofen auf 200°C Ober-/Unterhitze (180°C Umluft) vorheizen.", timer: 600 },
+      { title: "Gemüse anbraten", desc: "Öl erhitzen. Lauch und Champignons 5–6 Min. anbraten bis Lauch weich und Champignons gebräunt. Knoblauch 30 Sek. mitbraten.", timer: 360 },
+      { title: "Kräftige Sauce zubereiten", desc: "Sahne, Gemüsebrühe, Frischkäse, Senf, alle Gewürze und Worcestershiresauce dazugeben. Verrühren bis Frischkäse schmilzt. Kurz aufkochen lassen, dann sofort vom Herd – nicht lange köcheln!", timer: 60 },
+      { title: "Auflauf zusammenstellen", desc: "Erbsen & Karotten und Tortellini in eine gefettete Auflaufform. Sauce drüber und gut vermengen.", timer: null },
+      { title: "Doppelkruste vorbereiten", desc: "Panko mit Öl vermischen. Zuerst Streukäse gleichmäßig drüber, dann Panko-Mischung drüber streuen.", timer: null },
+      { title: "Backen", desc: "25–30 Min. backen bis Sauce blubbert und Kruste goldbraun ist. Die letzten 3–5 Min. Grill zuschalten für extra Knusper! Guten Appetit! 🧀", timer: 1650 },
+    ],
+    notes: "Tortellini nicht vorkochen! Sie garen im Ofen in der Sauce durch. Aufwärmen: Schuss Sahne dazu, bei 160°C."
+  },
+  {
+    id: 7,
+    emoji: "🍄🧀",
+    title: "Butter-Spätzle mit Champignon-Rahmsauce",
+    desc: "Goldbraune Spätzle mit cremiger Sauce und Parmesan",
+    servings: 4,
+    tags: ["vegetarisch", "pasta"],
+    ingredients: [
+      { amount: 500, unit: "g", name: "Spätzle (Kühlregal)" },
+      { amount: 2, unit: "EL", name: "Butter (zum Anbraten)" },
+      { amount: 1, unit: "", name: "Zwiebel, fein gewürfelt" },
+      { amount: 3, unit: "", name: "Knoblauchzehen, fein gehackt" },
+      { amount: 1, unit: "EL", name: "Butter (zum Andünsten)" },
+      { amount: 400, unit: "g", name: "Champignons, in Scheiben" },
+      { amount: 300, unit: "ml", name: "Sahne" },
+      { amount: 100, unit: "g", name: "Kräuterfrischkäse" },
+      { amount: 1, unit: "EL", name: "Mehl" },
+      { amount: 30, unit: "ml", name: "Wasser (für Mehlwasser)" },
+      { amount: 50, unit: "g", name: "Parmesan, gerieben" },
+      { amount: 1, unit: "TL", name: "Paprikapulver edelsüß" },
+      { amount: 0.5, unit: "TL", name: "Geräuchertes Paprikapulver" },
+      { amount: 1, unit: "TL", name: "Thymian" },
+      { amount: 0.5, unit: "TL", name: "Chiliflocken" },
+      { amount: 1, unit: "Prise", name: "Muskat, Salz & Pfeffer" },
+      { amount: 1, unit: "", name: "Handvoll frische Petersilie" },
+      { amount: 30, unit: "g", name: "Parmesan extra zum Drüberreiben" },
+    ],
+    steps: [
+      { title: "Spätzle goldbraun anbraten", desc: "Spätzle portionsweise in Butter bei hoher Hitze goldbraun anbraten – nicht rühren! Herausnehmen und beiseite stellen.", timer: null },
+      { title: "Zwiebel & Knoblauch andünsten", desc: "Butter erhitzen. Zwiebel 2 Min. andünsten. Knoblauch 30 Sek. mitbraten bis er duftet.", timer: 120 },
+      { title: "Champignons goldbraun braten", desc: "Champignons bei hoher Hitze dazugeben und NICHT sofort salzen! 5–6 Min. braten bis schön goldbraun. Erst dann würzen.", timer: 360 },
+      { title: "Cremige Sauce zubereiten", desc: "Sahne, Frischkäse, Senf und alle Gewürze dazugeben, verrühren bis Frischkäse schmilzt. Mehl mit Wasser glatt rühren, dazugeben. 4–5 Min. auf kleiner Hitze sämig köcheln.", timer: 300 },
+      { title: "Parmesan einrühren & Spätzle dazu", desc: "Parmesan einrühren, nochmal abschmecken. Gebratene Spätzle zurück in die Pfanne und vorsichtig vermengen.", timer: null },
+      { title: "Servieren", desc: "In Schüsseln verteilen, mit Petersilie und extra Parmesan toppen. Sofort servieren! 🍄", timer: null },
+    ],
+    notes: "Champignon-Trick: Nie zu früh salzen – sonst ziehen sie Wasser! Aufwärmen: Schuss Sahne oder Wasser dazu."
+  },
+  {
+    id: 8,
+    emoji: "🍜",
+    title: "One Pot Ramen Dumpling Suppe",
+    desc: "Perfektes Comfort Food bei Regenwetter",
+    servings: 2,
+    tags: ["vegetarisch", "suppe", "asian"],
+    ingredients: [
+      { amount: 2, unit: "EL", name: "Rote Currypaste" },
+      { amount: 2, unit: "EL", name: "Erdnussbutter" },
+      { amount: 2, unit: "", name: "Knoblauchzehen, gepresst" },
+      { amount: 1, unit: "", name: "Stück Ingwer (2–3 cm), gerieben" },
+      { amount: 400, unit: "ml", name: "Kokosmilch" },
+      { amount: 800, unit: "ml", name: "Gemüsebrühe" },
+      { amount: 1, unit: "", name: "Stange Zitronengras (optional)" },
+      { amount: 2, unit: "EL", name: "Sojasoße" },
+      { amount: 1, unit: "", name: "Limette, Saft" },
+      { amount: 200, unit: "g", name: "Champignons, in Scheiben" },
+      { amount: 6, unit: "", name: "Vegetarische Dumplings (TK)" },
+      { amount: 200, unit: "g", name: "Ramen Nudeln" },
+      { amount: 2, unit: "", name: "Eier, gekocht und halbiert" },
+      { amount: 1, unit: "", name: "Handvoll frischer Koriander oder Petersilie" },
+      { amount: 1, unit: "Prise", name: "Schwarzer Sesam" },
+      { amount: 1, unit: "", name: "Chiliöl nach Geschmack" },
+    ],
+    steps: [
+      { title: "Eier kochen", desc: "Eier in kochendem Wasser 7 Min. kochen für cremiges Eigelb. In kaltem Wasser abschrecken, pellen und halbieren.", timer: 420 },
+      { title: "Knoblauch & Ingwer anbraten", desc: "Etwas Öl erhitzen. Knoblauch und Ingwer ca. 1 Min. anbraten bis sie duften.", timer: 60 },
+      { title: "Currypaste & Erdnussbutter rösten", desc: "Currypaste und Erdnussbutter dazugeben und 1–2 Min. unter Rühren mitbraten bis leicht karamellisiert.", timer: 120 },
+      { title: "Ablöschen & köcheln", desc: "Mit Kokosmilch und Gemüsebrühe ablöschen. Zitronengras (falls verwendet), Sojasoße und Limettensaft einrühren. 5–8 Min. köcheln.", timer: 480 },
+      { title: "Einlage rein", desc: "Champignons, Dumplings und Ramen Nudeln dazugeben. 4–5 Min. garziehen lassen. Zitronengras rausfischen.", timer: 300 },
+      { title: "Servieren", desc: "In Schüsseln verteilen. Mit Eiern, Koriander, Sesam und Chiliöl toppen. Sofort servieren! 🍜", timer: null },
+    ],
+    notes: "Ingwer unbedingt nehmen – macht einen riesigen Unterschied! Schärfe mit Chiliöl beim Servieren regulieren."
+  },
+  {
+    id: 9,
+    emoji: "🧄",
+    title: "Lángos",
+    desc: "Fluffig-knusprig mit Knoblauchcreme & Bergkäse",
+    servings: 6,
+    tags: ["backen", "frittiert"],
+    ingredients: [
+      { amount: 500, unit: "g", name: "Weizenmehl (Type 00 oder 405)" },
+      { amount: 200, unit: "g", name: "Milch, lauwarm" },
+      { amount: 120, unit: "g", name: "Wasser, lauwarm" },
+      { amount: 15, unit: "g", name: "Frische Hefe (oder 5g Trockenhefe)" },
+      { amount: 7, unit: "g", name: "Zucker" },
+      { amount: 15, unit: "g", name: "Salz" },
+      { amount: 400, unit: "g", name: "Sauerrahm" },
+      { amount: 3, unit: "", name: "Zehen Knoblauch, fein gehackt" },
+      { amount: 1, unit: "Prise", name: "Salz & Pfeffer (Creme)" },
+      { amount: 150, unit: "g", name: "Bergkäse, gerieben" },
+      { amount: 3, unit: "", name: "Stangen Frühlingszwiebeln, in Ringe geschnitten" },
+      { amount: 1, unit: "", name: "Sonnenblumen- oder Rapsöl zum Frittieren" },
+    ],
+    steps: [
+      { title: "Teig kneten & ruhen – 60 Min.", desc: "Alle Teigzutaten in eine Schüssel geben und 10–12 Min. kneten bis schön geschmeidig. Dehnen & falten, rund schleifen, in geölter Schüssel locker abdecken und 60 Min. gehen lassen.", timer: 3600 },
+      { title: "Knoblauchcreme zubereiten", desc: "Knoblauch fein hacken und mit Sauerrahm, Salz und Pfeffer zu einer Creme verrühren. Kühl stellen.", timer: null },
+      { title: "Teig teilen & entspannen – 15 Min.", desc: "Teig entgasen, auf Arbeitsfläche stürzen, in 6 gleiche Stücke teilen. Rund schleifen, abdecken und 15 Min. entspannen lassen.", timer: 900 },
+      { title: "Lángos frittieren", desc: "Reichlich Öl in einem hohen Topf auf 170–180°C erhitzen (Zahnstocher-Test: sofort Bläschen = passt). Teiglinge mit Fingerkuppen flach drücken (Mitte dünner, Rand dicker). Portionsweise von beiden Seiten ca. 2 Min. goldbraun frittieren. Auf Küchenpapier abtropfen.", timer: 120 },
+      { title: "Toppen & servieren", desc: "Heiße Lángos mit Knoblauchcreme bestreichen, Bergkäse drüber, Frühlingszwiebeln obendrauf. Sofort servieren – frisch sind sie am besten! 😍", timer: null },
+    ],
+    notes: "Öl: 170–180°C ist wichtig! Zu heiß = außen verbrannt, innen roh. Zu kalt = fettig. Übriges Öl durch Sieb abseihen und wiederverwenden!"
+  },
+  {
+    id: 10,
+    emoji: "🥔",
+    title: "Klassischer Kartoffelsalat",
+    desc: "Bayerischer Stil ohne Mayo – schlonzig & würzig",
+    servings: 4,
+    tags: ["vegetarisch", "salat", "klassiker"],
+    ingredients: [
+      { amount: 1000, unit: "g", name: "Kartoffeln, festkochend" },
+      { amount: 2, unit: "", name: "Zwiebeln, fein gewürfelt" },
+      { amount: 300, unit: "ml", name: "Gemüsebrühe, heiß" },
+      { amount: 4, unit: "EL", name: "Weißweinessig" },
+      { amount: 1, unit: "EL", name: "Senf" },
+      { amount: 1, unit: "TL", name: "Zucker" },
+      { amount: 4, unit: "EL", name: "Rapsöl oder Sonnenblumenöl" },
+      { amount: 1, unit: "", name: "Bund Schnittlauch, gehackt" },
+      { amount: 1, unit: "Prise", name: "Salz & Pfeffer" },
+    ],
+    steps: [
+      { title: "Kartoffeln kochen", desc: "Kartoffeln in der Schale in Salzwasser weich kochen (ca. 20–25 Min.). Noch warm pellen und in gleichmäßige Scheiben schneiden.", timer: 1500 },
+      { title: "Marinade zubereiten", desc: "Etwas Öl in einem Topf erhitzen. Zwiebeln andünsten bis glasig. Gemüsebrühe dazugeben und aufkochen. Vom Herd nehmen und Essig, Senf, Zucker, Salz und Pfeffer einrühren.", timer: null },
+      { title: "Ziehen lassen – mind. 1 Std.", desc: "Warme Kartoffelscheiben in eine Schüssel geben, heiße Marinade sofort drübergießen. Vorsichtig vermengen, abdecken und mind. 1 Std. ziehen lassen. Zwischendurch umrühren.", timer: 3600 },
+      { title: "Öl unterheben & servieren", desc: "Nach der Ziehzeit das Öl unterheben – das macht den Salat schön schlonzig! Nochmal abschmecken, mit Schnittlauch garnieren. Guten Appetit! 🥔", timer: null },
+    ],
+    notes: "Wichtigster Tipp: Öl erst NACH der Ziehzeit unterheben! Je länger er zieht, desto besser wird er."
+  },
+  {
+    id: 11,
+    emoji: "🥖",
+    title: "Frühstücksbrötchen",
+    desc: "Knusprig mit Übernacht-Gare – wie vom Bäcker",
+    servings: 8,
+    tags: ["backen", "brot"],
+    ingredients: [
+      { amount: 450, unit: "g", name: "Weizenmehl (Type 00 oder 550)" },
+      { amount: 280, unit: "g", name: "Wasser" },
+      { amount: 10, unit: "g", name: "Salz" },
+      { amount: 10, unit: "g", name: "Olivenöl" },
+      { amount: 5, unit: "g", name: "Honig" },
+      { amount: 5, unit: "g", name: "Frische Hefe (oder 1,6g Trockenhefe)" },
+    ],
+    steps: [
+      { title: "Teig kneten – 12 Minuten", desc: "Alle Zutaten in eine Schüssel geben und ca. 12 Min. kneten (Maschine oder von Hand) bis schön glatt und geschmeidig.", timer: 720 },
+      { title: "Dehnen, falten & entspannen – 15 Min.", desc: "Teig auf Arbeitsfläche, ein paar Mal dehnen & falten, zu einer Kugel schleifen. Locker abdecken und 15 Min. entspannen.", timer: 900 },
+      { title: "Teiglinge formen", desc: "Teig in 8 gleiche Stücke teilen. Jedes rund schleifen, etwas platt drücken, dann mit der Handfläche unter Druck zur Stange rollen.", timer: null },
+      { title: "Übernacht-Gare – 8 bis 12 Std.", desc: "Teiglinge mit etwas Abstand in eine Form, luftdicht verschließen und 8–12 Std. im Kühlschrank ruhen lassen.", timer: 36000 },
+      { title: "Backen – 18 bis 20 Min. bei 250°C", desc: "Ofen auf 250°C vorheizen. Tasse heißes Wasser auf den Ofenboden für Dampf. Teiglinge auf Backpapier, mittig einschneiden und 18–20 Min. backen.", timer: 1200 },
+      { title: "Auskühlen & genießen", desc: "Auf einem Gitter auskühlen lassen. Guten Appetit! ❤️🥖", timer: null },
+    ],
+    notes: "Timing: Abends kneten, über Nacht in den Kühlschrank, morgens frisch backen! Aufwärmen: kurz unter Wasser abspülen, bei 180°C 5–8 Min."
+  },
+  {
+    id: 12,
+    emoji: "🧄🫓",
+    title: "Gefüllte Fladenbrote mit Chipotle Tofu",
+    desc: "Hausgemachte Fladen mit knusprigem Tofu & Joghurtsauce",
+    servings: 4,
+    tags: ["backen", "tofu", "vegan"],
+    ingredients: [
+      { amount: 500, unit: "g", name: "Weizenmehl (Type 00 oder 405)" },
+      { amount: 200, unit: "g", name: "Milch, lauwarm" },
+      { amount: 120, unit: "g", name: "Wasser, lauwarm" },
+      { amount: 15, unit: "g", name: "Frische Hefe" },
+      { amount: 7, unit: "g", name: "Zucker" },
+      { amount: 15, unit: "g", name: "Salz" },
+      { amount: 400, unit: "g", name: "Extra fester Tofu, in dünne Streifen" },
+      { amount: 1.25, unit: "TL", name: "Knoblauchpulver" },
+      { amount: 1.25, unit: "TL", name: "Zwiebelpulver" },
+      { amount: 2, unit: "TL", name: "Geräuchertes Paprikapulver" },
+      { amount: 2.5, unit: "TL", name: "Getrocknete Petersilie" },
+      { amount: 1.25, unit: "TL", name: "Kreuzkümmel" },
+      { amount: 2, unit: "EL", name: "Sojasoße" },
+      { amount: 1.5, unit: "EL", name: "Ahornsirup oder Honig" },
+      { amount: 1, unit: "EL", name: "Olivenöl (Tofu)" },
+      { amount: 1, unit: "EL", name: "Speisestärke" },
+      { amount: 1, unit: "", name: "Kleine rote Zwiebel, fein geschnitten" },
+      { amount: 1, unit: "", name: "Bund Petersilie" },
+      { amount: 1, unit: "", name: "Gurke, fein geschnitten" },
+      { amount: 1, unit: "", name: "Große Tomate, fein geschnitten" },
+      { amount: 1, unit: "", name: "Kleine Zitrone, Saft" },
+      { amount: 200, unit: "g", name: "Naturjoghurt" },
+      { amount: 1.5, unit: "TL", name: "Sambal Oelek" },
+      { amount: 1, unit: "", name: "Knoblauchzehe (Sauce)" },
+      { amount: 0.5, unit: "", name: "Zitrone, Saft (Sauce)" },
+    ],
+    steps: [
+      { title: "Sauce zubereiten", desc: "Joghurt, Sambal Oelek, Knoblauch, Zitronensaft und Salz verrühren. Im Kühlschrank ziehen lassen.", timer: null },
+      { title: "Teig kneten & ruhen – 60 Min.", desc: "Alle Teigzutaten 10–12 Min. kneten bis schön geschmeidig. Dehnen & falten, rund schleifen, locker abdecken und 60 Min. gehen lassen.", timer: 3600 },
+      { title: "Tofu marinieren", desc: "Tofu in dünne Streifen schneiden. Mit allen Gewürzen, Sojasoße, Ahornsirup und Öl vermengen. Speisestärke drüber, vorsichtig untermischen.", timer: null },
+      { title: "Tofu im Airfryer – 10 bis 14 Min.", desc: "Airfryer auf 190°C. Tofu hineingeben, nach der Hälfte einmal schütteln. Bis knusprig backen.", timer: 720 },
+      { title: "Teig teilen & entspannen – 15 Min.", desc: "Teig entgasen, in 4 Stücke teilen, rund schleifen, abdecken und 15 Min. entspannen.", timer: 900 },
+      { title: "Salat zubereiten", desc: "Zwiebel, Petersilie, Gurke und Tomate fein schneiden. Mit Zitronensaft, Olivenöl und Salz vermengen.", timer: null },
+      { title: "Fladen backen – 16 bis 20 Min.", desc: "Ofen auf 250°C. Tasse Wasser auf den Ofenboden. Fladen mit Eigelb-Joghurt-Mischung bestreichen, Mulden eindrücken, Sesam drüber. 16–20 Min. backen.", timer: 1080 },
+      { title: "Füllen & servieren", desc: "Fladen aufschneiden, Sauce rein, Salat drauf, Tofu drüber, nochmal Sauce. Guten Appetit! 🫓🔥", timer: null },
+    ],
+    notes: "Timing: Teig und Tofu parallel vorbereiten. Je länger der Tofu mariniert, desto besser!"
+  },
+  {
+    id: 13,
+    emoji: "🍫",
+    title: "Chocolate Chip Brioche Buns",
+    desc: "Fluffige Brioche mit Vanillecreme & Schokodrops",
+    servings: 9,
+    tags: ["backen", "süß"],
+    ingredients: [
+      { amount: 250, unit: "ml", name: "Vollmilch, lauwarm (38°C)" },
+      { amount: 50, unit: "ml", name: "Sahne (Schlagsahne)" },
+      { amount: 75, unit: "g", name: "Zucker" },
+      { amount: 40, unit: "g", name: "Aktiver Sauerteig-Starter (optional)" },
+      { amount: 7, unit: "g", name: "Trockenhefe (Instanthefe)" },
+      { amount: 3, unit: "g", name: "Salz" },
+      { amount: 165, unit: "g", name: "Weizenmehl Type 550" },
+      { amount: 385, unit: "g", name: "Weizenmehl Type 405" },
+      { amount: 70, unit: "g", name: "Ungesalzene Butter, gewürfelt und weich" },
+      { amount: 240, unit: "ml", name: "Dicke Vanillecreme" },
+      { amount: 130, unit: "g", name: "Dunkle Schokodrops" },
+      { amount: 1, unit: "", name: "Ei, verquirlt (Eistreiche)" },
+      { amount: 2, unit: "TL", name: "Zucker (für Sirup, optional)" },
+      { amount: 2, unit: "TL", name: "Kochendes Wasser (für Sirup, optional)" },
+    ],
+    steps: [
+      { title: "Teig ankneten – 6 Minuten", desc: "Milch, Sahne, Zucker, Starter und Hefe in der Küchenmaschine mischen. Beide Mehle und Salz dazugeben. 3 Min. auf niedriger, dann 3 Min. auf mittlerer Stufe kneten.", timer: 360 },
+      { title: "Butter einkneten – 10 bis 12 Min.", desc: "Auf niedrige Stufe schalten, Butter stückchenweise dazugeben. Weiter 10–12 Min. kneten bis glatt und Butter vollständig eingearbeitet.", timer: 660 },
+      { title: "Erste Ruhe – 75 bis 90 Min.", desc: "Teig in geölte Schüssel, locker abdecken und an warmem Ort (25–28°C) 75–90 Min. gehen lassen bis fast verdoppelt.", timer: 5400 },
+      { title: "Füllen & einfrieren – 5 bis 10 Min.", desc: "Teig auf ca. 60×40 cm ausrollen. Vanillecreme gleichmäßig verstreichen, Schokodrops drüber. Zweimal wie einen Briefumschlag falten. 5–10 Min. ins Tiefkühlfach.", timer: 600 },
+      { title: "Formen & gehen – 60 Min.", desc: "In 8–9 lange Streifen schneiden. Jeden Streifen mehrfach verdrehen und zur Schnecke formen. Auf Backpapier legen, abdecken und ca. 60 Min. gehen lassen.", timer: 3600 },
+      { title: "Backen – 13 bis 15 Min.", desc: "Ofen auf 200°C. Buns vorsichtig mit Ei bestreichen. 13–15 Min. backen bis leicht goldbraun.", timer: 840 },
+      { title: "Glänzen & genießen", desc: "Optional: Zucker mit kochendem Wasser mischen, heiße Buns damit bestreichen für Glanzeffekt. Guten Appetit! 🍫✨", timer: null },
+    ],
+    notes: "Sauerteig-Starter ist komplett optional. Frische Hefe: 21g statt 7g Trockenhefe."
+  },
+  {
+    id: 14,
+    emoji: "🌯",
+    title: "Tofu-Hack Wraps mit Guacamole",
+    desc: "Knusprige Tofubrösel mit Guacamole und frischer Tomatensalsa",
+    servings: 2,
+    tags: ["vegan", "tofu", "wraps"],
+    ingredients: [
+      { amount: 400, unit: "g", name: "Naturtofu" },
+      { amount: 2, unit: "EL", name: "Tomatenmark" },
+      { amount: 4, unit: "EL", name: "Dunkle Sojasoße (alternativ helle)" },
+      { amount: 1, unit: "TL", name: "Getrockneter Oregano" },
+      { amount: 1, unit: "TL", name: "Paprikapulver (edelsüß oder geräuchert)" },
+      { amount: 1, unit: "EL", name: "Neutrales Öl" },
+      { amount: 1, unit: "Prise", name: "Salz & Pfeffer (Tofu)" },
+      { amount: 1, unit: "", name: "Tortilla Wrap (pro Person)" },
+      { amount: 1, unit: "", name: "Avocado" },
+      { amount: 1, unit: "Spritzer", name: "Zitronensaft (Guacamole)" },
+      { amount: 1, unit: "Prise", name: "Salz (Guacamole)" },
+      { amount: 2, unit: "", name: "Tomaten" },
+      { amount: 1, unit: "", name: "Rote Zwiebel" },
+      { amount: 1, unit: "Handvoll", name: "Koriander oder Petersilie" },
+      { amount: 1, unit: "EL", name: "Zitronensaft (Salsa)" },
+      { amount: 1, unit: "Prise", name: "Salz (Salsa)" },
+    ],
+    steps: [
+      { title: "Tofumarinade vorbereiten", desc: "Tomatenmark mit Sojasoße, Oregano, Paprikapulver, Salz, Pfeffer und Öl in einer Schüssel glatt rühren.", timer: null },
+      { title: "Tofu vorbereiten", desc: "Naturtofu mit einem Küchentuch trocken tupfen, fein zerbröseln und in die Marinade geben. Gut vermengen und einige Minuten ziehen lassen.", timer: null },
+      { title: "Tofu backen", desc: "Marinierte Tofubrösel entweder im Airfryer bei 180°C ca. 20 Min. backen (alle 5 Min. umrühren) ODER im Backofen bei 200°C (Ober-/Unterhitze) 25–30 Min. backen, gelegentlich wenden. Ziel: knusprig gebräunte, leicht karamellisierte Tofubrösel.", timer: 1200 },
+      { title: "Salsa & Guacamole zubereiten", desc: "Tomaten und Zwiebel würfeln, Kräuter hacken, alles mit Zitronensaft und Salz vermischen. Avocado mit Zitronensaft und Salz zerdrücken.", timer: null },
+      { title: "Wraps füllen & genießen", desc: "Avocadocreme auf einem Wrap verstreichen, das Tofu-Hack und die frische Salsa daraufgeben, einrollen – und genießen! 🌯", timer: null },
+    ],
+    notes: "Tipp: Geräuchertes Paprikapulver gibt dem Tofu-Hack extra Rauchnote! Tofubrösel ruhig richtig knusprig backen für die beste Textur."
+  },
+  {
+    id: 15,
+    emoji: "🍕",
+    title: "Pizzateig",
+    desc: "Klassischer Pizzateig für 2 Pizzen – schnell & einfach",
+    servings: 2,
+    tags: ["backen", "teig", "vegetarisch"],
+    ingredients: [
+      { amount: 250, unit: "ml", name: "Wasser, lauwarm" },
+      { amount: 42, unit: "g", name: "Frische Hefe (1 Würfel)" },
+      { amount: 1, unit: "Prise", name: "Zucker" },
+      { amount: 2, unit: "EL", name: "Olivenöl" },
+      { amount: 500, unit: "g", name: "Mehl (+ etwas zum Arbeiten)" },
+      { amount: 1, unit: "TL", name: "Salz" },
+    ],
+    steps: [
+      { title: "Hefe aktivieren – 10 bis 15 Min.", desc: "Lauwarmes Wasser in einen Messbecher füllen. Hefe hineinbröseln, Prise Zucker dazugeben und verrühren. 10–15 Minuten gehen lassen bis die Hefe schäumt.", timer: 900 },
+      { title: "Teig kneten – mind. 5 Min.", desc: "Mehl und Salz in eine Schüssel geben. Hefewasser und Olivenöl dazugeben und mit den Knethaken mindestens 5 Min. kneten (von Hand mindestens 10 Min.). Zum Schluss nochmal mit den Händen weiterkneten bis der Teig geschmeidig ist.", timer: 600 },
+      { title: "Teig gehen lassen – 40 Min.", desc: "Teigschüssel mit einem Tuch abdecken und an einem warmen Ort (ca. 35°C) etwa 40 Minuten gehen lassen bis der Teig sich verdoppelt hat.", timer: 2400 },
+      { title: "Formen & Ofen vorheizen", desc: "Teig halbieren und auf bemehlter Arbeitsfläche rund (Ø ca. 28–30 cm) ausrollen. Ofen auf 240°C Ober-/Unterhitze (Umluft: 220°C) vorheizen. Zwei Bleche mit Backpapier belegen und Teige drauflegen.", timer: 600 },
+      { title: "Belegen & backen – 15 Min.", desc: "Pizzateig nach Belieben mit Tomatensoße und Zutaten belegen. Im vorgeheizten Ofen ca. 15 Minuten backen bis der Rand goldbraun ist. Guten Appetit! 🍕", timer: 900 },
+    ],
+    notes: "Je länger du knetest, desto besser der Teig! Für extra Geschmack den fertigen Teig über Nacht im Kühlschrank gehen lassen."
+  },
+  {
+    id: 16,
+    emoji: "🥐",
+    title: "Übernacht-Brötchen",
+    desc: "Knusprige Brötchen mit Übernacht-Gare im Kühlschrank",
+    servings: 6,
+    tags: ["backen", "brot", "übernacht"],
+    ingredients: [
+      { amount: 410, unit: "g", name: "Mehl" },
+      { amount: 308, unit: "g", name: "Wasser" },
+      { amount: 1, unit: "TL", name: "Hefe (Trockenhefe)" },
+      { amount: 1, unit: "TL", name: "Salz" },
+    ],
+    steps: [
+      { title: "Teig kneten", desc: "Hefe mit Wasser vermischen, dann Mehl dazugeben und verrühren. Salz darüber streuen und mehrmals dehnen und falten bis sich der Teig glatt anfühlt.", timer: null },
+      { title: "Über Nacht in den Kühlschrank", desc: "Teig abdecken und bis zum nächsten Tag in den Kühlschrank stellen.", timer: 43200 },
+      { title: "Akklimatisieren – 30 bis 45 Min.", desc: "Am nächsten Tag den Teig ca. 30–45 Minuten bei Raumtemperatur stehen lassen.", timer: 2400 },
+      { title: "Teig falten & teilen", desc: "Teig auf eine bemehlte Arbeitsfläche geben und von den Seiten falten. Umdrehen und in 6 Stücke teilen.", timer: null },
+      { title: "Formen & ruhen lassen – 20 Min.", desc: "Jedes Stück gut verschließen und auf Backpapier legen. Etwas Mehl darüber streuen und 20 Minuten abdecken.", timer: 1200 },
+      { title: "Einschneiden & bestreichen", desc: "Brötchen einschneiden und leicht mit Wasser bestreichen.", timer: null },
+      { title: "Backen – 30 Min.", desc: "Bei 250°C mit Dampf 10 Minuten backen, dann Hitze auf 195°C reduzieren und weitere 20 Minuten backen bis goldbraun.", timer: 1800 },
+    ],
+    notes: "Dampf: Eine Tasse heißes Wasser auf den Ofenboden stellen für die ersten 10 Minuten."
+  },
+  {
+    id: 17,
+    emoji: "🌯",
+    title: "Sommerrollen mit Chipotle Tofu",
+    desc: "Erfrischend kalt mit Erdnusssauce – perfekt für heißes Wetter",
+    servings: 4,
+    tags: ["vegan", "tofu", "sommer", "kalt"],
+    ingredients: [
+      { amount: 1, unit: "h", name: "—— TOFU ——" },
+      { amount: 300, unit: "g", name: "Super Firm Tofu, in dünne Streifen geschnitten" },
+      { amount: 1.5, unit: "EL", name: "Öl" },
+      { amount: 1.5, unit: "EL", name: "Sojasoße" },
+      { amount: 0.75, unit: "EL", name: "Limettensaft" },
+      { amount: 1, unit: "EL", name: "Chipotle in Adobo, fein gehackt" },
+      { amount: 0.75, unit: "EL", name: "Hefeflocken" },
+      { amount: 0.75, unit: "TL", name: "Geräuchertes Paprikapulver" },
+      { amount: 1, unit: "Prise", name: "Knoblauchpulver, Salz & Pfeffer" },
+      { amount: 1, unit: "h", name: "—— ROLLEN ——" },
+      { amount: 8, unit: "", name: "Reispapier-Blätter" },
+      { amount: 1, unit: "", name: "Karotte, in dünne Streifen" },
+      { amount: 1, unit: "", name: "Gurke, in dünne Streifen" },
+      { amount: 1, unit: "", name: "Rote Paprika, in dünne Streifen" },
+      { amount: 1, unit: "", name: "Avocado, in Scheiben" },
+      { amount: 1, unit: "Handvoll", name: "Salatblätter oder Krautsalat" },
+      { amount: 1, unit: "Handvoll", name: "Frische Minze oder Koriander" },
+      { amount: 1, unit: "h", name: "—— ERDNUSSSAUCE ——" },
+      { amount: 3, unit: "EL", name: "Erdnussbutter" },
+      { amount: 1.5, unit: "EL", name: "Sojasoße" },
+      { amount: 1, unit: "EL", name: "Limettensaft" },
+      { amount: 1, unit: "EL", name: "Ahornsirup oder Agavendicksaft" },
+      { amount: 1, unit: "TL", name: "Sambal Oelek oder Chiliflocken (optional)" },
+      { amount: 3, unit: "EL", name: "Wasser (zum Verdünnen)" },
+    ],
+    steps: [
+      { title: "Erdnusssauce zubereiten", desc: "Erdnussbutter, Sojasoße, Limettensaft, Ahornsirup und Sambal Oelek verrühren. Mit Wasser nach und nach verdünnen bis eine cremige, dippbare Sauce entsteht.", timer: null },
+      { title: "Tofu marinieren", desc: "Öl, Sojasoße, Limettensaft, Chipotle, Hefeflocken und Gewürze verquirlen. Tofustreifen darin marinieren – mindestens 15 Minuten.", timer: 900 },
+      { title: "Tofu knusprig anbraten", desc: "Tofu in einer Pfanne bei mittlerer Hitze von beiden Seiten goldbraun anbraten, ca. 2–3 Minuten pro Seite. Komplett abkühlen lassen – wichtig für die Rollen!", timer: 180 },
+      { title: "Gemüse vorbereiten", desc: "Karotte, Gurke und Paprika in dünne Streifen schneiden. Avocado in Scheiben schneiden. Kräuter bereitlegen.", timer: null },
+      { title: "Reispapier einweichen", desc: "Ein Reispapier-Blatt für ca. 10–15 Sekunden in warmes Wasser tauchen bis es weich wird, dann auf eine flache Unterlage legen.", timer: null },
+      { title: "Rollen füllen & wickeln", desc: "Etwas Salat, Gemüsestreifen, Avocado, Tofu und Kräuter ins untere Drittel des Reispapiers legen. Seiten einklappen und von unten fest aufrollen.", timer: null },
+      { title: "Servieren", desc: "Mit der Erdnusssauce zum Dippen servieren. Am besten frisch genießen – schmeckt erfrischend kühl! 🌯❄️", timer: null },
+    ],
+    notes: "Tofu muss komplett abgekühlt sein, sonst wird das Reispapier beim Füllen zu weich. Reispapier nicht zu lange einweichen – es wird beim Rollen noch weicher!"
+  },
+  {
+    id: 18,
+    emoji: "🥗",
+    title: "Knusprige Kichererbsen-Bowl",
+    desc: "Der leckerste Salat für die Hitzewelle – mit extra Kick",
+    servings: 4,
+    tags: ["vegetarisch", "salat", "sommer", "kalt"],
+    ingredients: [
+      { amount: 1, unit: "h", name: "—— KICHERERBSEN ——" },
+      { amount: 220, unit: "g", name: "Kichererbsen, abgetropft und trocken getupft (1 Glas)" },
+      { amount: 2, unit: "EL", name: "Öl" },
+      { amount: 1, unit: "TL", name: "Paprikapulver edelsüß" },
+      { amount: 1, unit: "TL", name: "Kreuzkümmel" },
+      { amount: 0.5, unit: "TL", name: "Knoblauchpulver" },
+      { amount: 0.25, unit: "TL", name: "Cayennepfeffer" },
+      { amount: 0.5, unit: "TL", name: "Chiliflocken" },
+      { amount: 1, unit: "Prise", name: "Salz" },
+      { amount: 1, unit: "h", name: "—— SALAT ——" },
+      { amount: 1, unit: "", name: "Gurke, in Scheiben geschnitten" },
+      { amount: 2, unit: "", name: "Kleine Avocados, gewürfelt" },
+      { amount: 1, unit: "", name: "Rote Zwiebel, gewürfelt" },
+      { amount: 1, unit: "", name: "Feta Light, zerkrümelt" },
+      { amount: 1, unit: "Packung", name: "Pinienkerne, geröstet" },
+      { amount: 5, unit: "Stiele", name: "Dill, gehackt" },
+      { amount: 5, unit: "Stiele", name: "Petersilie, gehackt" },
+      { amount: 1, unit: "h", name: "—— DRESSING ——" },
+      { amount: 4, unit: "EL", name: "Olivenöl" },
+      { amount: 1, unit: "", name: "Bio-Zitrone, Saft" },
+      { amount: 1, unit: "TL", name: "Senf" },
+      { amount: 1, unit: "EL", name: "Agavensirup" },
+      { amount: 1, unit: "Prise", name: "Salz & Pfeffer" },
+    ],
+    steps: [
+      { title: "Ofen vorheizen", desc: "Ofen auf 190°C Heißluft vorheizen.", timer: 600 },
+      { title: "Kichererbsen würzen", desc: "Gut abgetrocknete Kichererbsen auf ein Backblech legen, mit Öl, Paprikapulver, Kreuzkümmel, Knoblauchpulver, Cayennepfeffer, Chiliflocken und Salz vermischen.", timer: null },
+      { title: "Kichererbsen rösten – 20 bis 25 Min.", desc: "Im Ofen bei 190°C Heißluft ca. 20–25 Minuten backen bis sie leicht kross sind. Alternativ im Airfryer – hier regelmäßig umrühren!", timer: 1500 },
+      { title: "Abkühlen lassen", desc: "Kichererbsen etwas abkühlen lassen, damit sie beim Mischen kross bleiben.", timer: null },
+      { title: "Dressing zubereiten", desc: "Olivenöl, Zitronensaft, Senf, Agavensirup, Salz und Pfeffer gut verrühren.", timer: null },
+      { title: "Alles vermischen & servieren", desc: "Kichererbsen zusammen mit Gurke, Avocados, Zwiebel, Pinienkernen, Kräutern, Feta und Dressing gut miteinander vermischen. Sofort servieren! 🥗❄️", timer: null },
+    ],
+    notes: "Extra Kick: Cayennepfeffer und Chiliflocken geben den Kichererbsen ordentlich Schärfe – nach Geschmack auch mehr nehmen! Kichererbsen müssen wirklich gut trocken sein, sonst werden sie im Ofen nicht kross."
+  },
+  {
+    id: 19,
+    emoji: "🧄",
+    title: "Pull Apart Garlic Bread",
+    desc: "Zum Auseinanderziehen – mit Knoblauchbutter und Cheddar",
+    servings: 6,
+    tags: ["backen", "brot", "vegetarisch"],
+    ingredients: [
+      { amount: 1, unit: "h", name: "—— TEIG ——" },
+      { amount: 1, unit: "TL", name: "Trockenhefe" },
+      { amount: 1, unit: "EL", name: "Zucker" },
+      { amount: 270, unit: "g", name: "Milch" },
+      { amount: 380, unit: "g", name: "Mehl" },
+      { amount: 1, unit: "TL", name: "Salz" },
+      { amount: 43, unit: "g", name: "Butter, weich" },
+      { amount: 1, unit: "h", name: "—— KNOBLAUCHBUTTER ——" },
+      { amount: 100, unit: "g", name: "Butter, weich" },
+      { amount: 1, unit: "EL", name: "Koriander, gehackt" },
+      { amount: 1, unit: "", name: "Knoblauchzehe, fein gehackt" },
+      { amount: 1, unit: "Handvoll", name: "Geriebener Cheddar" },
+    ],
+    steps: [
+      { title: "Hefe aktivieren", desc: "Zucker und Hefe in einer Schüssel mischen. Milch dazugeben, dann Mehl hinzufügen und verrühren bis alles verbunden ist.", timer: null },
+      { title: "Teig kneten – mit Knetmaschine", desc: "Salz und weiche Butter dazugeben. Mit dem Knethaken der Küchenmaschine 8–10 Minuten kneten bis die Butter vollständig eingearbeitet und der Teig glatt und elastisch ist.", timer: 600 },
+      { title: "Gehen lassen – 2 Stunden", desc: "Teig abdecken und ca. 2 Stunden gehen lassen bis er sich verdoppelt hat.", timer: 7200 },
+      { title: "Knoblauchbutter zubereiten", desc: "Weiche Butter mit Koriander und gehacktem Knoblauch vermischen.", timer: null },
+      { title: "Teig ausrollen & belegen", desc: "Teig zu einem Rechteck ausrollen und die Knoblauchbutter gleichmäßig darauf verstreichen. Mit geriebenem Cheddar bestreuen.", timer: null },
+      { title: "Schneiden & in Form legen", desc: "Teig in der Mitte durchschneiden, eine Hälfte auf die andere stapeln, dann in Streifen schneiden. Die Stücke in eine Kastenform setzen.", timer: null },
+      { title: "Ruhen lassen – 20 Min.", desc: "Abdecken und 20 Minuten ruhen lassen.", timer: 1200 },
+      { title: "Backen – 30 Min. bei 190°C", desc: "Bei 190°C (370°F) ca. 30 Minuten backen bis goldbraun.", timer: 1800 },
+      { title: "Mit Knoblauchbutter bestreichen", desc: "Noch warm mit der restlichen Knoblauchbutter bestreichen. Guten Appetit! 🧄✨", timer: null },
+    ],
+    notes: "Tipp: Frischen Koriander durch Petersilie ersetzen, falls Koriander nicht so dein Ding ist. Schmeckt am besten frisch und noch warm!"
+  },
+  {
+    id: 20,
+    emoji: "🍞",
+    title: "Ciabatta",
+    desc: "Kein Kneten – nur Zeit. Luftig, knusprig, wie vom Bäcker",
+    servings: 12,
+    tags: ["backen", "brot", "übernacht", "vegan"],
+    ingredients: [
+      { amount: 800, unit: "ml", name: "Lauwarmes Wasser (nicht heiß!)" },
+      { amount: 10, unit: "g", name: "Trockenhefe (Instanthefe)" },
+      { amount: 60, unit: "ml", name: "Olivenöl" },
+      { amount: 1000, unit: "g", name: "Weizenmehl (Type 550 oder Manitoba-Mehl)" },
+      { amount: 20, unit: "g", name: "Salz" },
+    ],
+    steps: [
+      { title: "Teig mischen – kein Kneten!", desc: "Lauwarmes Wasser in eine große Schüssel geben und die Hefe darin auflösen. Olivenöl dazugeben. Mehl hinzufügen und zuletzt das Salz. Alles verrühren bis ein feuchter, homogener Teig entsteht – nicht kneten!", timer: null },
+      { title: "1. Ruhe – 1 Stunde", desc: "Schüssel abdecken und den Teig 1 Stunde ruhen lassen.", timer: 3600 },
+      { title: "1. Faltung", desc: "Hände leicht anfeuchten. Den Teig von einer Seite greifen, nach oben ziehen und über sich selbst falten. Das von allen 4 Seiten wiederholen. Abdecken und 30 Minuten ruhen lassen.", timer: 1800 },
+      { title: "2. Faltung", desc: "Gleiche Technik wie bei der 1. Faltung. Abdecken und 30 Minuten ruhen lassen.", timer: 1800 },
+      { title: "3. Faltung", desc: "Gleiche Technik. Abdecken und 30 Minuten ruhen lassen.", timer: 1800 },
+      { title: "4. Faltung & Kühlschrank – 24 Std.", desc: "Letzte Faltung durchführen, dann den Teig abgedeckt für 24 Stunden in den Kühlschrank stellen.", timer: 86400 },
+      { title: "Akklimatisieren – 1 Stunde", desc: "Am nächsten Tag den Teig aus dem Kühlschrank nehmen und 1 Stunde bei Raumtemperatur stehen lassen. Arbeitsfläche großzügig bemehlen.", timer: 3600 },
+      { title: "Teig aufteilen", desc: "Den Teig vorsichtig auf die bemehlte Arbeitsfläche kippen – ohne zu drücken, damit die Luft drin bleibt! Sanft in 12 Stücke schneiden.", timer: null },
+      { title: "Ruhen lassen – 30 Min.", desc: "Stücke auf ein mit Backpapier belegtes Blech legen, mit einem Tuch abdecken und 30 Minuten ruhen lassen. Ofen auf 230°C vorheizen – dabei ein leeres Backblech unten mit einheizen.", timer: 1800 },
+      { title: "Backen – 24 Min.", desc: "Ciabattas ins Blech setzen. Sofort eine Tasse heißes Wasser auf das untere heiße Blech schütten und Ofen schnell schließen (Dampf!). 12 Minuten backen. Dann Dampfblech rausnehmen, auf Umluft schalten und nochmal 12 Minuten bei 230°C backen bis goldbraun. Guten Appetit! 🍞", timer: 1440 },
+    ],
+    notes: "Manitoba-Mehl (z.B. Mulino Caputo) macht das Brot noch luftiger – normales 550er funktioniert aber auch! Dampf-Tipp: Ein leeres Blech beim Vorheizen in den Ofen, dann beim Backen heißes Wasser reinschütten und schnell schließen."
+  },
+  {
+    id: 21,
+    emoji: "🧅",
+    title: "Rote Zwiebel Chutney",
+    desc: "Süß-säuerlich, dicklich und klebrig – perfekt zu Brot & Käse",
+    servings: 1,
+    tags: ["vegetarisch", "aufstrich", "beilage"],
+    ingredients: [
+      { amount: 253, unit: "g", name: "Rote Zwiebel (ca. 1 große), in dünne Ringe geschnitten" },
+      { amount: 1, unit: "EL", name: "Öl oder Butter" },
+      { amount: 1, unit: "EL", name: "Zucker" },
+      { amount: 1.5, unit: "EL", name: "Essig (normaler Haushaltsessig)" },
+      { amount: 1, unit: "Prise", name: "Salz" },
+      { amount: 1, unit: "Prise", name: "Thymian oder Rosmarin (optional)" },
+    ],
+    steps: [
+      { title: "Zwiebeln langsam anbraten – 15 Min.", desc: "Zwiebeln in Öl oder Butter bei mittlerer Hitze ca. 15 Minuten langsam anbraten, bis sie weich und goldbraun sind. Nicht zu viel Hitze – sie sollen karamellisieren, nicht verbrennen.", timer: 900 },
+      { title: "Karamellisieren – 3 bis 4 Min.", desc: "Zucker über die Zwiebeln streuen und unter Rühren 3–4 Minuten karamellisieren lassen bis er sich auflöst und die Zwiebeln glänzen.", timer: 240 },
+      { title: "Ablöschen & einkochen – 10 bis 15 Min.", desc: "Mit Essig ablöschen, Salz und Kräuter dazugeben. Auf kleiner Hitze 10–15 Minuten einkochen lassen bis das Chutney dicklich und klebrig ist.", timer: 750 },
+      { title: "Abfüllen", desc: "In ein sauberes Glas füllen und abkühlen lassen. Hält sich im Kühlschrank ca. 2 Wochen. 🧅", timer: null },
+    ],
+    notes: "Hält im Kühlschrank ca. 2 Wochen. Passt mega zu frischem Brot, Käse, oder als Burger-Topping!"
+  },
+  {
+    id: 22,
+    emoji: "🥪",
+    title: "BBQ Pulled Tofu Sandwich",
+    desc: "Pulled Tofu Style mit Kartoffelreibe – karamellisiert & rauchig",
+    servings: 2,
+    tags: ["vegan", "tofu", "sandwich"],
+    ingredients: [
+      { amount: 1, unit: "h", name: "—— PULLED TOFU ——" },
+      { amount: 400, unit: "g", name: "Super Firm Tofu" },
+      { amount: 1, unit: "TL", name: "Salz (für Kochwasser)" },
+      { amount: 3, unit: "EL", name: "Sojasoße" },
+      { amount: 2, unit: "EL", name: "Ahornsirup oder Agavendicksaft" },
+      { amount: 2, unit: "EL", name: "Tomatenmark" },
+      { amount: 1, unit: "EL", name: "Apfelessig oder Essig" },
+      { amount: 1.5, unit: "TL", name: "Geräuchertes Paprikapulver" },
+      { amount: 1, unit: "TL", name: "Knoblauchpulver" },
+      { amount: 0.5, unit: "TL", name: "Zwiebelpulver" },
+      { amount: 0.5, unit: "TL", name: "Chiliflocken" },
+      { amount: 1, unit: "Prise", name: "Salz & Pfeffer" },
+      { amount: 1, unit: "h", name: "—— SANDWICH ——" },
+      { amount: 2, unit: "", name: "Ciabatta oder Brötchen, aufgeschnitten" },
+      { amount: 2, unit: "EL", name: "Mayonnaise (oder vegane Mayo)" },
+      { amount: 1, unit: "Handvoll", name: "Salatblätter" },
+      { amount: 2, unit: "EL", name: "Rote Zwiebel Chutney (aus dem Rezeptbuch!)" },
+      { amount: 1, unit: "TL", name: "Scharfe Sauce (optional)" },
+    ],
+    steps: [
+      { title: "Tofu kochen – 10 bis 15 Min.", desc: "Einen Topf Wasser mit reichlich Salz aufkochen. Tofu im ganzen Block 10–15 Minuten köcheln lassen. Rausnehmen und komplett abtropfen und abkühlen lassen.", timer: 900 },
+      { title: "Tofu reiben", desc: "Den abgekühlten Tofu mit der groben Seite einer Kartoffelreibe reiben – gibt schöne faserige Stücke wie pulled pork! Auf Küchenpapier trocken tupfen.", timer: null },
+      { title: "Marinade zubereiten", desc: "Sojasoße, Ahornsirup, Tomatenmark, Essig, Paprikapulver, Knoblauchpulver, Zwiebelpulver, Chiliflocken, Salz und Pfeffer verrühren.", timer: null },
+      { title: "Tofu marinieren", desc: "Geriebenen Tofu in die Marinade geben und gut vermengen bis alles bedeckt ist. Mindestens 15 Minuten ziehen lassen.", timer: 900 },
+      { title: "Im Airfryer karamellisieren – 12 bis 15 Min.", desc: "Airfryer auf 190°C vorheizen. Tofu hineingeben und 12–15 Minuten backen, nach der Hälfte umrühren. Er soll leicht karamellisiert und an den Rändern knusprig sein.", timer: 840 },
+      { title: "Sandwich zusammenbauen", desc: "Ciabatta aufschneiden, mit Mayo bestreichen. Salatblätter rein, dann reichlich Pulled Tofu drauf, Zwiebel Chutney drüber und nach Belieben scharfe Sauce. Guten Appetit! 🥪🔥", timer: null },
+    ],
+    notes: "Tipp: Tofu muss wirklich gut trocken getupft sein bevor er gerieben wird. Je trockener, desto knuspriger wird er im Airfryer!"
+  },
+  {
+    id: 23,
+    emoji: "🌀",
+    title: "Herzhafte Hefeschnecken",
+    desc: "Zwei Varianten – perfekt als Snack für die Arbeit",
+    servings: 9,
+    tags: ["backen", "snack", "vegetarisch"],
+    ingredients: [
+      { amount: 1, unit: "h", name: "—— TEIG (wie Brioche, ohne Zucker) ——" },
+      { amount: 250, unit: "ml", name: "Vollmilch, lauwarm (38°C)" },
+      { amount: 50, unit: "ml", name: "Sahne" },
+      { amount: 7, unit: "g", name: "Trockenhefe" },
+      { amount: 3, unit: "g", name: "Salz" },
+      { amount: 165, unit: "g", name: "Weizenmehl Type 550" },
+      { amount: 385, unit: "g", name: "Weizenmehl Type 405" },
+      { amount: 70, unit: "g", name: "Butter, weich (für Teig)" },
+      { amount: 1, unit: "h", name: "—— VARIANTE 1: Zwiebel & Gruyère ——" },
+      { amount: 3, unit: "", name: "Rote oder gelbe Zwiebeln, in dünne Ringe" },
+      { amount: 1, unit: "EL", name: "Butter (zum Anbraten)" },
+      { amount: 1, unit: "TL", name: "Zucker (zum Karamellisieren)" },
+      { amount: 1, unit: "Prise", name: "Salz & Pfeffer" },
+      { amount: 50, unit: "g", name: "Butter, weich (zum Bestreichen)" },
+      { amount: 200, unit: "g", name: "Gruyère, gerieben" },
+      { amount: 1, unit: "h", name: "—— VARIANTE 2: Frischkäse & getrocknete Tomaten ——" },
+      { amount: 250, unit: "g", name: "Frischkäse (Kräuter oder natur)" },
+      { amount: 80, unit: "g", name: "Getrocknete Tomaten in Öl, grob gehackt" },
+      { amount: 200, unit: "g", name: "Mozzarella, gerieben" },
+      { amount: 1, unit: "Prise", name: "Chiliflocken & Knoblauchpulver" },
+      { amount: 1, unit: "h", name: "—— FINISH ——" },
+      { amount: 1, unit: "", name: "Ei, verquirlt (Eistreiche)" },
+    ],
+    steps: [
+      { title: "Teig ankneten – 6 Min.", desc: "Milch, Sahne und Hefe mischen. Beide Mehle und Salz dazugeben. 3 Min. auf niedriger, dann 3 Min. auf mittlerer Stufe kneten.", timer: 360 },
+      { title: "Butter einkneten – 10 bis 12 Min.", desc: "Butter stückchenweise auf niedriger Stufe einarbeiten und 10–12 Min. kneten bis der Teig glatt ist.", timer: 660 },
+      { title: "Erste Ruhe – 75 bis 90 Min.", desc: "Teig in geölte Schüssel, locker abdecken und an warmem Ort (25–28°C) gehen lassen bis er sich fast verdoppelt hat.", timer: 5400 },
+      { title: "Zwiebeln karamellisieren (Variante 1)", desc: "Butter in einer Pfanne bei mittlerer Hitze schmelzen. Zwiebeln dazugeben und 15–20 Min. langsam anbraten. Zucker drüber streuen, weitere 5 Min. karamellisieren bis sie goldbraun und süßlich sind. Mit Salz und Pfeffer würzen. Abkühlen lassen.", timer: 1500 },
+      { title: "Teig ausrollen & füllen", desc: "Teig auf ca. 40×50 cm ausrollen. Für Variante 1: Butter gleichmäßig drauf streichen, karamellisierte Zwiebeln drauf, Gruyère drüber. Für Variante 2: Frischkäse streichen, getrocknete Tomaten drauf, Mozzarella drüber, Chiliflocken und Knoblauchpulver drüber.", timer: null },
+      { title: "Rollen & schneiden", desc: "Teig von der langen Seite fest aufrollen. In 8–9 gleich große Scheiben schneiden und in eine gefettete Form oder auf ein Backblech legen.", timer: null },
+      { title: "Zweite Ruhe – 45 bis 60 Min.", desc: "Abdecken und nochmal 45–60 Min. gehen lassen bis die Schnecken aufgegangen sind.", timer: 3000 },
+      { title: "Backen – 18 bis 20 Min.", desc: "Ofen auf 190°C vorheizen. Mit Ei bestreichen und 18–20 Min. backen bis goldbraun. Am besten warm genießen! 🌀🧀", timer: 1200 },
+    ],
+    notes: "Kalt auch noch lecker! Halten sich 2 Tage in einer Dose. Tipp: Schnecken eng nebeneinander in eine Form legen – so gehen sie schön nach oben auf statt auseinander."
+  },
+];
 function fmtTime(s) {
   if (!s) return null;
   const h = Math.floor(s / 3600);
@@ -3253,7 +1889,6 @@ function App() {
     size: 17
   }))))));
 }
-// Mount the app
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(h(App, null));
 </script>
