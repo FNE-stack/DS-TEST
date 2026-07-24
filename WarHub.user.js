@@ -49,7 +49,7 @@
 
   /* ================= CONFIG ================= */
 
-  const VERSION = 'v2-test';   // Discord-Kanäle + Command-View + Trains — Testbuild
+  const VERSION = 'v2-test';   // StämmeDB-Feed + Off/Fake-Vorhersage + Discord-Kanäle + Command-View + Trains
   const GITHUB_OWNER = 'FNE-stack';
   const GITHUB_DATA_REPO = 'DS-PLAN';
   const GITHUB_BRANCH = 'main';
@@ -160,6 +160,22 @@
     const m = (s || '').match(/(\d{1,3})\|(\d{1,3})/);
     if (!m) return null;
     return { x: +m[1], y: +m[2] };
+  }
+
+  // StämmeDB-Vorhersage → Badge (Farbe + Kürzel). SERVER-seitige Off/Fake-Erkennung
+  // (kein Client-Raten). Der numerische code ist NICHT eindeutig (AG-Varianten teilen
+  // sich 0/1/2), daher werten wir das LABEL aus. "AG …" = Adel erkannt (👑).
+  function predBadge(a) {
+    if (!a || a.prediction == null) return '';
+    const label = String(a.prediction);
+    const low = label.toLowerCase();
+    const hasAG = low.includes('ag') || (a.unit === 'snob');
+    let bg = '#475569';                          // default: unbekannt — grau
+    if (low.includes('off')) bg = '#dc2626';     // Off / AG Offdorf — rot (gefährlich)
+    else if (low.includes('fake')) bg = '#22c55e';   // Fake — grün (harmlos)
+    else if (low.includes('unbekannt')) bg = '#f59e0b';  // unbekannt/mögl. — amber (Vorsicht)
+    const dup = a.duplicate > 1 ? ` ×${a.duplicate}` : '';
+    return `<span class="mh-type-badge" style="background:${bg};font-size:9px;" title="${escHtml(a.predictionReason || label)}">${hasAG ? '👑 ' : ''}${escHtml(label)}${dup}</span>`;
   }
 
   /* ================= GITHUB SYNC ================= */
@@ -309,6 +325,24 @@
   function getChannelFromCache(coord) {
     return (cachedData.channels || {})[coord] || null;
   }
+
+  /* ================= STÄMMEDB ATTACK-FEED (via Proxy) ================= */
+  // Die BESTE Angriffsquelle: StämmeDB kennt die Angriffe des GANZEN Stamms
+  // (jeder lädt dort hoch), inkl. server-seitiger Off/Fake-Vorhersage. Wenn der
+  // Proxy + Token da sind, nutzt WarHub diesen Feed statt des eigenen Scrapers.
+  let _sdbFeed = { attacks: [], meta: null, at: 0, ok: null };
+
+  async function fetchStaemmeDbAttacks() {
+    if (!(await proxyHealthy())) { _sdbFeed.ok = false; return null; }
+    try {
+      const r = await fetch(PROXY_BASE + '/api/staemmedb/attacks?length=10000', { signal: AbortSignal.timeout(15000) });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || j.error) { _sdbFeed.ok = false; return null; }
+      _sdbFeed = { attacks: j.attacks || [], meta: j.meta || null, at: Date.now(), ok: true };
+      return _sdbFeed.attacks;
+    } catch (e) { _sdbFeed.ok = false; return null; }
+  }
+  function staemmeDbActive() { return _sdbFeed.ok === true; }
 
   /* ================= VILLAGES & UNITS ================= */
 
@@ -490,10 +524,24 @@
     }
   }
 
-  // Aggregiere alle Spieler-Slices → flache, entschärfte Angriffsliste fürs Board.
+  // Aggregiere Angriffe fürs Board. QUELLE: bevorzugt der StämmeDB-Feed (ganzer
+  // Stamm + Off/Fake-Vorhersage); sonst Fallback auf die selbst-gescrapten
+  // Member-Slices aus dem GitHub-Store.
   function aggregateIncomings() {
-    const inc = cachedData.incomings || {};
     const now = Date.now();
+
+    // 1) StämmeDB-Feed (beste Quelle) — falls aktiv.
+    if (staemmeDbActive()) {
+      const rows = (_sdbFeed.attacks || [])
+        .filter(a => a && a.arrivalMs && a.arrivalMs >= now - INC_STALE_AFTER_MS)
+        .map(a => ({ ...a, player: a.defender || '?' }));   // "player" = wer angegriffen wird
+      const ageMin = Math.round((now - _sdbFeed.at) / 60000);
+      const coverage = [{ player: `StämmeDB (${rows.length} Angriffe, ${ageMin}m alt)`, updatedAt: _sdbFeed.at, stale: (now - _sdbFeed.at) > INC_PLAYER_STALE_MS, count: rows.length, isFeed: true }];
+      return { rows, coverage, source: 'staemmedb' };
+    }
+
+    // 2) Fallback: selbst-gescrapte Member-Slices.
+    const inc = cachedData.incomings || {};
     const rows = [];
     const coverage = [];
     Object.keys(inc).forEach(player => {
@@ -501,11 +549,11 @@
       coverage.push({ player, updatedAt: slice.updatedAt || 0, stale: (now - (slice.updatedAt || 0)) > INC_PLAYER_STALE_MS, count: (slice.attacks || []).length });
       (slice.attacks || []).forEach(a => {
         if (!a || !a.arrivalMs) return;
-        if (a.arrivalMs < now - INC_STALE_AFTER_MS) return;   // schon gelandet
+        if (a.arrivalMs < now - INC_STALE_AFTER_MS) return;
         rows.push({ ...a, player });
       });
     });
-    return { rows, coverage };
+    return { rows, coverage, source: 'scraper' };
   }
 
   /* ================= TRAIN DETECTION (strukturell, kein Raten) ================= */
@@ -1014,10 +1062,11 @@
       const til = r.arrivalMs - now;
       const soon = til < INC_SOON_MS;
       const cd = til > 0 ? `noch ${fmtCountdown(til)}` : 'gelandet';
+      const src = r.source ? ` <span style="color:#64748b;">← ${escHtml(r.source)}</span>` : '';
       return `
         <div class="wh-war-row ${soon ? 'soon' : ''}">
           <div class="wh-when">${fmtTime(r.arrivalMs)}<div class="wh-cd" data-cd="${r.arrivalMs}">${cd}</div></div>
-          <div><span class="wh-war-tgt">${escHtml(r.target)}</span><div class="wh-war-owner">${escHtml(r.player)}</div></div>
+          <div><span class="wh-war-tgt">${escHtml(r.target)}</span> ${predBadge(r)}<div class="wh-war-owner">${escHtml(r.player)}${src}</div></div>
           <div class="wh-war-help"><button class="mh-secondary wh-help-btn" data-wx="${r.targetX}" data-wy="${r.targetY}" data-warr="${r.arrivalMs}">🆘 Hilfe</button></div>
         </div>`;
     }).join('');
@@ -1213,6 +1262,7 @@
     try {
       if (myVillages.length === 0) await refreshLocalState();
       await withConflictRetry(data => applyAutoCleanup(data));
+      await fetchStaemmeDbAttacks();   // Angriffsquelle (falls Proxy+Token da)
       lastSyncAt = new Date();
       renderAll();
     } catch (e) {
@@ -1224,9 +1274,13 @@
 
   function startPolling() {
     if (!window._mhPoll) window._mhPoll = setInterval(refresh, POLL_INTERVAL_MS);
-    // Auto-Upload der eigenen Incomings (eigener, langsamerer Takt).
+    // Eigene Incomings NUR hochladen wenn StämmeDB NICHT aktiv ist (sonst haben
+    // wir eh den ganzen Stamm-Feed → Scrapen wäre redundant).
     if (!window._whIncTimer) {
-      window._whIncTimer = setInterval(async () => { await uploadMyIncomings(); await refresh(); }, INC_UPLOAD_INTERVAL_MS);
+      window._whIncTimer = setInterval(async () => {
+        if (!staemmeDbActive()) await uploadMyIncomings();
+        await refresh();
+      }, INC_UPLOAD_INTERVAL_MS);
     }
     // Live-Countdowns: 1×/s, nur Text-Update (kein Re-Render → kein Flackern).
     if (!window._whTick) window._whTick = setInterval(tickCountdowns, 1000);
@@ -1393,7 +1447,8 @@
     // Erststart: State laden, eigene Incomings hochladen, Polling starten.
     (async () => {
       await refresh();
-      await uploadMyIncomings();
+      await fetchStaemmeDbAttacks();
+      if (!staemmeDbActive()) await uploadMyIncomings();
       await refresh();
       startPolling();
     })();
