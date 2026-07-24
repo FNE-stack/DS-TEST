@@ -84,6 +84,14 @@
   const INC_SOON_MS = 60 * 60 * 1000;
 
   const PLAYER_NAME = (typeof game_data !== 'undefined' && game_data.player && game_data.player.name) ? game_data.player.name : 'unknown';
+  const PLAYER_ID = (typeof game_data !== 'undefined' && game_data.player && game_data.player.id) ? String(game_data.player.id) : null;
+  // Bin ICH der Verteidiger dieses Angriffs? (ID bevorzugt, Name als Fallback.)
+  // Nur DANN darf ich Hilfe/Deff dafür anfordern (sonst nur ansehen).
+  function isMyAttack(a) {
+    if (!a) return false;
+    if (PLAYER_ID && a.defenderId != null) return String(a.defenderId) === PLAYER_ID;
+    return (a.defender || a.player || '').toLowerCase() === PLAYER_NAME.toLowerCase();
+  }
   const WORLD_SPEED = (typeof game_data !== 'undefined' && game_data.speed) ? game_data.speed : 1;
 
   function getToken() {
@@ -101,10 +109,14 @@
   };
   const WB_UNITS = ['spear','sword','axe','archer','spy','light','marcher','heavy','ram','catapult','knight','snob','militia'];
 
+  // isSupport: schickt VERTEIDIGUNG (Deff) statt Angriff → WB-Export als Support,
+  // Feasibility prüft def-Truppen (Speer/Schwert/SKav) statt Axt, landet VOR dem
+  // Angriff. minDef = Mindest-Verteidigungspop (Speer+Schwert+SKav) im Herkunftsdorf.
   const TYPE_META = {
-    off:      { label: 'OFF',             color: '#dc2626', mpf: 30, minAxe: 2000, withSiege: true,  sendsSnob: false, minSnob: 0, emoji: '⚔' },
-    voradeln: { label: 'Voradeln',        color: '#f97316', mpf: 35, minAxe: 1000, withSiege: true,  sendsSnob: true,  minSnob: 1, emoji: '👑' },
-    zc:       { label: 'Zwischencleaner', color: '#22c55e', mpf: 18, minAxe: 500,  withSiege: false, sendsSnob: false, minSnob: 0, emoji: '🧹' }
+    off:      { label: 'OFF',             color: '#dc2626', mpf: 30, minAxe: 2000, withSiege: true,  sendsSnob: false, minSnob: 0, emoji: '⚔', isSupport: false },
+    voradeln: { label: 'Voradeln',        color: '#f97316', mpf: 35, minAxe: 1000, withSiege: true,  sendsSnob: true,  minSnob: 1, emoji: '👑', isSupport: false },
+    zc:       { label: 'Zwischencleaner', color: '#22c55e', mpf: 18, minAxe: 500,  withSiege: false, sendsSnob: false, minSnob: 0, emoji: '🧹', isSupport: false },
+    def:      { label: 'Deff',            color: '#3b82f6', mpf: 18, minAxe: 0,     withSiege: false, sendsSnob: false, minSnob: 0, emoji: '🛡', isSupport: true, minDef: 500 }
   };
 
   /* ================= STATE ================= */
@@ -160,6 +172,13 @@
     const m = (s || '').match(/(\d{1,3})\|(\d{1,3})/);
     if (!m) return null;
     return { x: +m[1], y: +m[2] };
+  }
+
+  // Koordinate IMMER mit Spielername anzeigen, damit man sofort weiß WER wo ist.
+  // Format: "500|500 · SpielerName". Name kann fehlen → nur Koordinate.
+  function coordWithName(coord, name) {
+    const c = `<span class="wh-war-tgt">${escHtml(coord)}</span>`;
+    return name && name !== '?' ? `${c} <span class="wh-war-owner" style="display:inline;">${escHtml(name)}</span>` : c;
   }
 
   // StämmeDB-Vorhersage → Badge (Farbe + Kürzel). SERVER-seitige Off/Fake-Erkennung
@@ -580,6 +599,7 @@
           const id = 'train_' + target + '_' + cluster[0].arrivalMs;
           cluster.forEach((a, i) => { a.trainId = id; a.trainSize = cluster.length; a.waveIndex = i; });
           trains.push({ id, target, targetX: cluster[0].targetX, targetY: cluster[0].targetY,
+            defender: cluster[0].player || cluster[0].defender, defenderId: cluster[0].defenderId, attacker: cluster[0].attacker,
             waves: cluster.length, firstMs: cluster[0].arrivalMs, lastMs: cluster[cluster.length - 1].arrivalMs, attacks: cluster.slice() });
         }
       };
@@ -603,7 +623,13 @@
     const targetCoord = { x: req.targetX, y: req.targetY };
     const viable = [];
     myVillages.forEach(v => {
-      if ((v.units.axe || 0) < meta.minAxe) return;
+      if (meta.isSupport) {
+        // Deff: genug VERTEIDIGUNG (Speer+Schwert+SKav) im Dorf?
+        const defPop = (v.units.spear || 0) + (v.units.sword || 0) + (v.units.heavy || 0);
+        if (defPop < (meta.minDef || 0)) return;
+      } else {
+        if ((v.units.axe || 0) < meta.minAxe) return;
+      }
       if (meta.minSnob > 0 && (v.units.snob || 0) < meta.minSnob) return;
       if (v.x === req.targetX && v.y === req.targetY) return;
       const d = dist(v, targetCoord);
@@ -739,6 +765,15 @@
 
   function buildClaimComp(village, type) {
     const meta = TYPE_META[type];
+    if (meta.isSupport) {
+      // Deff: alle Verteidigungstruppen schicken (Speer/Schwert/SKav + Späher).
+      return {
+        spear: village.units.spear || 0,
+        sword: village.units.sword || 0,
+        heavy: village.units.heavy || 0,
+        spy: Math.min(village.units.spy || 0, 20)
+      };
+    }
     const comp = { axe: village.units.axe || 0, light: village.units.light || 0, spy: Math.min(village.units.spy || 0, 50) };
     if (meta.withSiege) { comp.ram = village.units.ram || 0; comp.catapult = village.units.catapult || 0; }
     if (meta.sendsSnob) comp.snob = 1;
@@ -750,10 +785,13 @@
     if (!fromVid || !toVid) return '';
     const village = myVillages.find(v => `${v.x}|${v.y}` === claim.fromVillage);
     if (!village) return '';
+    const meta = TYPE_META[req.type] || TYPE_META.off;
     const comp = buildClaimComp(village, req.type);
     const slowestToken = compSlowestToken(comp);
     const fields = WB_UNITS.map(u => `${u}=${toB64(comp[u] || 0)}`).join('/');
-    return `${fromVid}&${toVid}&${slowestToken}&${req.arrivalMs}&0&false&true&${fields}`;
+    // letztes Flag: true=Angriff, false=Unterstützung (Deff → Support).
+    const attackFlag = meta.isSupport ? 'false' : 'true';
+    return `${fromVid}&${toVid}&${slowestToken}&${req.arrivalMs}&0&false&${attackFlag}&${fields}`;
   }
 
   /* ================= UI: STYLE ================= */
@@ -801,6 +839,7 @@
 .wh-war-row { display: flex; align-items: center; gap: 8px; background: #0f172a; border: 1px solid #1e293b;
   border-left-width: 4px; border-radius: 8px; padding: 8px 10px; margin-bottom: 6px; }
 .wh-war-row.soon { border-left-color: #ef4444; background: #1a0f13; }
+.wh-war-row.wh-mine { border-left-color: #3b82f6; box-shadow: 0 0 0 1px rgba(59,130,246,.35) inset; }
 .wh-war-row .wh-when { font-family: monospace; font-size: 11px; min-width: 74px; }
 .wh-war-row .wh-cd { font-size: 10px; color: #fca5a5; }
 .wh-war-tgt { color: #fde68a; font-family: monospace; font-weight: 600; font-size: 13px; }
@@ -861,7 +900,8 @@
   <span id="mh-close" style="cursor:pointer;padding:4px 10px;">✕</span>
 </div>
 <div id="mh-tabs">
-  <button class="active" data-tab="cmd">🎖 Lage</button>
+  <button class="active" data-tab="mylage">🏰 Meine <span id="wh-my-count" class="wh-count-badge" style="display:none;">0</span></button>
+  <button data-tab="cmd">🎖 Lage</button>
   <button data-tab="war">🛡 Krieg <span id="wh-war-count" class="wh-count-badge" style="display:none;">0</span></button>
   <button data-tab="list">Anfragen</button>
   <button data-tab="create">Erstellen</button>
@@ -873,8 +913,13 @@
     <span id="mh-refresh" style="cursor:pointer;color:#fde68a;">↻ Aktualisieren</span>
   </div>
   <div id="mh-tab-content">
+    <!-- Tab: Meine Lage (nur MEINE Dörfer + Incomings) -->
+    <div id="mh-tab-mylage" class="active">
+      <div id="wh-mylage"></div>
+    </div>
+
     <!-- Tab: Lage (Command-View) -->
-    <div id="mh-tab-cmd" class="active">
+    <div id="mh-tab-cmd">
       <div id="wh-cmd"></div>
     </div>
 
@@ -919,6 +964,7 @@
       </details>
       <label>Typ</label>
       <select id="mh-create-type">
+        <option value="def">🛡 Deff (Verteidigung / Support — landet VOR dem Angriff)</option>
         <option value="off">⚔ OFF (voller Nuker, kein Adel)</option>
         <option value="voradeln">👑 Voradeln (1 Adel + Begleitung)</option>
         <option value="zc">🧹 Zwischencleaner</option>
@@ -931,6 +977,7 @@
       <input id="mh-create-slots" type="number" min="1" max="20" value="1">
       <label>Notiz (optional)</label>
       <textarea id="mh-create-notes" rows="2" placeholder="z.B. nach den Adeln gleich nachklatschen"></textarea>
+      <div id="mh-feas-preview" style="font-size:10px;margin:6px 0;"></div>
       <button id="mh-create-submit" class="mh-action" style="width:100%;">📤 Anfrage erstellen + Discord pingen</button>
       <div id="mh-create-info" style="font-size:10px;color:#94a3b8;margin-top:8px;"></div>
     </div>
@@ -1020,19 +1067,21 @@
     if (nextThreat) {
       if (nextThreat.kind === 'train') {
         const t = nextThreat.t;
+        const mineT = isMyAttack(t);
         hero = `<div class="wh-hero wh-hero-train" data-heroms="${t.lastMs}">
-          <div class="wh-hero-tag">👑 NÄCHSTER ZUG</div>
-          <div class="wh-hero-main"><span class="wh-war-tgt">${escHtml(t.target)}</span> · ${t.waves} Wellen</div>
+          <div class="wh-hero-tag">👑 NÄCHSTER AG-TRAIN${mineT ? ' — DEIN DORF' : ''}</div>
+          <div class="wh-hero-main">${coordWithName(t.target, t.defender)} · ${t.waves} Wellen</div>
           <div class="wh-hero-cd" data-cd="${t.lastMs}">–</div>
-          <button class="mh-action wh-help-btn" data-wx="${t.targetX}" data-wy="${t.targetY}" data-warr="${t.lastMs}" style="margin-top:6px;">🛡 Verteidigung anfordern</button>
+          ${mineT ? `<button class="mh-action wh-help-btn" data-wx="${t.targetX}" data-wy="${t.targetY}" data-warr="${t.lastMs}" style="margin-top:6px;">🛡 Verteidigung anfordern</button>` : ''}
         </div>`;
       } else {
         const s = nextThreat.s;
+        const mineS = isMyAttack(s);
         hero = `<div class="wh-hero" data-heroms="${s.arrivalMs}">
-          <div class="wh-hero-tag">⚠ NÄCHSTE BEDROHUNG</div>
-          <div class="wh-hero-main"><span class="wh-war-tgt">${escHtml(s.target)}</span> <span class="wh-war-owner">(${escHtml(s.player)})</span></div>
+          <div class="wh-hero-tag">⚠ NÄCHSTE BEDROHUNG${mineS ? ' — DEIN DORF' : ''}</div>
+          <div class="wh-hero-main">${coordWithName(s.target, s.player)} ${predBadge(s)}</div>
           <div class="wh-hero-cd" data-cd="${s.arrivalMs}">–</div>
-          <button class="mh-action wh-help-btn" data-wx="${s.targetX}" data-wy="${s.targetY}" data-warr="${s.arrivalMs}" style="margin-top:6px;">🆘 Hilfe anfordern</button>
+          ${mineS ? `<button class="mh-action wh-help-btn" data-wx="${s.targetX}" data-wy="${s.targetY}" data-warr="${s.arrivalMs}" style="margin-top:6px;">🆘 Hilfe anfordern</button>` : ''}
         </div>`;
       }
     }
@@ -1047,10 +1096,10 @@
       return `
         <div class="wh-train ${soon ? 'soon' : ''}">
           <div class="wh-train-head">
-            <span class="mh-type-badge" style="background:#7c3aed;">👑 ZUG</span>
-            <span class="wh-war-tgt">${escHtml(t.target)}</span>
+            <span class="mh-type-badge" style="background:#7c3aed;">👑 AG-TRAIN</span>
+            ${coordWithName(t.target, t.defender)}
             <span class="wh-war-owner">${t.waves} Wellen · Einschlag ${fmtTime(t.lastMs)}</span>
-            <button class="mh-secondary wh-help-btn" data-wx="${t.targetX}" data-wy="${t.targetY}" data-warr="${t.lastMs}" style="margin-left:auto;">🛡 Hilfe</button>
+            ${isMyAttack(t) ? `<button class="mh-secondary wh-help-btn" data-wx="${t.targetX}" data-wy="${t.targetY}" data-warr="${t.lastMs}" style="margin-left:auto;">🛡 Deff</button>` : ''}
           </div>
           <div class="wh-waves">${waves}</div>
         </div>`;
@@ -1062,23 +1111,96 @@
       const til = r.arrivalMs - now;
       const soon = til < INC_SOON_MS;
       const cd = til > 0 ? `noch ${fmtCountdown(til)}` : 'gelandet';
-      const src = r.source ? ` <span style="color:#64748b;">← ${escHtml(r.source)}</span>` : '';
+      // Ziel = Verteidiger (r.player = defender), Herkunft = Angreifer (r.attacker).
+      const src = r.source ? `<div style="font-size:10px;color:#64748b;">← ${escHtml(r.source)}${r.attacker ? ' · ' + escHtml(r.attacker) : ''}</div>` : '';
+      const mine = isMyAttack(r);
+      const help = mine
+        ? `<button class="mh-secondary wh-help-btn" data-wx="${r.targetX}" data-wy="${r.targetY}" data-warr="${r.arrivalMs}">🆘 Deff</button>`
+        : `<span style="font-size:9px;color:#475569;" title="Nur der Verteidiger kann für dieses Dorf Hilfe anfordern.">nicht dein Dorf</span>`;
       return `
-        <div class="wh-war-row ${soon ? 'soon' : ''}">
+        <div class="wh-war-row ${soon ? 'soon' : ''}${mine ? ' wh-mine' : ''}">
           <div class="wh-when">${fmtTime(r.arrivalMs)}<div class="wh-cd" data-cd="${r.arrivalMs}">${cd}</div></div>
-          <div><span class="wh-war-tgt">${escHtml(r.target)}</span> ${predBadge(r)}<div class="wh-war-owner">${escHtml(r.player)}${src}</div></div>
-          <div class="wh-war-help"><button class="mh-secondary wh-help-btn" data-wx="${r.targetX}" data-wy="${r.targetY}" data-warr="${r.arrivalMs}">🆘 Hilfe</button></div>
+          <div>${coordWithName(r.target, r.player)} ${predBadge(r)}${src}</div>
+          <div class="wh-war-help">${help}</div>
         </div>`;
     }).join('');
 
     list.innerHTML = hero
-      + (trains.length ? `<div class="wh-section">🚂 Züge (${trains.length})</div>` + trainHtml : '')
+      + (trains.length ? `<div class="wh-section">🚂 AG-Trains (${trains.length})</div>` + trainHtml : '')
       + (singles.length ? `<div class="wh-section">Einzelangriffe (${singles.length})</div>` + singleHtml : '');
   }
 
   /* ================= RENDER: Command-View (🎖 Lage) ================= */
   // Die ganze Kriegslage auf einen Blick: Frontsummary (Zahlen), nächste
   // Bedrohungen, und offene Hilfe-Anfragen mit Deckungsstand — nebeneinander.
+  /* ================= RENDER: Meine Lage (nur MEINE Dörfer) ================= */
+  // Persönliche Verteidigungs-Übersicht: NUR Angriffe die auf MICH landen,
+  // gruppiert pro Dorf — wie viele, wann der nächste, welcher Typ (Off/Fake/AG).
+  // Genau EINE Anlaufstelle um zu sehen "wo brennt's bei mir".
+  function renderMyLage() {
+    const el = document.getElementById('wh-mylage');
+    const badge = document.getElementById('wh-my-count');
+    if (!el) return;
+    const now = Date.now();
+    const { rows } = aggregateIncomings();
+    const mine = rows.filter(isMyAttack).sort((a, b) => a.arrivalMs - b.arrivalMs);
+
+    if (badge) {
+      const soon = mine.filter(a => a.arrivalMs - now < INC_SOON_MS && a.arrivalMs > now).length;
+      badge.textContent = String(mine.length);
+      badge.style.display = mine.length ? 'inline-block' : 'none';
+      badge.style.background = soon ? '#dc2626' : '#475569';
+    }
+
+    if (mine.length === 0) {
+      el.innerHTML = `<div class="mh-empty">🎉 Keine Angriffe auf deine Dörfer.<br><span style="font-size:10px;">(Zeigt nur Incomings auf <b>${escHtml(PLAYER_NAME)}</b>)</span></div>`;
+      return;
+    }
+
+    // pro Zieldorf gruppieren
+    const byVil = {};
+    mine.forEach(a => { (byVil[a.target] = byVil[a.target] || []).push(a); });
+
+    // Summary-Kacheln
+    const offs = mine.filter(a => (a.prediction || '').toLowerCase().includes('off')).length;
+    const fakes = mine.filter(a => (a.prediction || '').toLowerCase().includes('fake')).length;
+    const trains = detectTrains(mine).length;
+    let h = `<div class="wh-cmd-summary">
+      <div class="wh-stat red"><div class="n">${mine.length}</div><div class="l">auf mich</div></div>
+      <div class="wh-stat red"><div class="n">${offs}</div><div class="l">Offs</div></div>
+      <div class="wh-stat green"><div class="n">${fakes}</div><div class="l">Fakes</div></div>
+      <div class="wh-stat purple"><div class="n">${trains}</div><div class="l">AG-Trains</div></div>
+    </div>`;
+
+    // pro Dorf eine Karte, dringlichstes zuerst
+    const vils = Object.keys(byVil).sort((a, b) => Math.min(...byVil[a].map(x => x.arrivalMs)) - Math.min(...byVil[b].map(x => x.arrivalMs)));
+    vils.forEach(coord => {
+      const list = byVil[coord].sort((a, b) => a.arrivalMs - b.arrivalMs);
+      const nextMs = list[0].arrivalMs;
+      const soon = nextMs - now < INC_SOON_MS;
+      const offN = list.filter(a => (a.prediction || '').toLowerCase().includes('off')).length;
+      const vname = (myVillages.find(v => `${v.x}|${v.y}` === coord) || {}).name || '';
+      const rows2 = list.slice(0, 8).map(a => {
+        const cd = a.arrivalMs > now ? fmtCountdown(a.arrivalMs - now) : 'gelandet';
+        return `<div class="wh-wave" style="color:#cbd5e1;">
+          <span data-cd="${a.arrivalMs}">${cd}</span>
+          <span class="wh-wave-t">${fmtTime(a.arrivalMs)}</span>
+          ${predBadge(a)}
+          ${a.source ? `<span style="color:#64748b;">← ${escHtml(a.source)}</span>` : ''}
+        </div>`;
+      }).join('');
+      h += `<div class="wh-train ${soon ? 'soon' : ''}" style="border-left-color:${offN ? '#dc2626' : '#3b82f6'};background:#0b1220;">
+        <div class="wh-train-head">
+          <span class="wh-war-tgt">${escHtml(coord)}</span>${vname ? `<span class="wh-war-owner">${escHtml(vname)}</span>` : ''}
+          <span class="wh-war-owner">${list.length} Angriff${list.length > 1 ? 'e' : ''}${offN ? ` · ${offN} Off` : ''}</span>
+          <button class="mh-secondary wh-help-btn" data-wx="${list[0].targetX}" data-wy="${list[0].targetY}" data-warr="${nextMs}" style="margin-left:auto;">🛡 Deff anfordern</button>
+        </div>
+        <div class="wh-waves" style="grid-template-columns:1fr;">${rows2}${list.length > 8 ? `<div style="color:#64748b;">… +${list.length - 8} weitere</div>` : ''}</div>
+      </div>`;
+    });
+    el.innerHTML = h;
+  }
+
   function renderCmd() {
     const el = document.getElementById('wh-cmd');
     if (!el) return;
@@ -1095,7 +1217,7 @@
     const stats = `
       <div class="wh-cmd-summary">
         <div class="wh-stat red"><div class="n">${rows.length}</div><div class="l">Angriffe</div></div>
-        <div class="wh-stat purple"><div class="n">${trains.length}</div><div class="l">Züge</div></div>
+        <div class="wh-stat purple"><div class="n">${trains.length}</div><div class="l">AG-Trains</div></div>
         <div class="wh-stat amber"><div class="n">${soonCount}</div><div class="l">< 1h</div></div>
         <div class="wh-stat green"><div class="n">${reqs.length - uncovered}/${reqs.length}</div><div class="l">gedeckt</div></div>
       </div>`;
@@ -1245,7 +1367,7 @@
     myClaimsOut.innerHTML = myClaims.length === 0 ? `<div class="mh-empty">Du hast nichts übernommen</div>` : myClaims.map(r => renderRequestCard(r, { hideDelete: true })).join('');
   }
 
-  function renderAll() { renderStatus(); renderCmd(); renderWar(); renderList(); renderMine(); updateCreateInfo(); }
+  function renderAll() { renderStatus(); renderMyLage(); renderCmd(); renderWar(); renderList(); renderMine(); updateCreateInfo(); }
 
   function updateCreateInfo() {
     const el = document.getElementById('mh-create-info');
@@ -1254,6 +1376,36 @@
     el.textContent = `Du hast aktuell ${mine}/${MAX_OPEN_REQUESTS_PER_PLAYER} offene Anfragen.`;
     const btn = document.getElementById('mh-create-submit');
     if (btn) btn.disabled = mine >= MAX_OPEN_REQUESTS_PER_PLAYER;
+    updateFeasPreview();
+  }
+
+  // LIVE-Machbarkeit: berechnet aus Ziel+Zeit+Typ, WER (welches deiner Dörfer) es
+  // RECHTZEITIG schafft und WANN abgeschickt werden muss. Blockt das Erstellen,
+  // wenn KEIN Dorf rechtzeitig landen kann (das war der Wunsch: nicht anfragen was
+  // eh niemand schafft). Deff = Support-Truppen, landet vor dem Angriff.
+  function updateFeasPreview() {
+    const el = document.getElementById('mh-feas-preview');
+    if (!el) return;
+    const type = (document.getElementById('mh-create-type') || {}).value || 'off';
+    const coord = parseCoord((document.getElementById('mh-create-target') || {}).value || '');
+    const arrivalStr = (document.getElementById('mh-create-arrival') || {}).value || '';
+    const submitBtn = document.getElementById('mh-create-submit');
+    if (!coord || !arrivalStr) { el.innerHTML = ''; return; }
+    const arrivalMs = new Date(arrivalStr).getTime();
+    if (isNaN(arrivalMs)) { el.innerHTML = ''; return; }
+    const meta = TYPE_META[type] || TYPE_META.off;
+    const viable = findAllViableVillages({ type, targetX: coord.x, targetY: coord.y, arrivalMs });
+    if (viable.length === 0) {
+      el.innerHTML = `<span class="mh-feas-fail">✗ KEIN Dorf von dir kann ${meta.label} rechtzeitig nach ${coord.x}|${coord.y} landen (zu weit / zu wenig ${meta.isSupport ? 'Deff' : 'Truppen'} / Zeit zu knapp).</span>`;
+      if (submitBtn) submitBtn.disabled = true;   // blockieren
+      return;
+    }
+    const top = viable.slice(0, 6).map(v =>
+      `<div style="font-family:monospace;">${v.village.x}|${v.village.y} — abschicken bis <b>${fmtTime(v.sendSec * 1000)}</b> (${v.dist.toFixed(1)} Felder)</div>`
+    ).join('');
+    el.innerHTML = `<div class="mh-feas-ok">✓ ${viable.length} Dorf${viable.length > 1 ? 'er' : ''} können ${meta.label} rechtzeitig:</div>${top}${viable.length > 6 ? `<div style="color:#64748b;">… +${viable.length - 6} weitere</div>` : ''}`;
+    // Cap-Block bleibt bestehen, aber Feasibility gibt frei falls machbar.
+    if (submitBtn && countMyOpenRequests(cachedData) < MAX_OPEN_REQUESTS_PER_PLAYER) submitBtn.disabled = false;
   }
 
   /* ================= REFRESH + POLL + UPLOAD ================= */
@@ -1313,6 +1465,7 @@
         if (tab === 'create') updateCreateInfo();
         if (tab === 'war') renderWar();
         if (tab === 'cmd') renderCmd();
+        if (tab === 'mylage') renderMyLage();
       };
     });
 
@@ -1330,6 +1483,12 @@
       upBtn.disabled = true; upBtn.textContent = '⏳…';
       try { await uploadMyIncomings(); await refresh(); } finally { upBtn.disabled = false; upBtn.textContent = '⬆ Sync meine'; }
     };
+
+    // Live-Machbarkeit bei jeder Eingabe neu berechnen (WER schafft es rechtzeitig).
+    ['mh-create-type', 'mh-create-target', 'mh-create-arrival'].forEach(id => {
+      const inp = document.getElementById(id);
+      if (inp) { inp.addEventListener('input', updateFeasPreview); inp.addEventListener('change', updateFeasPreview); }
+    });
 
     calc.onclick = async () => {
       try {
@@ -1398,7 +1557,7 @@
         const tx = helpBtn.dataset.wx, ty = helpBtn.dataset.wy, arr = +helpBtn.dataset.warr;
         document.querySelector('#mh-tabs button[data-tab="create"]').click();
         document.getElementById('mh-create-target').value = `${tx}|${ty}`;
-        document.getElementById('mh-create-type').value = 'zc';   // Defense-Hilfe = ZC default
+        document.getElementById('mh-create-type').value = 'def';   // Hilfe gegen Angriff = Deff default
         // Ankunft = kurz VOR dem Einschlag (Verteidigung soll vorher landen).
         const pre = new Date(arr - 60000);
         const pad = n => String(n).padStart(2, '0');
