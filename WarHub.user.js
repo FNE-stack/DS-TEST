@@ -2,8 +2,8 @@
 // @name         WarHub
 // @author       FNE
 // @match        https://*.die-staemme.de/game.php?*
-// @version      2.0
-// @description  Stamm-Kriegsraum für de254 — OFF/Voradeln/ZC-Anfragen + tribe-weiter Live-Angriffs-Monitor (GitHub-Sync + Discord). Auto-Upload eigener Incomings.
+// @version      2.0-test
+// @description  Stamm-Kriegsraum für de254 — Anfragen (OFF/Voradeln/ZC) + Live-Angriffs-Monitor + Zug-Erkennung + Command-View + per-Coord Discord-Kanäle. GitHub-Sync + Proxy-Discord.
 // @grant        none
 // ==/UserScript==
 
@@ -37,6 +37,7 @@
   document.querySelectorAll('#mh-box, #mh-toggle, #mh-style').forEach(el => el.remove());
   if (window._mhPoll) { clearInterval(window._mhPoll); window._mhPoll = null; }
   if (window._whIncTimer) { clearInterval(window._whIncTimer); window._whIncTimer = null; }
+  if (window._whTick) { clearInterval(window._whTick); window._whTick = null; }
 
   const IS_QUICKBAR_TAP = !!(window.LAUNCHPAD_TOKEN || window.WARHUB_TOKEN || window.MIEZHUB_TOKEN);
   if (IS_QUICKBAR_TAP) {
@@ -48,7 +49,7 @@
 
   /* ================= CONFIG ================= */
 
-  const VERSION = 'v2';
+  const VERSION = 'v2-test';   // Discord-Kanäle + Command-View + Trains — Testbuild
   const GITHUB_OWNER = 'FNE-stack';
   const GITHUB_DATA_REPO = 'DS-PLAN';
   const GITHUB_BRANCH = 'main';
@@ -58,6 +59,15 @@
   const CONFIG_FILE = 'warhub.config.json';
   const CONFIG_API = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_DATA_REPO}/contents/${CONFIG_FILE}`;
   let configCache = null;
+
+  // Proxy für Discord-Features (Kanäle anlegen + Übersicht posten). Läuft lokal;
+  // localhost-HTTP ist von Mixed-Content-Blocking ausgenommen. Override per
+  // window.WARHUB_PROXY oder localStorage('warhub_proxy'). Wenn nicht erreichbar,
+  // werden alle Discord-Features stumm deaktiviert (kein Fehler).
+  const PROXY_BASE = (typeof window !== 'undefined' && window.WARHUB_PROXY)
+    || (typeof localStorage !== 'undefined' && localStorage.getItem('warhub_proxy'))
+    || 'http://127.0.0.1:8743';
+  let _proxyDiscordOk = null;   // null=ungetestet, true/false=Ergebnis
 
   const MAX_OPEN_REQUESTS_PER_PLAYER = 3;
   const REOPENED_BADGE_DURATION_MS = 10 * 60 * 1000;
@@ -170,10 +180,11 @@
       if (!d.requests) d.requests = [];
       if (!d.history) d.history = [];
       if (!d.incomings) d.incomings = {};
+      if (!d.channels) d.channels = {};   // coord -> {channel_id, webhook_url}
       return { data: d, sha: json ? json.sha : null };
     }
   }
-  function emptyData() { return { requests: [], history: [], incomings: {} }; }
+  function emptyData() { return { requests: [], history: [], incomings: {}, channels: {} }; }
 
   async function writeData(data, sha) {
     const token = getToken();
@@ -243,6 +254,62 @@
     ].filter(Boolean).join('\n');
   }
 
+  /* ================= DISCORD via PROXY (Kanäle + Übersicht) ================= */
+  // Der Proxy hält Bot-Token + Guild serverseitig. WarHub ruft nur die Endpunkte.
+  // Alle Aufrufe fail-soft: ist der Proxy nicht da, werden die Features stumm
+  // übersprungen (GitHub-Sync + normale Webhook-Pings laufen unabhängig weiter).
+
+  async function proxyHealthy() {
+    if (_proxyDiscordOk !== null) return _proxyDiscordOk;
+    try {
+      const r = await fetch(PROXY_BASE + '/api/discord/channels', { signal: AbortSignal.timeout(4000) });
+      // 200 = konfiguriert+erreichbar; 502/other = erreichbar aber Discord-Fehler.
+      _proxyDiscordOk = r.ok || r.status === 502;
+    } catch (e) { _proxyDiscordOk = false; }
+    return _proxyDiscordOk;
+  }
+
+  // Übersicht-Post (neue Anfrage, Statusmeldungen). Fail-soft.
+  async function proxyPostOverview(content) {
+    if (!(await proxyHealthy())) return false;
+    try {
+      const r = await fetch(PROXY_BASE + '/api/discord/overview', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content }), signal: AbortSignal.timeout(8000)
+      });
+      return r.ok;
+    } catch (e) { console.warn('[WarHub] overview-post fehlgeschlagen:', e); return false; }
+  }
+
+  // Kanal für Koordinate anlegen/holen → { channel_id, webhook_url, created }.
+  async function proxyEnsureChannel(coord) {
+    if (!(await proxyHealthy())) return { error: 'proxy_offline' };
+    try {
+      const r = await fetch(PROXY_BASE + '/api/discord/channel', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ coord }), signal: AbortSignal.timeout(15000)
+      });
+      const j = await r.json().catch(() => ({}));
+      return r.ok ? j : { error: j.error || ('http_' + r.status), detail: j };
+    } catch (e) { return { error: 'fetch_failed', detail: String(e) }; }
+  }
+
+  // Direkt in einen Coord-Kanal posten (über die vom Proxy gelieferte Webhook-URL).
+  // Der Browser darf User-Agent nicht setzen, aber die native Browser-UA wird von
+  // Discord nie geblockt (das 1010-Problem betraf nur headless Scripts).
+  async function postToChannelWebhook(webhookUrl, content) {
+    try {
+      await fetch(webhookUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content }) });
+      return true;
+    } catch (e) { console.warn('[WarHub] channel-webhook post fehlgeschlagen:', e); return false; }
+  }
+
+  // Koordinaten-Kanal-Map liegt im GEMEINSAMEN Store (data.channels), damit der
+  // ganze Stamm denselben Kanal wiederverwendet statt jeder einen eigenen anlegt.
+  function getChannelFromCache(coord) {
+    return (cachedData.channels || {})[coord] || null;
+  }
+
   /* ================= VILLAGES & UNITS ================= */
 
   async function loadVillagesAndUnits() {
@@ -310,50 +377,100 @@
   }
 
   function extractTargetCoord(tr) {
-    // Incomings-Screen listet pro Zeile das ZIEL-Dorf (dein Dorf). Nimm die
-    // erste Koordinate in der Zeile die zu EINEM MEINER Dörfer gehört; sonst die
-    // erste Koordinate überhaupt.
-    const coords = [];
-    (tr.innerText.match(/\d{1,3}\|\d{1,3}/g) || []).forEach(c => coords.push(c));
+    // Incomings-Screen listet pro Zeile das ZIEL-Dorf (dein Dorf). WICHTIG:
+    // textContent statt innerText — ein DOMParser-Dokument ist NICHT gerendert,
+    // innerText liefert dort oft "". Bevorzuge eine Koordinate die zu EINEM
+    // MEINER Dörfer gehört (das Ziel); sonst die LETZTE Koordinate der Zeile
+    // (Herkunft steht meist zuerst, Ziel danach).
+    const coords = (tr.textContent.match(/\d{1,3}\|\d{1,3}/g) || []);
     if (!coords.length) return null;
     const mine = coords.find(c => myVillages.some(v => `${v.x}|${v.y}` === c));
-    const pick = mine || coords[0];
+    const pick = mine || coords[coords.length - 1];
     const [x, y] = pick.split('|').map(Number);
     return { x, y, coord: pick };
   }
 
   function isAttackRow(tr) {
-    return !!tr.querySelector('.command_hover_details[data-command-type="attack"]')
-        || !!tr.querySelector('img[src*="attack"]');
+    // Angriff (kein Support) erkennen — mehrere Marker, weil das Markup je nach
+    // Welt/Ansicht variiert:
+    //  • data-command-type="attack" am hover-details Element (neueste UIs)
+    //  • ein Angriffs-Icon (attack.png / att_* / command/attack)
+    //  • KEIN Support-Marker (support/def) und eine command-id vorhanden
+    if (tr.querySelector('.command_hover_details[data-command-type="attack"]')) return true;
+    if (tr.querySelector('img[src*="attack"], img[src*="/att"], img[src*="command/attack"]')) return true;
+    // Support/Rückzug explizit ausschließen
+    if (tr.querySelector('.command_hover_details[data-command-type="support"]')) return false;
+    if (tr.querySelector('img[src*="support"], img[src*="def"]')) return false;
+    // Fallback: Zeile hat eine Befehls-ID (Checkbox id_NNN) + eine Ankunftszeit →
+    // im subtype=all Incomings-Screen sind das praktisch immer Angriffe (Support
+    // wird über die obigen Marker rausgefiltert). Konservativ: nur wenn ID da ist.
+    const hasCmd = !!tr.querySelector('input[type="checkbox"][name^="id_"]') || !!tr.querySelector('.command_hover_details[data-command-id]');
+    return hasCmd;
+  }
+
+  // Findet die Incomings-Tabelle ROBUST: nicht über eine feste ID (die variiert
+  // je nach Welt/Ansicht), sondern über die Spaltenüberschriften "Befehl"/"Herkunft"
+  // /"Ankunft" — genau wie das erprobte inccheck.js. Fallbacks: bekannte IDs, dann
+  // eine Tabelle mit Koordinaten-Zeilen.
+  function findIncomingsTable(doc) {
+    // 1) per Header-Text
+    const ths = Array.from(doc.querySelectorAll('th'));
+    for (const th of ths) {
+      const t = (th.textContent || '').trim().toLowerCase();
+      if (t === 'befehl' || t === 'herkunft' || t === 'ankunft' || t === 'command' || t === 'arrival') {
+        const tbl = th.closest('table');
+        if (tbl) return tbl;
+      }
+    }
+    // 2) bekannte IDs
+    const byId = doc.querySelector('#incomings_table') || doc.querySelector('#commands_incomings')
+              || (doc.querySelector('#incomings_form') && doc.querySelector('#incomings_form table'));
+    if (byId) return byId;
+    // 3) irgendeine Tabelle mit Koordinaten in mehreren Zeilen
+    for (const tbl of doc.querySelectorAll('table')) {
+      const coordRows = Array.from(tbl.querySelectorAll('tr')).filter(tr => /\d{1,3}\|\d{1,3}/.test(tr.textContent) && tr.querySelectorAll('td').length >= 2);
+      if (coordRows.length >= 1) return tbl;
+    }
+    return null;
   }
 
   async function scrapeMyIncomings() {
-    // Der Incomings-Screen (alle eingehenden Befehle über alle Dörfer).
-    const url = '/game.php?screen=overview_villages&mode=incomings&type=all&subtype=attacks&group=0&page=-1';
-    let doc;
+    // Erprobte URL (aus dbautoupload.js buildIncomingsUrl): subtype=all, mode=incomings.
+    const url = '/game.php?screen=overview_villages&subtype=all&mode=incomings&group=0';
+    let doc, html;
     try {
-      const html = await fetch(url, { credentials: 'include' }).then(r => r.text());
+      html = await fetch(url, { credentials: 'include' }).then(r => r.text());
       doc = new DOMParser().parseFromString(html, 'text/html');
     } catch (e) { console.warn('[WarHub] Incomings-Fetch fehlgeschlagen:', e); return null; }
 
-    const table = doc.querySelector('#incomings_table') || doc.querySelector('#incomings_form table') || doc.querySelector('#commands_incomings');
-    if (!table) return [];   // kein Incomings-Table = keine Angriffe (oder Screen leer)
+    // "Keine eingehenden Befehle/Angriffe" → leer, kein Fehler.
+    const bodyText = (doc.body && doc.body.textContent || '').toLowerCase();
+    const table = findIncomingsTable(doc);
+    if (!table) {
+      const noneMsg = /keine eingehenden|keine befehle|no incoming/.test(bodyText);
+      console.log('[WarHub] Incomings: keine Tabelle gefunden' + (noneMsg ? ' (Screen meldet "keine Angriffe")' : ' — Markup unbekannt?'));
+      if (!noneMsg) console.log('[WarHub] Debug: erste 600 Zeichen body:', bodyText.slice(0, 600));
+      return [];
+    }
 
     const body = table.tBodies && table.tBodies[0] ? table.tBodies[0] : table;
     const rows = Array.from(body.querySelectorAll('tr')).filter(tr => tr.querySelectorAll('td').length >= 2);
+    console.log('[WarHub] Incomings: Tabelle gefunden, ' + rows.length + ' Datenzeilen');
 
     const out = [];
+    let skippedNoArr = 0, skippedNoTgt = 0, notAttack = 0;
     for (const tr of rows) {
-      if (!isAttackRow(tr)) continue;          // nur echte Angriffe, kein Support
+      if (!isAttackRow(tr)) { notAttack++; continue; }
       const arrivalMs = extractArrivalMs(tr);
-      if (!arrivalMs) continue;
+      if (!arrivalMs) { skippedNoArr++; continue; }
       const tgt = extractTargetCoord(tr);
-      if (!tgt) continue;
+      if (!tgt) { skippedNoTgt++; continue; }
       const det = tr.querySelector('.command_hover_details[data-command-id]');
       const cb = tr.querySelector('input[type="checkbox"][name^="id_"]');
       const cid = (det && det.getAttribute('data-command-id')) || (cb && (cb.name.match(/^id_(\d+)/) || [])[1]) || `${tgt.coord}@${arrivalMs}`;
       out.push({ id: String(cid), targetX: tgt.x, targetY: tgt.y, target: tgt.coord, arrivalMs, isAttack: true });
     }
+    console.log(`[WarHub] Incomings: ${out.length} Angriffe erkannt (übersprungen: ${notAttack} kein-Angriff, ${skippedNoArr} ohne Ankunft, ${skippedNoTgt} ohne Ziel)`);
     return out;
   }
 
@@ -389,6 +506,43 @@
       });
     });
     return { rows, coverage };
+  }
+
+  /* ================= TRAIN DETECTION (strukturell, kein Raten) ================= */
+  // Ein "Zug" (Train) = mehrere Angriffe auf DASSELBE Ziel, die dicht
+  // hintereinander landen (typisch Adelszug: Cleaner + N Adel innerhalb weniger
+  // Sekunden). Das ist STRUKTURELL erkennbar (Timing), kein Fake/Nuke-Raten:
+  //  • gleiches Ziel
+  //  • aufeinanderfolgende Ankünfte mit Lücke ≤ TRAIN_GAP_MS
+  //  • ≥ TRAIN_MIN_WAVES Wellen
+  // Gibt Gruppen zurück + markiert jede Attacke mit trainId/trainSize/waveIndex.
+  const TRAIN_GAP_MS = 1000;     // ≤1s zwischen Wellen = derselbe Zug (ms-Welt)
+  const TRAIN_MIN_WAVES = 2;     // ab 2 dicht gestaffelten Wellen = Zug
+
+  function detectTrains(rows) {
+    // pro Ziel sammeln, nach Ankunft sortieren, in dichte Cluster schneiden.
+    const byTarget = {};
+    rows.forEach(a => { (byTarget[a.target] = byTarget[a.target] || []).push(a); });
+    const trains = [];
+    Object.keys(byTarget).forEach(target => {
+      const list = byTarget[target].slice().sort((x, y) => x.arrivalMs - y.arrivalMs);
+      let cluster = [list[0]];
+      const flush = () => {
+        if (cluster.length >= TRAIN_MIN_WAVES) {
+          const id = 'train_' + target + '_' + cluster[0].arrivalMs;
+          cluster.forEach((a, i) => { a.trainId = id; a.trainSize = cluster.length; a.waveIndex = i; });
+          trains.push({ id, target, targetX: cluster[0].targetX, targetY: cluster[0].targetY,
+            waves: cluster.length, firstMs: cluster[0].arrivalMs, lastMs: cluster[cluster.length - 1].arrivalMs, attacks: cluster.slice() });
+        }
+      };
+      for (let i = 1; i < list.length; i++) {
+        if (list[i].arrivalMs - list[i - 1].arrivalMs <= TRAIN_GAP_MS) cluster.push(list[i]);
+        else { flush(); cluster = [list[i]]; }
+      }
+      flush();
+    });
+    trains.sort((a, b) => a.lastMs - b.lastMs);   // dringlichster (nächster Einschlag) zuerst
+    return trains;
   }
 
   /* ================= FEASIBILITY ================= */
@@ -459,19 +613,55 @@
       if (countMyOpenRequests(data) >= MAX_OPEN_REQUESTS_PER_PLAYER) throw new Error(`Du hast schon ${MAX_OPEN_REQUESTS_PER_PLAYER} offene Anfragen. Erst schließen oder löschen.`);
       data.requests.push(newReq); createdReq = newReq; return data;
     });
-    if (createdReq) await postDiscord(discordMsgForCreate(createdReq));
+    if (createdReq) {
+      await postDiscord(discordMsgForCreate(createdReq));           // Standard-Webhook (falls konfiguriert)
+      await proxyPostOverview(discordMsgForCreate(createdReq));     // Übersicht-Kanal (via Proxy)
+      // Falls für dieses Ziel schon ein Coord-Kanal existiert → auch dort posten.
+      const ch = getChannelFromCache(createdReq.target);
+      if (ch && ch.webhook_url) await postToChannelWebhook(ch.webhook_url, discordMsgForCreate(createdReq));
+    }
     return createdReq;
   }
 
+  // Legt den Discord-Kanal für ein Ziel an (oder holt ihn) und cached ihn im
+  // GEMEINSAMEN Store, damit der ganze Stamm denselben Kanal nutzt. Postet danach
+  // eine kurze Info in den Kanal. Returns das Kanal-Objekt oder {error}.
+  async function ensureAndCacheChannel(coord) {
+    const cached = getChannelFromCache(coord);
+    if (cached && cached.webhook_url) return cached;
+    const res = await proxyEnsureChannel(coord);
+    if (res.error) return res;
+    const entry = { channel_id: res.channel_id, webhook_url: res.webhook_url };
+    await withConflictRetry(data => {
+      if (!data.channels) data.channels = {};
+      if (data.channels[coord] && data.channels[coord].webhook_url) return null; // schon da (Race)
+      data.channels[coord] = entry;
+      return data;
+    });
+    if (res.created) await postToChannelWebhook(res.webhook_url, `📢 Kanal für \`${coord}\` angelegt — hier wird Readel/Verteidigung koordiniert.`);
+    return entry;
+  }
+
   async function claimSlot(requestId, fromVillage) {
+    let claimedReq = null;
     await withConflictRetry(data => {
       const req = data.requests.find(r => r.id === requestId);
       if (!req) throw new Error('Request nicht gefunden (evtl. schon geschlossen).');
       if (req.claims.length >= req.slotsNeeded) throw new Error('Bereits alle Slots übernommen.');
       if (req.claims.some(c => c.player === PLAYER_NAME)) throw new Error('Du hast schon einen Slot übernommen.');
       req.claims.push({ player: PLAYER_NAME, fromVillage, claimedAt: Date.now() });
+      claimedReq = req;
       return data;
     });
+    // in den Coord-Kanal posten (falls angelegt): wer übernimmt + Deckungsstand.
+    if (claimedReq) {
+      const ch = getChannelFromCache(claimedReq.target);
+      if (ch && ch.webhook_url) {
+        const full = claimedReq.claims.length >= claimedReq.slotsNeeded;
+        await postToChannelWebhook(ch.webhook_url,
+          `✅ **${PLAYER_NAME}** übernimmt aus \`${fromVillage}\` — ${claimedReq.claims.length}/${claimedReq.slotsNeeded} Slots${full ? ' — **voll besetzt** 🛡' : ''}`);
+      }
+    }
   }
 
   async function releaseClaim(requestId) {
@@ -572,7 +762,35 @@
 .wh-cov b.stale { color: #f59e0b; }
 .wh-cov b.fresh { color: #22c55e; }
 .wh-count-badge { display:inline-block; min-width: 16px; text-align:center; background:#dc2626; color:#fff; border-radius: 8px; font-size: 9px; padding: 0 5px; margin-left: 4px; }
+/* Hero-Card: nächste Bedrohung, groß & auffällig */
+.wh-hero { background: linear-gradient(135deg,#3b0d0d,#7f1d1d); border: 1px solid #ef4444; border-radius: 10px; padding: 12px; margin-bottom: 10px; }
+.wh-hero-train { background: linear-gradient(135deg,#2e1065,#5b21b6); border-color: #a78bfa; }
+.wh-hero-tag { font-size: 10px; font-weight: 700; letter-spacing: 0.5px; color: #fecaca; margin-bottom: 4px; }
+.wh-hero-train .wh-hero-tag { color: #ddd6fe; }
+.wh-hero-main { font-size: 15px; margin-bottom: 2px; }
+.wh-hero-cd { font-size: 20px; font-weight: 800; font-family: monospace; color: #fff; }
+/* Section-Header */
+.wh-section { font-size: 10px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; margin: 10px 0 6px; border-bottom: 1px solid #1e293b; padding-bottom: 3px; }
+/* Train-Card */
+.wh-train { background: #14092e; border: 1px solid #4c1d95; border-left: 4px solid #7c3aed; border-radius: 8px; padding: 8px 10px; margin-bottom: 6px; }
+.wh-train.soon { border-left-color: #ef4444; box-shadow: 0 0 0 1px rgba(239,68,68,.3) inset; }
+.wh-train-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+.wh-waves { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 10px; font-size: 10px; }
+.wh-wave { display: flex; gap: 6px; align-items: baseline; color: #c4b5fd; font-family: monospace; }
+.wh-wave-i { color: #7c3aed; font-weight: 700; }
+.wh-wave-t { color: #64748b; margin-left: auto; }
+/* Command-View */
+.wh-cmd-summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 10px; }
+.wh-stat { background: #020617; border: 1px solid #1e293b; border-radius: 8px; padding: 8px; text-align: center; }
+.wh-stat .n { font-size: 20px; font-weight: 800; font-family: monospace; }
+.wh-stat .l { font-size: 9px; color: #94a3b8; text-transform: uppercase; }
+.wh-stat.red .n { color: #ef4444; } .wh-stat.purple .n { color: #a78bfa; }
+.wh-stat.green .n { color: #22c55e; } .wh-stat.amber .n { color: #f59e0b; }
+.wh-cmd-col-title { font-size: 11px; font-weight: 700; color: #fde68a; margin: 8px 0 4px; }
 @media (max-width: 700px) {
+  .wh-waves { grid-template-columns: 1fr; }
+  .wh-cmd-summary { grid-template-columns: repeat(2, 1fr); }
+  .wh-hero-cd { font-size: 24px; }
   #mh-box { width: calc(100vw - 12px) !important; margin: 6px auto !important; max-height: 88vh !important; border-radius: 10px; }
   #mh-header { padding: 10px; font-size: 13px; } #mh-body { padding: 8px; max-height: 80vh; }
   #mh-tabs button { padding: 12px 3px; font-size: 12px; }
@@ -595,7 +813,8 @@
   <span id="mh-close" style="cursor:pointer;padding:4px 10px;">✕</span>
 </div>
 <div id="mh-tabs">
-  <button class="active" data-tab="war">🛡 Krieg <span id="wh-war-count" class="wh-count-badge" style="display:none;">0</span></button>
+  <button class="active" data-tab="cmd">🎖 Lage</button>
+  <button data-tab="war">🛡 Krieg <span id="wh-war-count" class="wh-count-badge" style="display:none;">0</span></button>
   <button data-tab="list">Anfragen</button>
   <button data-tab="create">Erstellen</button>
   <button data-tab="mine">Meine</button>
@@ -606,8 +825,13 @@
     <span id="mh-refresh" style="cursor:pointer;color:#fde68a;">↻ Aktualisieren</span>
   </div>
   <div id="mh-tab-content">
+    <!-- Tab: Lage (Command-View) -->
+    <div id="mh-tab-cmd" class="active">
+      <div id="wh-cmd"></div>
+    </div>
+
     <!-- Tab: Kriegsübersicht (War-Monitor) -->
-    <div id="mh-tab-war" class="active">
+    <div id="mh-tab-war">
       <div id="wh-coverage" class="wh-cov"></div>
       <div style="display:flex;gap:6px;margin-bottom:8px;">
         <button id="wh-sort-arrival" class="mh-secondary" style="flex:1;">⏱ nach Ankunft</button>
@@ -713,15 +937,22 @@
       }
     }
 
-    // Angriffe sortieren.
     const now = Date.now();
-    rows.sort((a, b) => warSort === 'target' ? (a.target.localeCompare(b.target) || a.arrivalMs - b.arrivalMs) : (a.arrivalMs - b.arrivalMs));
 
+    // Trains erkennen; deren Attacken markieren, damit sie unten NICHT doppelt
+    // als Einzelzeilen erscheinen.
+    const trains = detectTrains(rows);
+    const inTrain = new Set();
+    trains.forEach(t => t.attacks.forEach(a => inTrain.add(a.id)));
+    const singles = rows.filter(r => !inTrain.has(r.id));
+
+    // Badge = Gesamt (Züge zählen als 1 Bedrohung + Einzelangriffe).
     if (badge) {
-      const soon = rows.filter(r => r.arrivalMs - now < INC_SOON_MS).length;
-      badge.textContent = String(rows.length);
-      badge.style.display = rows.length ? 'inline-block' : 'none';
-      badge.style.background = soon > 0 ? '#dc2626' : '#475569';
+      const threatCount = trains.length + singles.length;
+      const soon = [...trains.map(t => t.lastMs), ...singles.map(s => s.arrivalMs)].some(ms => ms - now < INC_SOON_MS);
+      badge.textContent = String(threatCount);
+      badge.style.display = threatCount ? 'inline-block' : 'none';
+      badge.style.background = soon ? '#dc2626' : '#475569';
     }
 
     if (rows.length === 0) {
@@ -729,22 +960,141 @@
       return;
     }
 
-    list.innerHTML = rows.map(r => {
+    // ── HERO-CARD: nächste dringlichste Bedrohung (Zug > Einzel), live-Countdown ──
+    let hero = '';
+    const nextThreat = (() => {
+      const cand = [];
+      trains.forEach(t => cand.push({ kind: 'train', ms: t.lastMs, t }));
+      singles.forEach(s => cand.push({ kind: 'single', ms: s.arrivalMs, s }));
+      cand.sort((a, b) => a.ms - b.ms);
+      return cand.find(c => c.ms > now) || cand[0];
+    })();
+    if (nextThreat) {
+      if (nextThreat.kind === 'train') {
+        const t = nextThreat.t;
+        hero = `<div class="wh-hero wh-hero-train" data-heroms="${t.lastMs}">
+          <div class="wh-hero-tag">👑 NÄCHSTER ZUG</div>
+          <div class="wh-hero-main"><span class="wh-war-tgt">${escHtml(t.target)}</span> · ${t.waves} Wellen</div>
+          <div class="wh-hero-cd" data-cd="${t.lastMs}">–</div>
+          <button class="mh-action wh-help-btn" data-wx="${t.targetX}" data-wy="${t.targetY}" data-warr="${t.lastMs}" style="margin-top:6px;">🛡 Verteidigung anfordern</button>
+        </div>`;
+      } else {
+        const s = nextThreat.s;
+        hero = `<div class="wh-hero" data-heroms="${s.arrivalMs}">
+          <div class="wh-hero-tag">⚠ NÄCHSTE BEDROHUNG</div>
+          <div class="wh-hero-main"><span class="wh-war-tgt">${escHtml(s.target)}</span> <span class="wh-war-owner">(${escHtml(s.player)})</span></div>
+          <div class="wh-hero-cd" data-cd="${s.arrivalMs}">–</div>
+          <button class="mh-action wh-help-btn" data-wx="${s.targetX}" data-wy="${s.targetY}" data-warr="${s.arrivalMs}" style="margin-top:6px;">🆘 Hilfe anfordern</button>
+        </div>`;
+      }
+    }
+
+    // ── TRAINS (als eine Karte je Zug, mit Wellen-Aufschlüsselung) ──
+    const trainHtml = trains.map(t => {
+      const soon = t.lastMs - now < INC_SOON_MS;
+      const waves = t.attacks.map((a, i) => {
+        const cd = a.arrivalMs > now ? fmtCountdown(a.arrivalMs - now) : 'jetzt';
+        return `<div class="wh-wave"><span class="wh-wave-i">#${i + 1}</span> <span data-cd="${a.arrivalMs}">${cd}</span> <span class="wh-wave-t">${fmtTime(a.arrivalMs)}</span></div>`;
+      }).join('');
+      return `
+        <div class="wh-train ${soon ? 'soon' : ''}">
+          <div class="wh-train-head">
+            <span class="mh-type-badge" style="background:#7c3aed;">👑 ZUG</span>
+            <span class="wh-war-tgt">${escHtml(t.target)}</span>
+            <span class="wh-war-owner">${t.waves} Wellen · Einschlag ${fmtTime(t.lastMs)}</span>
+            <button class="mh-secondary wh-help-btn" data-wx="${t.targetX}" data-wy="${t.targetY}" data-warr="${t.lastMs}" style="margin-left:auto;">🛡 Hilfe</button>
+          </div>
+          <div class="wh-waves">${waves}</div>
+        </div>`;
+    }).join('');
+
+    // ── EINZEL-ANGRIFFE ──
+    singles.sort((a, b) => warSort === 'target' ? (a.target.localeCompare(b.target) || a.arrivalMs - b.arrivalMs) : (a.arrivalMs - b.arrivalMs));
+    const singleHtml = singles.map(r => {
       const til = r.arrivalMs - now;
       const soon = til < INC_SOON_MS;
       const cd = til > 0 ? `noch ${fmtCountdown(til)}` : 'gelandet';
       return `
         <div class="wh-war-row ${soon ? 'soon' : ''}">
-          <div class="wh-when">${fmtTime(r.arrivalMs)}<div class="wh-cd">${cd}</div></div>
-          <div>
-            <span class="wh-war-tgt">${escHtml(r.target)}</span>
-            <div class="wh-war-owner">${escHtml(r.player)}</div>
-          </div>
-          <div class="wh-war-help">
-            <button class="mh-secondary wh-help-btn" data-wx="${r.targetX}" data-wy="${r.targetY}" data-warr="${r.arrivalMs}">🆘 Hilfe</button>
-          </div>
+          <div class="wh-when">${fmtTime(r.arrivalMs)}<div class="wh-cd" data-cd="${r.arrivalMs}">${cd}</div></div>
+          <div><span class="wh-war-tgt">${escHtml(r.target)}</span><div class="wh-war-owner">${escHtml(r.player)}</div></div>
+          <div class="wh-war-help"><button class="mh-secondary wh-help-btn" data-wx="${r.targetX}" data-wy="${r.targetY}" data-warr="${r.arrivalMs}">🆘 Hilfe</button></div>
         </div>`;
     }).join('');
+
+    list.innerHTML = hero
+      + (trains.length ? `<div class="wh-section">🚂 Züge (${trains.length})</div>` + trainHtml : '')
+      + (singles.length ? `<div class="wh-section">Einzelangriffe (${singles.length})</div>` + singleHtml : '');
+  }
+
+  /* ================= RENDER: Command-View (🎖 Lage) ================= */
+  // Die ganze Kriegslage auf einen Blick: Frontsummary (Zahlen), nächste
+  // Bedrohungen, und offene Hilfe-Anfragen mit Deckungsstand — nebeneinander.
+  function renderCmd() {
+    const el = document.getElementById('wh-cmd');
+    if (!el) return;
+    const now = Date.now();
+    const { rows, coverage } = aggregateIncomings();
+    const trains = detectTrains(rows);
+    const inTrain = new Set(); trains.forEach(t => t.attacks.forEach(a => inTrain.add(a.id)));
+    const singles = rows.filter(r => !inTrain.has(r.id));
+    const soonCount = [...trains.map(t => t.lastMs), ...singles.map(s => s.arrivalMs)].filter(ms => ms - now < INC_SOON_MS && ms > now).length;
+    const reqs = cachedData.requests || [];
+    const uncovered = reqs.filter(r => r.claims.length < r.slotsNeeded).length;
+
+    // Frontsummary-Kacheln
+    const stats = `
+      <div class="wh-cmd-summary">
+        <div class="wh-stat red"><div class="n">${rows.length}</div><div class="l">Angriffe</div></div>
+        <div class="wh-stat purple"><div class="n">${trains.length}</div><div class="l">Züge</div></div>
+        <div class="wh-stat amber"><div class="n">${soonCount}</div><div class="l">< 1h</div></div>
+        <div class="wh-stat green"><div class="n">${reqs.length - uncovered}/${reqs.length}</div><div class="l">gedeckt</div></div>
+      </div>`;
+
+    // Nächste 5 Bedrohungen (Züge + Einzel gemischt, nach Einschlag)
+    const threats = [
+      ...trains.map(t => ({ kind: 'train', ms: t.lastMs, target: t.target, tx: t.targetX, ty: t.targetY, extra: `${t.waves} Wellen`, who: '' })),
+      ...singles.map(s => ({ kind: 'single', ms: s.arrivalMs, target: s.target, tx: s.targetX, ty: s.targetY, extra: '', who: s.player }))
+    ].filter(t => t.ms > now - INC_STALE_AFTER_MS).sort((a, b) => a.ms - b.ms).slice(0, 6);
+
+    const threatHtml = threats.length ? threats.map(t => `
+      <div class="wh-war-row ${t.ms - now < INC_SOON_MS ? 'soon' : ''}" style="margin-bottom:4px;">
+        <div class="wh-when">${t.kind === 'train' ? '👑' : '⚔'} <span data-cd="${t.ms}">${fmtCountdown(Math.max(0, t.ms - now))}</span></div>
+        <div><span class="wh-war-tgt">${escHtml(t.target)}</span><div class="wh-war-owner">${escHtml(t.extra || t.who || '')}</div></div>
+        <div class="wh-war-help"><button class="mh-secondary wh-help-btn" data-wx="${t.tx}" data-wy="${t.ty}" data-warr="${t.ms}">🆘</button></div>
+      </div>`).join('') : '<div class="mh-empty" style="padding:10px;">keine Bedrohungen 🎉</div>';
+
+    // Offene Hilfe-Anfragen (kompakt, Deckungsstand)
+    const openReqs = reqs.slice().sort((a, b) => a.arrivalMs - b.arrivalMs).slice(0, 6);
+    const reqHtml = openReqs.length ? openReqs.map(r => {
+      const m = TYPE_META[r.type] || TYPE_META.off;
+      const full = r.claims.length >= r.slotsNeeded;
+      return `<div class="wh-war-row" style="margin-bottom:4px;border-left-color:${m.color};">
+        <div class="wh-when">${m.emoji}<div class="wh-cd" data-cd="${r.arrivalMs}">${fmtCountdown(Math.max(0, r.arrivalMs - now))}</div></div>
+        <div><span class="wh-war-tgt">${escHtml(r.target)}</span><div class="wh-war-owner">${r.claims.length}/${r.slotsNeeded} ${full ? '✓' : '⏳'} · ${escHtml(r.requestedBy)}</div></div>
+      </div>`;
+    }).join('') : '<div class="mh-empty" style="padding:10px;">keine offenen Anfragen</div>';
+
+    const covLine = coverage.length
+      ? '📡 ' + coverage.filter(c => !c.stale).length + '/' + coverage.length + ' Mitglieder teilen aktuell'
+      : '📡 noch niemand teilt Incomings';
+
+    el.innerHTML = stats
+      + `<div class="wh-cmd-col-title">🔥 Nächste Bedrohungen</div>${threatHtml}`
+      + `<div class="wh-cmd-col-title">🆘 Offene Hilfe-Anfragen</div>${reqHtml}`
+      + `<div class="wh-cov" style="margin-top:10px;">${covLine}</div>`;
+  }
+
+  // Live-Countdowns: aktualisiert nur die Text-Knoten mit data-cd (kein Re-Render,
+  // damit's nicht flackert). Läuft 1×/s.
+  function tickCountdowns() {
+    const now = Date.now();
+    document.querySelectorAll('#mh-box [data-cd]').forEach(el => {
+      const ms = +el.getAttribute('data-cd');
+      const til = ms - now;
+      const isHero = el.classList.contains('wh-hero-cd');
+      el.textContent = til > 0 ? (isHero ? '⏱ ' + fmtCountdown(til) : fmtCountdown(til)) : (isHero ? '💥 EINSCHLAG' : 'gelandet');
+    });
   }
 
   /* ================= RENDER: requests (unverändert) ================= */
@@ -795,13 +1145,18 @@
     const tilLeft = req.arrivalMs - Date.now();
     const countdown = tilLeft > 0 ? `noch ${fmtCountdown(tilLeft)}` : `<span style="color:#ef4444;">vergangen</span>`;
     const deleteBtn = (isMine && !options.hideDelete) ? `<button class="mh-secondary" data-action="delete" data-id="${req.id}" style="float:right;">🗑</button>` : '';
+    // 📢 Discord-Kanal: existiert schon (💬) oder auf Anfrage anlegen (📢).
+    const ch = getChannelFromCache(req.target);
+    const chanBtn = ch
+      ? `<button class="mh-secondary" data-action="chan" data-coord="${escHtml(req.target)}" title="Coord-Kanal existiert — Info posten">💬 Kanal</button>`
+      : `<button class="mh-secondary" data-action="chan" data-coord="${escHtml(req.target)}" title="Discord-Kanal für dieses Ziel anlegen">📢 Kanal</button>`;
 
     return `
       <div class="mh-req" style="border-left-color:${meta.color};">
         <div class="mh-req-head">
           <span><span class="mh-type-badge" style="background:${meta.color};">${meta.emoji} ${meta.label}</span>
             <span class="mh-coord">${escHtml(req.target)}</span>${reopenedBadge}</span>
-          <span>${deleteBtn}</span>
+          <span>${chanBtn}${deleteBtn}</span>
         </div>
         <div class="mh-meta">Ankunft <b>${fmtDate(req.arrivalMs)}</b> (${countdown})<br>
           Angefordert von <b>${escHtml(req.requestedBy)}</b>${req.notes ? ` — <i>${escHtml(req.notes)}</i>` : ''}</div>
@@ -841,7 +1196,7 @@
     myClaimsOut.innerHTML = myClaims.length === 0 ? `<div class="mh-empty">Du hast nichts übernommen</div>` : myClaims.map(r => renderRequestCard(r, { hideDelete: true })).join('');
   }
 
-  function renderAll() { renderStatus(); renderWar(); renderList(); renderMine(); updateCreateInfo(); }
+  function renderAll() { renderStatus(); renderCmd(); renderWar(); renderList(); renderMine(); updateCreateInfo(); }
 
   function updateCreateInfo() {
     const el = document.getElementById('mh-create-info');
@@ -873,10 +1228,13 @@
     if (!window._whIncTimer) {
       window._whIncTimer = setInterval(async () => { await uploadMyIncomings(); await refresh(); }, INC_UPLOAD_INTERVAL_MS);
     }
+    // Live-Countdowns: 1×/s, nur Text-Update (kein Re-Render → kein Flackern).
+    if (!window._whTick) window._whTick = setInterval(tickCountdowns, 1000);
   }
   function stopPolling() {
     if (window._mhPoll) { clearInterval(window._mhPoll); window._mhPoll = null; }
     if (window._whIncTimer) { clearInterval(window._whIncTimer); window._whIncTimer = null; }
+    if (window._whTick) { clearInterval(window._whTick); window._whTick = null; }
   }
 
   /* ================= EVENTS ================= */
@@ -900,6 +1258,7 @@
         if (tab === 'mine') renderMine();
         if (tab === 'create') updateCreateInfo();
         if (tab === 'war') renderWar();
+        if (tab === 'cmd') renderCmd();
       };
     });
 
@@ -1014,6 +1373,19 @@
           const out = body.querySelector(`.mh-wb-out[data-wb="${id}"]`);
           if (out) { out.style.display = out.style.display === 'none' ? 'block' : 'none'; if (out.style.display === 'block') { try { await navigator.clipboard.writeText(out.textContent); } catch (err) {} } }
           btn.disabled = false;
+        } else if (action === 'chan') {
+          // 📢 Discord-Kanal für die Koordinate anlegen/holen (on-demand).
+          const coord = btn.dataset.coord;
+          btn.textContent = '⏳…';
+          const res = await ensureAndCacheChannel(coord);
+          if (res && res.error) {
+            alert(res.error === 'proxy_offline'
+              ? 'Discord-Kanäle brauchen den laufenden Proxy (localhost:8743) mit Bot-Config.'
+              : 'Kanal-Fehler: ' + res.error);
+            btn.textContent = '📢 Kanal'; btn.disabled = false;
+          } else {
+            await refresh();   // re-render → Button wird zu 💬 Kanal
+          }
         }
       } catch (err) { alert('Fehler: ' + err.message); btn.disabled = false; }
     });
