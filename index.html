@@ -22,7 +22,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script>
 const { createElement: h, useState, useEffect, useRef } = React;
-const RECIPES_KEY = "rezeptbuch_v17";
+const RECIPES_KEY = "rezeptbuch_v19";
 // Simple SVG icon components - no external dependency needed
 function Icon({ children, size = 20, color = "currentColor", style = {} }) {
   return h('svg', { width: size, height: size, viewBox: "0 0 24 24", fill: "none", stroke: color, strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round", style: { flexShrink: 0, ...style } }, children);
@@ -1139,7 +1139,7 @@ const defaultRecipes = [
     id: 32,
     emoji: "🍋",
     title: "Limoncello-Mohn Schnecken",
-    desc: "Klassische Schnecken mit Limoncello-Creme, Mohn und Zuckerguss",
+    desc: "Klassische Schnecken mit Limoncello Curd, Mohn und Zuckerguss",
     servings: 9,
     tags: ["backen", "süß", "hefeteig"],
     ingredients: [
@@ -1152,11 +1152,13 @@ const defaultRecipes = [
       { amount: 165, unit: "g", name: "Weizenmehl Type 550" },
       { amount: 385, unit: "g", name: "Weizenmehl Type 405" },
       { amount: 70, unit: "g", name: "Butter, weich" },
-      { amount: 1, unit: "h", name: "—— LIMONCELLO-CREME ——" },
-      { amount: 250, unit: "g", name: "Mascarpone oder Frischkäse" },
-      { amount: 60, unit: "g", name: "Puderzucker" },
-      { amount: 3, unit: "EL", name: "Limoncello (oder 2 EL Zitronensaft)" },
-      { amount: 2, unit: "", name: "Bio-Zitronen, davon die Zeste" },
+      { amount: 1, unit: "h", name: "—— LIMONCELLO CURD ——" },
+      { amount: 75, unit: "g", name: "Butter" },
+      { amount: 200, unit: "g", name: "Zucker" },
+      { amount: 100, unit: "ml", name: "Frisch gepresster Zitronensaft" },
+      { amount: 45, unit: "ml", name: "Limoncello" },
+      { amount: 1, unit: "", name: "Bio-Zitrone, Abrieb (evtl. 2)" },
+      { amount: 3, unit: "", name: "Eier" },
       { amount: 1, unit: "h", name: "—— MOHNSCHICHT ——" },
       { amount: 80, unit: "g", name: "Gemahlener Mohn" },
       { amount: 2, unit: "EL", name: "Zucker" },
@@ -1170,14 +1172,14 @@ const defaultRecipes = [
       { title: "Teig ankneten – 6 Min.", desc: "Milch, Sahne, Zucker und Hefe mischen. Beide Mehle und Salz dazugeben. 3 Min. auf niedriger, dann 3 Min. auf mittlerer Stufe kneten.", timer: 360 },
       { title: "Butter einkneten – 10 bis 12 Min.", desc: "Butter stückchenweise auf niedriger Stufe einarbeiten und 10–12 Min. kneten bis der Teig glatt und elastisch ist.", timer: 660 },
       { title: "Erste Ruhe – 75 bis 90 Min.", desc: "Teig in geölte Schüssel, locker abdecken und an warmem Ort (25–28°C) gehen lassen bis er sich fast verdoppelt hat.", timer: 5400 },
-      { title: "Limoncello-Creme zubereiten", desc: "Mascarpone mit Puderzucker, Limoncello und der Zeste von 2 Zitronen glatt rühren. Kühl stellen bis zur Verwendung.", timer: null },
-      { title: "Ausrollen & füllen", desc: "Teig auf ca. 40×50 cm ausrollen. Erst die weiche Butter dünn drauf streichen, dann die Limoncello-Creme gleichmäßig verteilen. Zum Schluss den gemahlenen Mohn mit dem Zucker vermischen und gleichmäßig drüber streuen.", timer: null },
+      { title: "Limoncello Curd zubereiten – 6 bis 8 Min.", desc: "Butter in einem kleinen Topf schmelzen. Zucker, Zitronensaft, Limoncello und Zitronenabrieb unterrühren. Die verquirlten Eier dazugeben. Bei mittlerer Hitze unter ständigem Rühren erhitzen (NICHT kochen!) bis die Creme andickt – ca. 6–8 Minuten. In eine flache Schüssel füllen, Frischhaltefolie direkt auf die Oberfläche drücken und im Kühlschrank komplett abkühlen lassen.", timer: 480 },
+      { title: "Ausrollen & füllen", desc: "Teig auf ca. 40×50 cm ausrollen. Erst die weiche Butter dünn drauf streichen, dann den abgekühlten Limoncello Curd gleichmäßig und dünn verteilen. Zum Schluss den gemahlenen Mohn mit dem Zucker vermischen und gleichmäßig drüber streuen.", timer: null },
       { title: "Aufrollen & schneiden", desc: "Den Teig von der langen Seite her fest aufrollen wie eine Roulade. Mit einem scharfen Messer in 9 gleichmäßige Scheiben (ca. 4–5 cm) schneiden.", timer: null },
       { title: "In Form setzen – 30 bis 45 Min.", desc: "Schnecken eng nebeneinander in eine gefettete Auflaufform setzen. Locker abdecken und 30–45 Min. gehen lassen. Ofen auf 190°C vorheizen.", timer: 2400 },
       { title: "Backen – 18 bis 22 Min.", desc: "Bei 190°C 18–22 Minuten backen bis goldbraun. Etwas abkühlen lassen.", timer: 1200 },
       { title: "Zuckerguss & fertig", desc: "Puderzucker mit Limoncello glatt rühren bis ein dickflüssiger Guss entsteht. Über die noch leicht warmen Schnecken träufeln und mit etwas frischer Zitronenzeste bestreuen. 🍋", timer: null },
     ],
-    notes: "Alkoholfrei: Limoncello einfach durch Zitronensaft ersetzen und etwas mehr Zeste nehmen. Mohn kann auch kurz in der Pfanne ohne Fett angeröstet werden – gibt noch mehr Aroma!"
+    notes: "Alkoholfrei: Limoncello einfach durch mehr Zitronensaft ersetzen. Mohn kann auch kurz in der Pfanne ohne Fett angeröstet werden – gibt noch mehr Aroma! Der Curd ergibt mehr als für die Schnecken nötig – Rest hält sich im Kühlschrank ein paar Wochen, super auf Toast oder im Joghurt. Nur eine dünne Schicht auf den Teig, sonst wird er zu feucht zum Rollen!"
   },
 ];
 function fmtTime(s) {
