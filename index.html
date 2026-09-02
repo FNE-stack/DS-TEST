@@ -22,7 +22,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script>
 const { createElement: h, useState, useEffect, useRef } = React;
-const RECIPES_KEY = "rezeptbuch_v20";
+const RECIPES_KEY = "rezeptbuch_v25";
 // Simple SVG icon components - no external dependency needed
 function Icon({ children, size = 20, color = "currentColor", style = {} }) {
   return h('svg', { width: size, height: size, viewBox: "0 0 24 24", fill: "none", stroke: color, strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round", style: { flexShrink: 0, ...style } }, children);
@@ -40,6 +40,8 @@ function Search({ size, color, style }) { return h(Icon, { size, color, style },
 function Users({ size, color, style }) { return h(Icon, { size, color, style }, h('path', { d: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" }), h('circle', { cx: "9", cy: "7", r: "4" }), h('path', { d: "M22 21v-2a4 4 0 0 0-3-3.87" }), h('path', { d: "M16 3.13a4 4 0 0 1 0 7.75" })); }
 function Lightbulb({ size, color, style }) { return h(Icon, { size, color, style }, h('path', { d: "M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5" }), h('path', { d: "M9 18h6" }), h('path', { d: "M10 22h4" })); }
 function Trash2({ size, color, style }) { return h(Icon, { size, color, style }, h('path', { d: "M3 6h18" }), h('path', { d: "M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" }), h('path', { d: "M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" }), h('line', { x1: "10", x2: "10", y1: "11", y2: "17" }), h('line', { x1: "14", x2: "14", y1: "11", y2: "17" })); }
+function ShoppingCart({ size, color, style }) { return h(Icon, { size, color, style }, h('circle', { cx: "8", cy: "21", r: "1" }), h('circle', { cx: "19", cy: "21", r: "1" }), h('path', { d: "M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12" })); }
+function History({ size, color, style }) { return h(Icon, { size, color, style }, h('path', { d: "M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" }), h('path', { d: "M3 3v5h5" }), h('path', { d: "M12 7v5l4 2" })); }
 const defaultRecipes = [
   {
     id: 1,
@@ -817,7 +819,6 @@ const defaultRecipes = [
       { title: "Zwiebeln karamellisieren (Variante 1)", desc: "Butter in einer Pfanne bei mittlerer Hitze schmelzen. Zwiebeln dazugeben und 15–20 Min. langsam anbraten. Zucker drüber streuen, weitere 5 Min. karamellisieren bis sie goldbraun und süßlich sind. Mit Salz und Pfeffer würzen. Abkühlen lassen.", timer: 1500 },
       { title: "Teig ausrollen & füllen", desc: "Teig auf ca. 40×50 cm ausrollen. Für Variante 1: Butter gleichmäßig drauf streichen, karamellisierte Zwiebeln drauf, Gruyère drüber. Für Variante 2: Frischkäse streichen, getrocknete Tomaten drauf, Mozzarella drüber, Chiliflocken und Knoblauchpulver drüber.", timer: null },
       { title: "Kurz ins Tiefkühlfach – 5 bis 10 Min.", desc: "Den befüllten Teig einmal wie einen Briefumschlag falten und 5–10 Minuten ins Tiefkühlfach legen. So wird die Füllung fest und der Teig lässt sich viel leichter und sauberer in Scheiben schneiden!", timer: 600 },
-      { title: "Kurz ins Tiefkühlfach – 5 bis 10 Min.", desc: "Den befüllten Teig einmal wie einen Briefumschlag falten und 5–10 Minuten ins Tiefkühlfach legen. So wird die Füllung fest und der Teig lässt sich viel leichter und sauberer in Scheiben schneiden!", timer: 600 },
       { title: "Rollen & schneiden", desc: "Teig von der langen Seite fest aufrollen. In 8–9 gleich große Scheiben schneiden und in eine gefettete Form oder auf ein Backblech legen.", timer: null },
       { title: "Zweite Ruhe – 45 bis 60 Min.", desc: "Abdecken und nochmal 45–60 Min. gehen lassen bis die Schnecken aufgegangen sind.", timer: 3000 },
       { title: "Backen – 18 bis 20 Min.", desc: "Ofen auf 190°C vorheizen. Mit Ei bestreichen und 18–20 Min. backen bis goldbraun. Am besten warm genießen! 🌀🧀", timer: 1200 },
@@ -848,7 +849,7 @@ const defaultRecipes = [
       { amount: 2, unit: "EL", name: "Sahne (zum Bestreichen)" },
     ],
     steps: [
-      { title: "Hefe aktivieren – 10 Min.", desc: "Lauwarme Milch und Hefe in der Küchenmaschinenschüssel vermengen und 10 Minuten stehen lassen bis die Hefe schäumt.", timer: 600 },
+      { title: "Hefe aktivieren – 10 Min.", desc: "Lauwarme Milch und Hefe in der Küchenmaschinensch üssel vermengen und 10 Minuten stehen lassen bis die Hefe schäumt.", timer: 600 },
       { title: "Teig kneten – 5 bis 7 Min.", desc: "Geschmolzene Butter, Honig, Mehl und Salz dazugeben. Mit dem Knethaken auf mittlerer Stufe 5–7 Minuten kneten bis der Teig glatt und elastisch ist.", timer: 420 },
       { title: "Erste Ruhe – 1 Stunde", desc: "Teig in eine leicht geölte Schüssel geben, abdecken und ca. 1 Stunde gehen lassen bis er sich verdoppelt hat.", timer: 3600 },
       { title: "Teig teilen & entspannen – 15 Min.", desc: "Teig entgasen und in 4 gleiche Stücke teilen (je ca. 255–260g). Jedes Stück zu einer glatten Kugel formen, mit einem feuchten Tuch abdecken und 15 Minuten entspannen lassen.", timer: 900 },
@@ -1011,14 +1012,13 @@ const defaultRecipes = [
       { title: "Butter einkneten – 10 bis 12 Min.", desc: "Butter stückchenweise auf niedriger Stufe einarbeiten und 10–12 Min. kneten bis der Teig glatt und elastisch ist.", timer: 660 },
       { title: "Erste Ruhe – 75 bis 90 Min.", desc: "Teig in geölte Schüssel, locker abdecken und an warmem Ort (25–28°C) gehen lassen bis er sich fast verdoppelt hat.", timer: 5400 },
       { title: "Erdbeerpüree einkochen", desc: "Erdbeeren mit Zucker und Zitronensaft in einem Topf 8–10 Minuten köcheln, pürieren und nochmal 5–8 Min. einkochen bis es sehr dickflüssig ist. Komplett abkühlen lassen! Püree halbieren – eine Hälfte für die Füllung, eine Hälfte für das Frosting.", timer: 900 },
-      { title: "Füllung vorbereiten", desc: "Weiche Butter auf den ausgerollten Teig streichen. Vanillecreme dünn drüber verteilen. Die Hälfte des abgekühlten Erdbeerpürees gleichmäßig drauf streichen – nicht zu viel, sonst lässt sich der Teig nicht gut rollen!", timer: null },
-      { title: "Teig ausrollen & füllen", desc: "Teig auf ca. 40×50 cm ausrollen. Butter, Vanillecreme und Erdbeerpüree gleichmäßig und dünn auf dem ganzen Teig verstreichen bis zu den Rändern.", timer: null },
+      { title: "Teig ausrollen & füllen", desc: "Teig auf ca. 40×50 cm ausrollen. Butter dünn drauf streichen, dann Vanillecreme dünn verteilen und zum Schluss die Hälfte des Erdbeerpürees dünn drauf streichen – nicht zu viel, sonst lässt sich der Teig nicht gut rollen!", timer: null },
       { title: "Aufrollen & schneiden", desc: "Den Teig von der langen Seite her fest aufrollen wie eine Roulade. Mit einem scharfen Messer in 9 gleichmäßige Scheiben (ca. 4–5 cm) schneiden.", timer: null },
       { title: "In Form setzen – 30 bis 45 Min.", desc: "Schnecken eng nebeneinander in eine gefettete Auflaufform setzen. Locker abdecken und 30–45 Min. gehen lassen. Ofen auf 190°C vorheizen.", timer: 2400 },
       { title: "Backen – 18 bis 22 Min.", desc: "Bei 190°C 18–22 Minuten backen bis goldbraun. Etwas abkühlen lassen – aber noch warm glasieren!", timer: 1200 },
       { title: "Frosting & Topping", desc: "Frischkäse, Puderzucker, Milch und Vanilleextrakt glatt rühren. Die zweite Hälfte des Erdbeerpürees untermischen – gibt eine schöne rosa Farbe! Falls zu flüssig, mehr Puderzucker dazu. Großzügig auf die warmen Schnecken streichen und mit frischen Erdbeerstücken toppen. 🍓✨", timer: null },
     ],
-    notes: "Füllung dünn halten – lieber weniger als zu viel, sonst lässt sich der Teig nicht sauber rollen! Püree wirklich sehr dick einkochen. Die zweite Hälfte Püree ins Frosting gibt die perfekte rosa Farbe."
+    notes: "Füllung dünn halten – lieber weniger als zu viel, sonst lässt sich der Teig nicht saubar rollen! Püree wirklich sehr dick einkochen. Die zweite Hälfte Püree ins Frosting gibt die perfekte rosa Farbe."
   },
   {
     id: 29,
@@ -1253,6 +1253,24 @@ function scaleAmt(amount, baseServings, currentServings) {
   if (r === 2.5) return "2½";
   return String(r);
 }
+const SHOPPING_KEY = "rezeptbuch_einkauf";
+const HISTORY_KEY = "rezeptbuch_einkauf_historie";
+
+// "400 g Tofu, ausgepresst" -> "tofu"  (zum Zählen der Häufigkeit)
+function normalizeItem(text) {
+  return text.replace(/^[\d.,/¼½¾\s]*(g|kg|ml|l|EL|TL|Prise|Bund|Stangen?|Packung|Handvoll|Zehen?|Spritzer|Dose)?\s*/i, "").split(",")[0].replace(/\(.*?\)/g, "").trim().toLowerCase();
+}
+
+// Zutaten die man normalerweise im Vorrat hat
+const PANTRY_WORDS = ["salz", "pfeffer", "öl", "olivenöl", "zucker", "paprikapulver", "knoblauchpulver", "zwiebelpulver", "kreuzkümmel", "oregano", "thymian", "chiliflocken", "cayenne", "muskat", "zimt", "hefeflocken", "backpulver", "vanilleextrakt", "sesam", "gewürz", "cajun", "sambal", "essig", "senf", "sojasoße", "sojasauce", "puderzucker", "speisestärke", "maisstärke", "hefe", "mehl", "wasser", "worcestershire", "curry", "petersilie, getrocknet", "chili", "kakao", "mohn"];
+function isPantry(name, unit) {
+  const n = name.toLowerCase();
+  if ((unit || "").toLowerCase() === "prise") return true;
+  return PANTRY_WORDS.some(w => n.includes(w));
+}
+function isHeading(ing) {
+  return ing.unit === "h";
+}
 const C = {
   bg: "#faf8f5",
   card: "#ffffff",
@@ -1293,12 +1311,83 @@ function App() {
     ingredients: "",
     steps: ""
   });
+  const [shopping, setShopping] = useState(() => {
+    try {
+      const saved = localStorage.getItem(SHOPPING_KEY);
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [newItem, setNewItem] = useState("");
+  const [justAdded, setJustAdded] = useState(0);
+  const [history, setHistory] = useState(() => {
+    try {
+      const saved = localStorage.getItem(HISTORY_KEY);
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
   const iv = useRef(null);
   useEffect(() => {
     try {
       localStorage.setItem(RECIPES_KEY, JSON.stringify(recipes));
     } catch {}
   }, [recipes]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(SHOPPING_KEY, JSON.stringify(shopping));
+    } catch {}
+  }, [shopping]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+    } catch {}
+  }, [history]);
+  useEffect(() => {
+    window.scrollTo(0, 0);
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+  }, [view, sel]);
+  const addToShopping = text => {
+    const t = text.trim();
+    if (!t) return;
+    setShopping(s => s.some(i => i.text.toLowerCase() === t.toLowerCase()) ? s : [...s, {
+      id: Date.now() + Math.random(),
+      text: t,
+      done: false
+    }]);
+    const key = normalizeItem(t);
+    if (key) setHistory(h => ({
+      ...h,
+      [key]: {
+        count: (h[key]?.count || 0) + 1,
+        label: h[key]?.label || key.charAt(0).toUpperCase() + key.slice(1)
+      }
+    }));
+  };
+  const toggleShopping = id => setShopping(s => s.map(i => i.id === id ? {
+    ...i,
+    done: !i.done
+  } : i));
+  const removeShopping = id => setShopping(s => s.filter(i => i.id !== id));
+  const clearDone = () => setShopping(s => s.filter(i => !i.done));
+
+  // Alle "echten" Zutaten eines Rezepts auf die Liste setzen
+  const addRecipeToShopping = (recipe, port) => {
+    let count = 0;
+    recipe.ingredients.forEach(ing => {
+      if (isHeading(ing) || isPantry(ing.name, ing.unit)) return;
+      const amt = scaleAmt(ing.amount, recipe.servings, port);
+      const label = (amt ? amt + (ing.unit ? " " + ing.unit : "") + " " : "") + ing.name;
+      addToShopping(label);
+      count++;
+    });
+    setJustAdded(count);
+    setTimeout(() => setJustAdded(0), 2200);
+  };
+  const openShopping = () => setView("shopping");
   useEffect(() => {
     if (tActive && tLeft > 0) {
       iv.current = setInterval(() => {
@@ -1839,41 +1928,140 @@ function App() {
       size: 18
     }), " Kochmodus starten"), h("div", {
       style: {
+        display: "flex",
+        alignItems: "center",
+        marginBottom: "0.7rem",
+        gap: "0.5rem"
+      }
+    }, h("div", {
+      style: {
         fontSize: 13,
         fontWeight: 600,
         color: C.muted,
-        marginBottom: "0.7rem",
-        letterSpacing: 0.3
+        letterSpacing: 0.3,
+        flex: 1
       }
-    }, "ZUTATEN"), h("div", {
+    }, "ZUTATEN"), h("button", {
+      onClick: () => addRecipeToShopping(sel, portionen),
+      style: btn({
+        padding: "0.35rem 0.7rem",
+        fontSize: 12,
+        fontWeight: 500,
+        color: C.accent,
+        borderColor: C.accentLine,
+        background: C.accentSoft
+      })
+    }, h(ShoppingCart, {
+      size: 13
+    }), " Alles auf Liste")), justAdded > 0 && h("div", {
       style: {
-        background: C.card,
-        border: "1px solid " + C.line,
-        borderRadius: 14,
-        padding: "0.3rem 1rem",
-        marginBottom: "1.6rem"
+        background: C.greenSoft,
+        border: "1px solid #cfe3bd",
+        color: C.green,
+        borderRadius: 10,
+        padding: "0.5rem 0.8rem",
+        fontSize: 12.5,
+        marginBottom: "0.6rem",
+        fontWeight: 500
       }
-    }, sel.ingredients.map((ing, i) => h("div", {
-      key: i,
-      style: {
-        display: "flex",
-        justifyContent: "space-between",
-        gap: "0.75rem",
-        padding: "0.6rem 0",
-        borderBottom: i < sel.ingredients.length - 1 ? "1px solid " + C.line : "none",
-        fontSize: 14
-      }
-    }, h("span", {
-      style: {
-        color: "#52493f"
-      }
-    }, ing.name), ing.amount !== "" && h("span", {
-      style: {
-        fontWeight: 600,
-        whiteSpace: "nowrap",
-        color: C.ink
-      }
-    }, scaleAmt(ing.amount, sel.servings, portionen), ing.unit ? " " + ing.unit : "")))), h("div", {
+    }, "✓ ", justAdded, " Zutaten zur Einkaufsliste hinzugefügt"), (() => {
+      // Aufteilen: Hauptzutaten (mit Überschriften) und Vorrat
+      const main = [];
+      const pantry = [];
+      sel.ingredients.forEach(ing => {
+        if (isHeading(ing)) {
+          main.push(ing);
+          return;
+        }
+        (isPantry(ing.name, ing.unit) ? pantry : main).push(ing);
+      });
+      // Leere Überschriften entfernen
+      const mainClean = main.filter((ing, i) => {
+        if (!isHeading(ing)) return true;
+        const nxt = main[i + 1];
+        return nxt && !isHeading(nxt);
+      });
+      const row = (ing, i, arr, muted) => {
+        const amt = scaleAmt(ing.amount, sel.servings, portionen);
+        const label = (amt ? amt + (ing.unit ? " " + ing.unit : "") + " " : "") + ing.name;
+        return h("div", {
+          key: i,
+          style: {
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "0.6rem",
+            padding: "0.55rem 0",
+            borderBottom: i < arr.length - 1 ? "1px solid " + C.line : "none",
+            fontSize: 14
+          }
+        }, h("span", {
+          style: {
+            color: muted ? C.muted : "#52493f",
+            flex: 1
+          }
+        }, ing.name), ing.amount !== "" && h("span", {
+          style: {
+            fontWeight: 600,
+            whiteSpace: "nowrap",
+            color: muted ? C.muted : C.ink
+          }
+        }, amt, ing.unit ? " " + ing.unit : ""), h("button", {
+          onClick: () => addToShopping(label),
+          style: {
+            width: 26,
+            height: 26,
+            borderRadius: 8,
+            border: "1px solid " + (muted ? C.line2 : C.accentLine),
+            background: muted ? C.bg : C.accentSoft,
+            color: muted ? C.muted : C.accent,
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+            padding: 0
+          },
+          "aria-label": "Zur Einkaufsliste"
+        }, h(Plus, {
+          size: 14
+        })));
+      };
+      return h(React.Fragment, null, h("div", {
+        style: {
+          background: C.card,
+          border: "1px solid " + C.line,
+          borderRadius: 14,
+          padding: "0.3rem 1rem",
+          marginBottom: pantry.length ? "0.7rem" : "1.6rem"
+        }
+      }, mainClean.map((ing, i) => isHeading(ing) ? h("div", {
+        key: i,
+        style: {
+          padding: "0.7rem 0 0.4rem",
+          fontSize: 11.5,
+          fontWeight: 600,
+          color: C.accent,
+          letterSpacing: 0.5
+        }
+      }, ing.name.replace(/—/g, "").trim()) : row(ing, i, mainClean, false))), pantry.length > 0 && h("div", {
+        style: {
+          background: C.bg,
+          border: "1px dashed " + C.line2,
+          borderRadius: 14,
+          padding: "0.3rem 1rem 0.5rem",
+          marginBottom: "1.6rem"
+        }
+      }, h("div", {
+        style: {
+          padding: "0.6rem 0 0.3rem",
+          fontSize: 11,
+          fontWeight: 600,
+          color: C.muted,
+          letterSpacing: 0.5
+        }
+      }, "VORRAT & GEWÜRZE"), pantry.map((ing, i) => row(ing, i, pantry, true))));
+    })(), h("div", {
       style: {
         fontSize: 13,
         fontWeight: 600,
@@ -1957,6 +2145,254 @@ function App() {
     }, h(Lightbulb, {
       size: 15
     }), " Tipps"), sel.notes)));
+  }
+  if (view === "shopping") {
+    const offen = shopping.filter(i => !i.done);
+    const erledigt = shopping.filter(i => i.done);
+    return h("div", {
+      style: wrap
+    }, h("div", {
+      style: topbar
+    }, h("button", {
+      onClick: () => setView("home"),
+      style: backBtn,
+      "aria-label": "Zurück"
+    }, h(ArrowLeft, {
+      size: 20
+    })), h("div", {
+      style: {
+        flex: 1
+      }
+    }, h("div", {
+      style: {
+        fontSize: 17,
+        fontWeight: 600
+      }
+    }, "Einkaufsliste"), h("div", {
+      style: {
+        fontSize: 12,
+        color: C.muted
+      }
+    }, offen.length, " offen", erledigt.length > 0 ? ` · ${erledigt.length} erledigt` : "")), erledigt.length > 0 && h("button", {
+      onClick: clearDone,
+      style: btn({
+        padding: "0.4rem 0.7rem",
+        fontSize: 12,
+        color: C.muted
+      })
+    }, "Erledigte weg")), h("div", {
+      style: {
+        padding: "0.9rem 1.1rem 0"
+      }
+    }, h("div", {
+      style: {
+        display: "flex",
+        gap: "0.5rem"
+      }
+    }, h("input", {
+      value: newItem,
+      onChange: e => setNewItem(e.target.value),
+      onKeyDown: e => {
+        if (e.key === "Enter") {
+          addToShopping(newItem);
+          setNewItem("");
+        }
+      },
+      placeholder: "Etwas hinzufügen...",
+      style: {
+        flex: 1,
+        padding: "0.65rem 0.8rem",
+        borderRadius: 10,
+        border: "1px solid " + C.line2,
+        background: C.card,
+        color: C.ink,
+        fontSize: 14,
+        fontFamily: "inherit",
+        boxSizing: "border-box"
+      }
+    }), h("button", {
+      onClick: () => {
+        addToShopping(newItem);
+        setNewItem("");
+      },
+      style: btn({
+        padding: "0 0.9rem",
+        fontWeight: 500,
+        background: C.accent,
+        color: "#fff",
+        borderColor: C.accent
+      })
+    }, h(Plus, {
+      size: 16
+    })))), (() => {
+      const onList = new Set(shopping.map(i => normalizeItem(i.text)));
+      const top = Object.entries(history).filter(([k, v]) => v.count >= 2 && !onList.has(k)).sort((a, b) => b[1].count - a[1].count).slice(0, 14);
+      if (top.length === 0) return null;
+      return h("div", {
+        style: {
+          padding: "1rem 1.1rem 0"
+        }
+      }, h("div", {
+        style: {
+          fontSize: 11,
+          fontWeight: 600,
+          color: C.muted,
+          letterSpacing: 0.5,
+          marginBottom: "0.5rem",
+          display: "flex",
+          alignItems: "center",
+          gap: "0.35rem"
+        }
+      }, h(History, {
+        size: 12
+      }), " HÄUFIG GEKAUFT"), h("div", {
+        style: {
+          display: "flex",
+          flexWrap: "wrap",
+          gap: "0.4rem"
+        }
+      }, top.map(([k, v]) => h("button", {
+        key: k,
+        onClick: () => addToShopping(v.label),
+        style: {
+          padding: "0.4rem 0.75rem",
+          borderRadius: 20,
+          border: "1px solid " + C.line2,
+          background: C.card,
+          color: C.ink,
+          fontSize: 13,
+          cursor: "pointer",
+          display: "flex",
+          alignItems: "center",
+          gap: "0.3rem",
+          fontFamily: "inherit"
+        }
+      }, h(Plus, {
+        size: 12,
+        color: C.accent
+      }), " ", v.label))));
+    })(), h("div", {
+      style: {
+        padding: "1rem 1.1rem 2rem",
+        display: "flex",
+        flexDirection: "column",
+        gap: "0.4rem"
+      }
+    }, shopping.length === 0 && h("div", {
+      style: {
+        textAlign: "center",
+        color: C.muted,
+        padding: "3rem 1rem",
+        fontSize: 14,
+        lineHeight: 1.6
+      }
+    }, "Deine Einkaufsliste ist leer 🛒", h("br", null), h("span", {
+      style: {
+        fontSize: 12.5
+      }
+    }, "Öffne ein Rezept und tippe auf „Alles auf Liste\" oder das + neben einer Zutat.")), offen.map(item => h("div", {
+      key: item.id,
+      onClick: () => toggleShopping(item.id),
+      style: {
+        background: C.card,
+        border: "1px solid " + C.line,
+        borderRadius: 12,
+        padding: "0.75rem 0.9rem",
+        display: "flex",
+        alignItems: "center",
+        gap: "0.7rem",
+        cursor: "pointer"
+      }
+    }, h("div", {
+      style: {
+        width: 20,
+        height: 20,
+        borderRadius: 6,
+        border: "2px solid " + C.line2,
+        flexShrink: 0
+      }
+    }), h("span", {
+      style: {
+        flex: 1,
+        fontSize: 14.5
+      }
+    }, item.text), h("button", {
+      onClick: e => {
+        e.stopPropagation();
+        removeShopping(item.id);
+      },
+      style: {
+        background: "none",
+        border: "none",
+        cursor: "pointer",
+        color: C.muted,
+        padding: 4,
+        display: "flex"
+      },
+      "aria-label": "Entfernen"
+    }, h(X, {
+      size: 15
+    })))), erledigt.length > 0 && h("div", {
+      style: {
+        fontSize: 11.5,
+        color: C.muted,
+        fontWeight: 600,
+        letterSpacing: 0.3,
+        marginTop: "0.8rem",
+        marginBottom: "0.1rem"
+      }
+    }, "ERLEDIGT"), erledigt.map(item => h("div", {
+      key: item.id,
+      onClick: () => toggleShopping(item.id),
+      style: {
+        background: C.bg,
+        border: "1px solid " + C.line,
+        borderRadius: 12,
+        padding: "0.75rem 0.9rem",
+        display: "flex",
+        alignItems: "center",
+        gap: "0.7rem",
+        cursor: "pointer",
+        opacity: 0.6
+      }
+    }, h("div", {
+      style: {
+        width: 20,
+        height: 20,
+        borderRadius: 6,
+        background: C.green,
+        color: "#fff",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        flexShrink: 0
+      }
+    }, h(Check, {
+      size: 13
+    })), h("span", {
+      style: {
+        flex: 1,
+        fontSize: 14.5,
+        textDecoration: "line-through",
+        color: C.muted
+      }
+    }, item.text), h("button", {
+      onClick: e => {
+        e.stopPropagation();
+        removeShopping(item.id);
+      },
+      style: {
+        background: "none",
+        border: "none",
+        cursor: "pointer",
+        color: C.muted,
+        padding: 4,
+        display: "flex"
+      },
+      "aria-label": "Entfernen"
+    }, h(X, {
+      size: 15
+    }))))));
   }
   if (view === "add") {
     const lbl = {
@@ -2172,6 +2608,34 @@ function App() {
       color: C.muted
     }
   }, recipes.length, " Rezepte gespeichert")), h("button", {
+    onClick: openShopping,
+    style: {
+      ...backBtn,
+      position: "relative",
+      marginRight: "0.5rem"
+    },
+    "aria-label": "Einkaufsliste"
+  }, h(ShoppingCart, {
+    size: 18
+  }), shopping.filter(i => !i.done).length > 0 && h("span", {
+    style: {
+      position: "absolute",
+      top: -4,
+      right: -4,
+      minWidth: 18,
+      height: 18,
+      padding: "0 4px",
+      borderRadius: 9,
+      background: C.accent,
+      color: "#fff",
+      fontSize: 10.5,
+      fontWeight: 600,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      boxSizing: "border-box"
+    }
+  }, shopping.filter(i => !i.done).length)), h("button", {
     onClick: () => setView("add"),
     style: btn({
       padding: "0.5rem 0.9rem",
