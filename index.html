@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="Rezeptbuch">
@@ -12,8 +12,9 @@
     html, body { height: 100%; background: #faf8f5; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
     #root { height: 100%; }
     input, textarea, button { font-family: inherit; outline: none; }
-    input { padding: 0.6rem 0.7rem; border-radius: 10px; border: 1px solid #ddd5cb; background: #fff; color: #2a2520; font-size: 14px; }
-    textarea { padding: 0.6rem 0.7rem; border-radius: 10px; border: 1px solid #ddd5cb; background: #fff; color: #2a2520; font-size: 14px; }
+    input, textarea, select { font-size: 16px !important; }
+    input { padding: 0.6rem 0.7rem; border-radius: 10px; border: 1px solid #ddd5cb; background: #fff; color: #2a2520; }
+    textarea { padding: 0.6rem 0.7rem; border-radius: 10px; border: 1px solid #ddd5cb; background: #fff; color: #2a2520; }
   </style>
 </head>
 <body>
@@ -22,7 +23,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script>
 const { createElement: h, useState, useEffect, useRef } = React;
-const RECIPES_KEY = "rezeptbuch_v28";
+const RECIPES_KEY = "rezeptbuch_v31";
 // Simple SVG icon components - no external dependency needed
 function Icon({ children, size = 20, color = "currentColor", style = {} }) {
   return h('svg', { width: size, height: size, viewBox: "0 0 24 24", fill: "none", stroke: color, strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round", style: { flexShrink: 0, ...style } }, children);
@@ -42,6 +43,7 @@ function Lightbulb({ size, color, style }) { return h(Icon, { size, color, style
 function Trash2({ size, color, style }) { return h(Icon, { size, color, style }, h('path', { d: "M3 6h18" }), h('path', { d: "M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" }), h('path', { d: "M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" }), h('line', { x1: "10", x2: "10", y1: "11", y2: "17" }), h('line', { x1: "14", x2: "14", y1: "11", y2: "17" })); }
 function ShoppingCart({ size, color, style }) { return h(Icon, { size, color, style }, h('circle', { cx: "8", cy: "21", r: "1" }), h('circle', { cx: "19", cy: "21", r: "1" }), h('path', { d: "M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12" })); }
 function History({ size, color, style }) { return h(Icon, { size, color, style }, h('path', { d: "M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" }), h('path', { d: "M3 3v5h5" }), h('path', { d: "M12 7v5l4 2" })); }
+function Share({ size, color, style }) { return h(Icon, { size, color, style }, h('path', { d: "M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" }), h('polyline', { points: "16 6 12 2 8 6" }), h('line', { x1: "12", x2: "12", y1: "2", y2: "15" })); }
 const defaultRecipes = [
   {
     id: 1,
@@ -1335,7 +1337,6 @@ function App() {
     }
   });
   const [newItem, setNewItem] = useState("");
-  const [justAdded, setJustAdded] = useState(0);
   const [history, setHistory] = useState(() => {
     try {
       const saved = localStorage.getItem(HISTORY_KEY);
@@ -1345,7 +1346,14 @@ function App() {
     }
   });
   const [editHistory, setEditHistory] = useState(false);
+  const [toast, setToast] = useState("");
+  const toastRef = useRef(null);
   const iv = useRef(null);
+  const showToast = msg => {
+    setToast(msg);
+    clearTimeout(toastRef.current);
+    toastRef.current = setTimeout(() => setToast(""), 1800);
+  };
   useEffect(() => {
     try {
       localStorage.setItem(RECIPES_KEY, JSON.stringify(recipes));
@@ -1366,13 +1374,14 @@ function App() {
     document.documentElement.scrollTop = 0;
     document.body.scrollTop = 0;
   }, [view, sel]);
-  const addToShopping = (rawName, amount = "") => {
+  const addToShopping = (rawName, amount = "", silent = false) => {
     const name = cleanName(rawName);
     if (!name) return;
+    let wasThere = false;
     setShopping(s => {
       const idx = s.findIndex(i => normalizeItem(i.name) === name.toLowerCase());
       if (idx >= 0) {
-        // schon drauf: Menge ergänzen falls neu
+        wasThere = true;
         if (amount && !s[idx].amount) {
           const copy = [...s];
           copy[idx] = {
@@ -1398,6 +1407,9 @@ function App() {
         label: h[key]?.label || name
       }
     }));
+    if (!silent) {
+      setTimeout(() => showToast(wasThere ? `${name} ist schon auf der Liste` : `${name} hinzugefügt`), 0);
+    }
   };
   const updateAmount = (id, amount) => setShopping(s => s.map(i => i.id === id ? {
     ...i,
@@ -1410,6 +1422,29 @@ function App() {
     delete c[key];
     return c;
   });
+  const shareShopping = async () => {
+    const offen = shopping.filter(i => !i.done);
+    if (offen.length === 0) {
+      showToast("Liste ist leer");
+      return;
+    }
+    const text = "🛒 Einkaufsliste\n\n" + offen.map(i => `• ${i.name}${i.amount ? " – " + i.amount : ""}`).join("\n");
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          text
+        });
+      } else {
+        await navigator.clipboard.writeText(text);
+        showToast("In Zwischenablage kopiert");
+      }
+    } catch (e) {
+      try {
+        await navigator.clipboard.writeText(text);
+        showToast("In Zwischenablage kopiert");
+      } catch {}
+    }
+  };
   const toggleShopping = id => setShopping(s => s.map(i => i.id === id ? {
     ...i,
     done: !i.done
@@ -1423,11 +1458,10 @@ function App() {
     recipe.ingredients.forEach(ing => {
       if (isHeading(ing) || isPantry(ing.name, ing.unit)) return;
       const amt = scaleAmt(ing.amount, recipe.servings, port);
-      addToShopping(ing.name, amt ? amt + (ing.unit ? " " + ing.unit : "") : "");
+      addToShopping(ing.name, amt ? amt + (ing.unit ? " " + ing.unit : "") : "", true);
       count++;
     });
-    setJustAdded(count);
-    setTimeout(() => setJustAdded(0), 2200);
+    showToast(`${count} Zutaten auf die Einkaufsliste`);
   };
   const openShopping = () => setView("shopping");
   useEffect(() => {
@@ -1579,6 +1613,28 @@ function App() {
     flexShrink: 0,
     lineHeight: 1
   });
+  const Toast = () => toast ? h("div", {
+    style: {
+      position: "fixed",
+      bottom: 24,
+      left: "50%",
+      transform: "translateX(-50%)",
+      background: "#2a2520",
+      color: "#fff",
+      padding: "0.7rem 1.1rem",
+      borderRadius: 24,
+      fontSize: 14,
+      fontWeight: 500,
+      boxShadow: "0 6px 20px rgba(0,0,0,0.25)",
+      zIndex: 100,
+      display: "flex",
+      alignItems: "center",
+      gap: "0.5rem",
+      maxWidth: "90vw"
+    }
+  }, h(ShoppingCart, {
+    size: 15
+  }), " ", toast) : null;
   if (view === "cook" && sel) {
     const st = sel.steps[step];
     const pct = (step + 1) / sel.steps.length * 100;
@@ -1826,7 +1882,7 @@ function App() {
       }
     }, h(Clock, {
       size: 12
-    }), " ", fmtTime(x.timer)))))));
+    }), " ", fmtTime(x.timer)))))), h(Toast, null));
   }
   if (view === "detail" && sel) {
     return h("div", {
@@ -1995,18 +2051,7 @@ function App() {
       })
     }, h(ShoppingCart, {
       size: 13
-    }), " Alles auf Liste")), justAdded > 0 && h("div", {
-      style: {
-        background: C.greenSoft,
-        border: "1px solid #cfe3bd",
-        color: C.green,
-        borderRadius: 10,
-        padding: "0.5rem 0.8rem",
-        fontSize: 12.5,
-        marginBottom: "0.6rem",
-        fontWeight: 500
-      }
-    }, "✓ ", justAdded, " Zutaten zur Einkaufsliste hinzugefügt"), (() => {
+    }), " Alles auf Liste")), (() => {
       // Aufteilen: Hauptzutaten (mit Überschriften) und Vorrat
       const main = [];
       const pantry = [];
@@ -2186,7 +2231,7 @@ function App() {
       }
     }, h(Lightbulb, {
       size: 15
-    }), " Tipps"), sel.notes)));
+    }), " Tipps"), sel.notes)), h(Toast, null));
   }
   if (view === "shopping") {
     const offen = shopping.filter(i => !i.done);
@@ -2222,7 +2267,18 @@ function App() {
         fontSize: 12,
         color: C.muted
       })
-    }, "Erledigte weg")), h("div", {
+    }, "Erledigte weg"), h("button", {
+      onClick: shareShopping,
+      style: {
+        ...backBtn,
+        background: C.accentSoft,
+        color: C.accent,
+        border: "1px solid " + C.accentLine
+      },
+      "aria-label": "Teilen"
+    }, h(Share, {
+      size: 17
+    }))), h("div", {
       style: {
         padding: "0.9rem 1.1rem 0"
       }
@@ -2387,14 +2443,13 @@ function App() {
       onChange: e => updateAmount(item.id, e.target.value),
       placeholder: "Menge",
       style: {
-        width: 72,
+        width: 88,
         textAlign: "right",
         padding: "0.25rem 0.4rem",
         borderRadius: 7,
         border: "1px solid transparent",
         background: "transparent",
         color: C.ink,
-        fontSize: 13.5,
         fontWeight: 600,
         fontFamily: "inherit",
         boxSizing: "border-box"
@@ -2486,7 +2541,7 @@ function App() {
       "aria-label": "Entfernen"
     }, h(X, {
       size: 15
-    }))))));
+    }))))), h(Toast, null));
   }
   if (view === "add") {
     const lbl = {
@@ -2669,7 +2724,7 @@ function App() {
         color: "#fff",
         borderColor: C.accent
       })
-    }, "Rezept speichern")));
+    }, "Rezept speichern")), h(Toast, null));
   }
   return h("div", {
     style: wrap
@@ -2845,7 +2900,7 @@ function App() {
     "aria-label": "Kochmodus starten"
   }, h(Play, {
     size: 17
-  }))))));
+  })))), h(Toast, null)));
 }
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(h(App, null));
