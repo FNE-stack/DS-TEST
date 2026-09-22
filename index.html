@@ -23,7 +23,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script>
 const { createElement: h, useState, useEffect, useRef } = React;
-const RECIPES_KEY = "rezeptbuch_v31";
+const RECIPES_KEY = "rezeptbuch_v32";
 // Simple SVG icon components - no external dependency needed
 function Icon({ children, size = 20, color = "currentColor", style = {} }) {
   return h('svg', { width: size, height: size, viewBox: "0 0 24 24", fill: "none", stroke: color, strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round", style: { flexShrink: 0, ...style } }, children);
@@ -1223,6 +1223,53 @@ const defaultRecipes = [
       { title: "Anrichten", desc: "Die knusprigen Kartoffeln auf zwei Bowls verteilen. Den Joghurt daraufgeben, anschließend die Hackmischung darüber verteilen und mit fein geschnittenen Lauchzwiebeln garnieren. Guten Appetit! 🥔", timer: null },
     ],
     notes: "Extra-Knusper-Tipp: Die Kartoffeln vorher 5 Minuten zusammen mit einer Tüte Backpulver vorkochen – macht sie außen deutlich knuspriger! Schälen ist optional, mit Schale wird's rustikaler und knuspriger."
+  },
+  {
+    id: 34,
+    emoji: "🌰",
+    title: "Nusszopf",
+    desc: "Saftiger Hefezopf mit üppiger Haselnussfüllung, aprikotiert und mit Zuckerguss",
+    servings: 9,
+    tags: ["backen", "süß", "hefeteig"],
+    ingredients: [
+      { amount: 1, unit: "h", name: "—— TEIG (Brioche) ——" },
+      { amount: 250, unit: "ml", name: "Vollmilch, lauwarm (38°C)" },
+      { amount: 50, unit: "ml", name: "Sahne (oder 50g Crème fraîche)" },
+      { amount: 75, unit: "g", name: "Zucker" },
+      { amount: 7, unit: "g", name: "Trockenhefe" },
+      { amount: 3, unit: "g", name: "Salz" },
+      { amount: 165, unit: "g", name: "Weizenmehl Type 550" },
+      { amount: 385, unit: "g", name: "Weizenmehl Type 405" },
+      { amount: 70, unit: "g", name: "Butter, weich" },
+      { amount: 1, unit: "h", name: "—— NUSSFÜLLUNG ——" },
+      { amount: 400, unit: "g", name: "Gemahlene Haselnüsse" },
+      { amount: 225, unit: "ml", name: "Milch" },
+      { amount: 135, unit: "g", name: "Zucker" },
+      { amount: 1.5, unit: "TL", name: "Zimt" },
+      { amount: 2, unit: "EL", name: "Rum (optional)" },
+      { amount: 1, unit: "h", name: "—— FINISH ——" },
+      { amount: 1, unit: "", name: "Eigelb + 1 EL Milch (zum Bestreichen)" },
+      { amount: 3, unit: "EL", name: "Aprikosenmarmelade (zum Aprikotieren)" },
+      { amount: 150, unit: "g", name: "Puderzucker" },
+      { amount: 3, unit: "EL", name: "Rum oder Zitronensaft (für Zuckerguss)" },
+    ],
+    steps: [
+      { title: "Teig ankneten – 6 Min.", desc: "Milch, Sahne, Zucker und Hefe mischen. Beide Mehle und Salz dazugeben. 3 Min. auf niedriger, dann 3 Min. auf mittlerer Stufe kneten.", timer: 360 },
+      { title: "Butter einkneten – 10 bis 12 Min.", desc: "Butter stückchenweise auf niedriger Stufe einarbeiten und 10–12 Min. kneten bis der Teig glatt und elastisch ist.", timer: 660 },
+      { title: "Erste Ruhe – 75 bis 90 Min.", desc: "Teig in geölte Schüssel, locker abdecken und an warmem Ort (25–28°C) gehen lassen bis er sich fast verdoppelt hat.", timer: 5400 },
+      { title: "Nüsse rösten (optional) – 5 bis 8 Min.", desc: "Gemahlene Haselnüsse in einer Pfanne ohne Fett bei mittlerer Hitze unter Rühren rösten, bis sie duften. Nicht verbrennen lassen! Gibt deutlich mehr Aroma.", timer: 420 },
+      { title: "Nussfüllung kochen", desc: "Milch mit Zucker und Zimt aufkochen. Die Haselnüsse in die kochende Milch geben und rühren, bis die komplette Flüssigkeit gebunden ist – die Masse soll glänzend und streichfähig sein, nicht krümelig. Bei Bedarf noch etwas warme Milch unterrühren. Rum einrühren. In eine Schüssel umfüllen und komplett auf Raumtemperatur abkühlen lassen.", timer: null },
+      { title: "Ausrollen & füllen", desc: "Teig auf ca. 40×50 cm ausrollen. Die abgekühlte Nussfüllung gleichmäßig und dünn verstreichen, dabei 1–2 cm Rand frei lassen.", timer: null },
+      { title: "Aufrollen", desc: "Von der langen Seite her straff aufrollen wie eine Roulade. Naht gut zudrücken.", timer: null },
+      { title: "Kurz ins Tiefkühlfach – 5 bis 10 Min.", desc: "Macht das saubere Durchschneiden bei der üppigen Füllung deutlich leichter.", timer: 600 },
+      { title: "Schneiden & verzwirbeln", desc: "Oben ca. 2 cm am Ende unversehrt lassen. Die erste Hälfte der Rolle der Länge nach durchschneiden und verzwirbeln (Schnittflächen bleiben oben), dann die zweite Hälfte schneiden und weiterzwirbeln. Ende gut zusammendrücken.", timer: null },
+      { title: "Formen", desc: "Zum Kranz legen (Enden überlappen und zusammendrücken) oder den Strang halbieren für 2 kleinere Zöpfe. Auf ein mit Backpapier belegtes Blech legen.", timer: null },
+      { title: "Zweite Ruhe – 30 bis 45 Min.", desc: "Abgedeckt gehen lassen. Ofen auf 180°C Ober-/Unterhitze (170°C Umluft) vorheizen.", timer: 2400 },
+      { title: "Backen – 25 bis 35 Min.", desc: "Mit Eigelb-Milch bestreichen und goldbraun backen. Wird die Oberfläche zu dunkel, mit Alufolie abdecken.", timer: 1800 },
+      { title: "Aprikotieren", desc: "Aprikosenmarmelade kurz erhitzen und den noch warmen Zopf damit bestreichen – gibt schönen Glanz.", timer: null },
+      { title: "Zuckerguss", desc: "Puderzucker mit Rum oder Zitronensaft löffelweise glattrühren bis er zähflüssig vom Löffel läuft. Erst auf den komplett abgekühlten Zopf streichen. 🌰", timer: null },
+    ],
+    notes: "Bei freiform (ohne Kastenform) läuft der Zopf beim Backen etwas breiter auseinander – Kranz eng legen, dann bleibt er schön hoch. Übernachtgare möglich: Hefe halbieren, geformten Zopf über Nacht in den Kühlschrank, morgens 30 Min. akklimatisieren, dann backen. Walnüsse oder ein Mix mit Mandeln funktionieren genauso gut."
   },
 ];
 function fmtTime(s) {
