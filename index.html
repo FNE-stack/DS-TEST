@@ -23,7 +23,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script>
 const { createElement: h, useState, useEffect, useRef } = React;
-const RECIPES_KEY = "rezeptbuch_v32";
+const RECIPES_KEY = "rezeptbuch_v37";
 // Simple SVG icon components - no external dependency needed
 function Icon({ children, size = 20, color = "currentColor", style = {} }) {
   return h('svg', { width: size, height: size, viewBox: "0 0 24 24", fill: "none", stroke: color, strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round", style: { flexShrink: 0, ...style } }, children);
@@ -415,49 +415,65 @@ const defaultRecipes = [
   },
   {
     id: 12,
-    emoji: "🧄🫓",
-    title: "Gefüllte Fladenbrote mit Chipotle Tofu",
-    desc: "Hausgemachte Fladen mit knusprigem Tofu & Joghurtsauce",
+    emoji: "🫓",
+    title: "Gefüllte Fladenbrote mit knusprigem Tofu",
+    desc: "Schnelles Fladenbrot, knuspriger Tofu, frischer Salat und scharfe Joghurtsauce",
     servings: 4,
-    tags: ["backen", "tofu", "vegan"],
+    tags: ["backen", "tofu", "vegetarisch"],
     ingredients: [
-      { amount: 500, unit: "g", name: "Weizenmehl (Type 00 oder 405)" },
-      { amount: 200, unit: "g", name: "Milch, lauwarm" },
-      { amount: 120, unit: "g", name: "Wasser, lauwarm" },
-      { amount: 15, unit: "g", name: "Frische Hefe" },
-      { amount: 7, unit: "g", name: "Zucker" },
-      { amount: 15, unit: "g", name: "Salz" },
-      { amount: 400, unit: "g", name: "Extra fester Tofu, in dünne Streifen" },
+      { amount: 1, unit: "h", name: "—— FLADENBROT-TEIG ——" },
+      { amount: 335, unit: "ml", name: "Warmes Wasser" },
+      { amount: 5, unit: "g", name: "Trockenhefe" },
+      { amount: 1.33, unit: "TL", name: "Zucker" },
+      { amount: 400, unit: "g", name: "Pizzamehl Type 00 (ca.)" },
+      { amount: 1.33, unit: "TL", name: "Salz" },
+      { amount: 2, unit: "EL", name: "Öl (Sonnenblumen- oder Olivenöl)" },
+      { amount: 1, unit: "h", name: "—— ZUM BESTREICHEN ——" },
+      { amount: 1, unit: "", name: "Eigelb" },
+      { amount: 2, unit: "EL", name: "Joghurt" },
+      { amount: 1, unit: "Prise", name: "Sesam" },
+      { amount: 1, unit: "h", name: "—— KNUSPRIGER TOFU ——" },
+      { amount: 400, unit: "g", name: "Extra fester Tofu" },
+      { amount: 2, unit: "EL", name: "Sojasoße" },
+      { amount: 1.5, unit: "EL", name: "Ahornsirup oder Honig" },
+      { amount: 1, unit: "EL", name: "Olivenöl" },
       { amount: 1.25, unit: "TL", name: "Knoblauchpulver" },
       { amount: 1.25, unit: "TL", name: "Zwiebelpulver" },
       { amount: 2, unit: "TL", name: "Geräuchertes Paprikapulver" },
       { amount: 2.5, unit: "TL", name: "Getrocknete Petersilie" },
       { amount: 1.25, unit: "TL", name: "Kreuzkümmel" },
-      { amount: 2, unit: "EL", name: "Sojasoße" },
-      { amount: 1.5, unit: "EL", name: "Ahornsirup oder Honig" },
-      { amount: 1, unit: "EL", name: "Olivenöl (Tofu)" },
+      { amount: 1, unit: "Prise", name: "Salz & Pfeffer" },
       { amount: 1, unit: "EL", name: "Speisestärke" },
-      { amount: 1, unit: "", name: "Kleine rote Zwiebel, fein geschnitten" },
-      { amount: 1, unit: "", name: "Bund Petersilie" },
-      { amount: 1, unit: "", name: "Gurke, fein geschnitten" },
-      { amount: 1, unit: "", name: "Große Tomate, fein geschnitten" },
-      { amount: 1, unit: "", name: "Kleine Zitrone, Saft" },
+      { amount: 1, unit: "h", name: "—— SALAT ——" },
+      { amount: 1, unit: "", name: "Kleine rote Zwiebel" },
+      { amount: 1, unit: "Bund", name: "Petersilie" },
+      { amount: 1, unit: "", name: "Gurke" },
+      { amount: 1, unit: "", name: "Große Tomate" },
+      { amount: 1, unit: "", name: "Kleine Zitrone" },
+      { amount: 1, unit: "TL", name: "Olivenöl" },
+      { amount: 1, unit: "Prise", name: "Salz" },
+      { amount: 1, unit: "h", name: "—— SCHARFE JOGHURTSAUCE ——" },
       { amount: 200, unit: "g", name: "Naturjoghurt" },
       { amount: 1.5, unit: "TL", name: "Sambal Oelek" },
-      { amount: 1, unit: "", name: "Knoblauchzehe (Sauce)" },
-      { amount: 0.5, unit: "", name: "Zitrone, Saft (Sauce)" },
+      { amount: 1, unit: "", name: "Knoblauchzehe (oder ½ TL Knoblauchpulver)" },
+      { amount: 0.5, unit: "", name: "Zitrone" },
+      { amount: 1, unit: "Prise", name: "Salz" },
+      { amount: 1, unit: "TL", name: "Olivenöl (optional)" },
     ],
     steps: [
-      { title: "Sauce zubereiten", desc: "Joghurt, Sambal Oelek, Knoblauch, Zitronensaft und Salz verrühren. Im Kühlschrank ziehen lassen.", timer: null },
-      { title: "Teig kneten & ruhen – 60 Min.", desc: "Alle Teigzutaten 10–12 Min. kneten bis schön geschmeidig. Dehnen & falten, rund schleifen, locker abdecken und 60 Min. gehen lassen.", timer: 3600 },
-      { title: "Tofu marinieren", desc: "Tofu in dünne Streifen schneiden. Mit allen Gewürzen, Sojasoße, Ahornsirup und Öl vermengen. Speisestärke drüber, vorsichtig untermischen.", timer: null },
-      { title: "Tofu im Airfryer – 10 bis 14 Min.", desc: "Airfryer auf 190°C. Tofu hineingeben, nach der Hälfte einmal schütteln. Bis knusprig backen.", timer: 720 },
-      { title: "Teig teilen & entspannen – 15 Min.", desc: "Teig entgasen, in 4 Stücke teilen, rund schleifen, abdecken und 15 Min. entspannen.", timer: 900 },
-      { title: "Salat zubereiten", desc: "Zwiebel, Petersilie, Gurke und Tomate fein schneiden. Mit Zitronensaft, Olivenöl und Salz vermengen.", timer: null },
-      { title: "Fladen backen – 16 bis 20 Min.", desc: "Ofen auf 250°C. Tasse Wasser auf den Ofenboden. Fladen mit Eigelb-Joghurt-Mischung bestreichen, Mulden eindrücken, Sesam drüber. 16–20 Min. backen.", timer: 1080 },
-      { title: "Füllen & servieren", desc: "Fladen aufschneiden, Sauce rein, Salat drauf, Tofu drüber, nochmal Sauce. Guten Appetit! 🫓🔥", timer: null },
+      { title: "Hefemischung – 5 Min.", desc: "Warmes Wasser mit Trockenhefe und Zucker verrühren und ca. 5 Minuten stehen lassen, bis die Mischung leicht schäumt.", timer: 300 },
+      { title: "Teig kneten", desc: "Mehl nach und nach einrühren bzw. einkneten, dann das Salz dazugeben. Zu einem glatten, geschmeidigen Teig kneten (Hände oder Küchenmaschine). Zum Schluss das Öl einkneten. Der Teig ist recht weich – nur so viel Mehl nachgeben, bis er nicht mehr an den Händen klebt.", timer: null },
+      { title: "Erste Gehzeit – 1 Std.", desc: "Teig abdecken und an einem warmen Ort ca. 1 Stunde gehen lassen, bis er sich sichtbar vergrößert hat. In der Zeit die nächsten Schritte vorbereiten.", timer: 3600 },
+      { title: "Joghurtsauce", desc: "Joghurt mit Sambal Oelek, fein geriebenem Knoblauch, dem Saft der halben Zitrone, Salz und optional Olivenöl verrühren. Kalt stellen.", timer: null },
+      { title: "Tofu marinieren", desc: "Tofu mit Sparschäler oder Messer in sehr dünne Streifen schneiden. Mit Sojasoße, Ahornsirup, Olivenöl, Knoblauch- und Zwiebelpulver, Paprika, Petersilie, Kreuzkümmel, Salz und Pfeffer mischen. Speisestärke darüberstreuen und vorsichtig untermischen.", timer: null },
+      { title: "Salat", desc: "Rote Zwiebel, Petersilie, Gurke und Tomate fein schneiden. Mit dem Saft der Zitrone, Olivenöl und Salz mischen.", timer: null },
+      { title: "Portionieren – 30 Min.", desc: "Gegangenen Teig in 4 gleich große Stücke teilen, rund formen und abgedeckt ca. 30 Minuten ruhen lassen.", timer: 1800 },
+      { title: "Tofu im Airfryer – 10 bis 14 Min.", desc: "Während der zweiten Gehzeit: Tofu bei 190 °C knusprig backen, nach der Hälfte einmal schütteln.", timer: 720 },
+      { title: "Fladen formen & bestreichen", desc: "Ofen auf 250 °C Ober-/Unterhitze vorheizen. Eigelb mit Joghurt verrühren. Teiglinge flach drücken, mit den Fingern rundherum einen Rand und in der Mitte ein Gittermuster eindrücken. Mit der Eigelb-Joghurt-Mischung bestreichen und mit Sesam bestreuen.", timer: null },
+      { title: "Backen – 20 bis 25 Min.", desc: "Auf mittlerer Schiene ca. 20–25 Minuten backen, bis die Fladen goldbraun sind.", timer: 1350 },
+      { title: "Füllen & servieren", desc: "Fladen aufschneiden und füllen: Sauce, Salat, Tofu, nochmal Sauce. 🫓", timer: null },
     ],
-    notes: "Timing: Teig und Tofu parallel vorbereiten. Je länger der Tofu mariniert, desto besser!"
+    notes: "Teig nach @Nicol & Giannina (TikTok), von 6 auf 4 Fladen umgerechnet. Zweite Gehzeit war im Original abgeschnitten – 30 Min. ist ein Referenzwert. Kein Airfryer: Tofu bei 200 °C Umluft auf dem Rost 20–25 Min. backen, nach der Hälfte wenden. Fladen vom Vortag kurz unter Wasser halten und bei 180 °C 5–8 Min. aufbacken."
   },
   {
     id: 13,
@@ -1271,6 +1287,84 @@ const defaultRecipes = [
     ],
     notes: "Bei freiform (ohne Kastenform) läuft der Zopf beim Backen etwas breiter auseinander – Kranz eng legen, dann bleibt er schön hoch. Übernachtgare möglich: Hefe halbieren, geformten Zopf über Nacht in den Kühlschrank, morgens 30 Min. akklimatisieren, dann backen. Walnüsse oder ein Mix mit Mandeln funktionieren genauso gut."
   },
+  {
+    id: 35,
+    emoji: "🥨",
+    title: "Marzipanzopf",
+    desc: "Geflochtener Brioche-Zopf mit saftiger Marzipan-Haselnuss-Füllung (½ Teigmenge = 1 Zopf)",
+    servings: 8,
+    tags: ["backen", "süß", "hefeteig", "übernacht"],
+    ingredients: [
+      { amount: 1, unit: "h", name: "—— TEIG (½ BRIOCHE) ——" },
+      { amount: 125, unit: "ml", name: "Vollmilch, lauwarm" },
+      { amount: 25, unit: "ml", name: "Sahne" },
+      { amount: 38, unit: "g", name: "Zucker" },
+      { amount: 3.5, unit: "g", name: "Trockenhefe (oder 10 g frische Hefe)" },
+      { amount: 1.5, unit: "g", name: "Salz" },
+      { amount: 83, unit: "g", name: "Weizenmehl Type 550" },
+      { amount: 193, unit: "g", name: "Weizenmehl Type 405" },
+      { amount: 35, unit: "g", name: "Butter, weich" },
+      { amount: 1, unit: "h", name: "—— MARZIPANFÜLLUNG ——" },
+      { amount: 200, unit: "g", name: "Marzipanrohmasse" },
+      { amount: 100, unit: "g", name: "Gemahlene Haselnüsse (oder Mandeln)" },
+      { amount: 1, unit: "", name: "Eiweiß (evtl. 2)" },
+      { amount: 2, unit: "EL", name: "Zucker" },
+      { amount: 2, unit: "EL", name: "Sahne oder Milch" },
+      { amount: 1, unit: "TL", name: "Vanilleextrakt" },
+      { amount: 25, unit: "g", name: "Butter, weich (zum Bestreichen)" },
+      { amount: 1, unit: "h", name: "—— FINISH ——" },
+      { amount: 1, unit: "", name: "Eigelb" },
+      { amount: 1, unit: "EL", name: "Milch" },
+      { amount: 2, unit: "EL", name: "Aprikosenmarmelade (optional)" },
+      { amount: 1, unit: "EL", name: "Puderzucker (optional)" },
+    ],
+    steps: [
+      { title: "Teig ankneten – 6 Min.", desc: "125 ml Milch, 25 ml Sahne, 38 g Zucker und die Hefe mischen. Beide Mehle (83 g + 193 g) und 1,5 g Salz dazugeben. 3 Min. auf niedriger, dann 3 Min. auf mittlerer Stufe kneten.", timer: 360 },
+      { title: "Butter einkneten – 10 bis 12 Min.", desc: "35 g weiche Butter stückchenweise auf niedriger Stufe einarbeiten und kneten, bis der Teig glatt und elastisch ist.", timer: 660 },
+      { title: "Gehen lassen – 75 bis 90 Min.", desc: "Teig in eine geölte Schüssel, locker abdecken und warm gehen lassen, bis er sich fast verdoppelt hat. Übernacht-Variante: halbe Hefe, 30 Min. bei Raumtemperatur, dann luftdicht 8–14 Std. in den Kühlschrank, morgens 20–30 Min. akklimatisieren.", timer: 5400 },
+      { title: "Marzipanfüllung rühren", desc: "200 g Marzipan in kleine Stücke zupfen. Mit 1 Eiweiß, 2 EL Zucker, 2 EL Sahne und 1 TL Vanille glatt rühren, dann 100 g Haselnüsse unterrühren. Soll streichfähig wie dicke Nutella sein: zu fest → 2. Eiweiß oder etwas mehr Sahne, zu weich → 1–2 EL Nüsse.", timer: null },
+      { title: "Ausrollen & füllen", desc: "Teig auf ca. 40 × 30 cm ausrollen. 25 g weiche Butter dünn verstreichen, dann die Marzipanfüllung verteilen, 1–2 cm Rand frei lassen.", timer: null },
+      { title: "Aufrollen & kühlen – 5 bis 10 Min.", desc: "Von der 40-cm-Seite straff aufrollen, Naht zudrücken. 5–10 Minuten ins Tiefkühlfach, dann schneidet's sauberer.", timer: 600 },
+      { title: "Schneiden & flechten", desc: "Oben ca. 2 cm ungeschnitten lassen, die Rolle der Länge nach in 3 Stränge schneiden. Locker flechten, Schnittflächen bleiben oben. Enden zusammendrücken und unterklappen. Direkt auf ein Blech mit Backpapier.", timer: null },
+      { title: "Stückgare – 30 bis 60 Min.", desc: "Abgedeckt gehen lassen, bis der Zopf sichtbar aufgegangen ist. Ab 30 Min. checken. Ofen auf 180 °C Ober-/Unterhitze vorheizen.", timer: 2400 },
+      { title: "Backen – 25 bis 30 Min.", desc: "1 Eigelb mit 1 EL Milch verquirlen, Teigflächen bestreichen. 25–30 Min. goldbraun backen, ab 20 Min. reinschauen, ggf. Alufolie drüber.", timer: 1650 },
+      { title: "Finish", desc: "Noch warm mit 2 EL erhitzter Aprikosenmarmelade bestreichen ODER komplett abkühlen lassen und mit Puderzucker bestäuben. 🥨", timer: null },
+    ],
+    notes: "Ganze Teigmenge = 2 Zöpfe: zweiten Zopf mit anderer Füllung (z.B. Nuss, Apfel-Zimt). Haselnüsse statt Mandeln machen die Füllung nussiger – für mehr Marzipan-Fokus Nüsse nicht rösten. Alkoholfrei: Vanillezucker statt Vanilleextrakt."
+  },
+  {
+    id: 36,
+    emoji: "🎃",
+    title: "Hokkaido-Kürbissuppe mit Kokosmilch",
+    desc: "Cremige Kürbissuppe mit gerösteten Kernen und einem Klecks Crème fraîche",
+    servings: 4,
+    tags: ["vegetarisch", "suppe", "herbst", "schnell"],
+    ingredients: [
+      { amount: 1, unit: "h", name: "—— SUPPE ——" },
+      { amount: 800, unit: "g", name: "Hokkaido-Kürbis (1 mittelgroßer)" },
+      { amount: 1, unit: "", name: "Zwiebel" },
+      { amount: 2, unit: "", name: "Knoblauchzehen" },
+      { amount: 1, unit: "", name: "Ingwer, daumengroß (optional)" },
+      { amount: 2, unit: "EL", name: "Olivenöl" },
+      { amount: 700, unit: "ml", name: "Gemüsebrühe" },
+      { amount: 200, unit: "ml", name: "Kokosmilch" },
+      { amount: 1, unit: "Prise", name: "Salz & Pfeffer" },
+      { amount: 1, unit: "Prise", name: "Muskatnuss" },
+      { amount: 1, unit: "h", name: "—— TOPPING ——" },
+      { amount: 2, unit: "EL", name: "Kürbiskerne" },
+      { amount: 4, unit: "EL", name: "Crème fraîche" },
+      { amount: 1, unit: "Handvoll", name: "Petersilie (optional)" },
+    ],
+    steps: [
+      { title: "Vorbereiten", desc: "800 g Hokkaido waschen, entkernen und mit Schale in Stücke schneiden. 1 Zwiebel grob hacken, 2 Knoblauchzehen hacken, optional Ingwer fein reiben.", timer: null },
+      { title: "Kürbiskerne rösten", desc: "2 EL Kürbiskerne in einer Pfanne ohne Fett rösten, bis sie duften. Beiseitestellen.", timer: null },
+      { title: "Anbraten", desc: "2 EL Olivenöl im großen Topf erhitzen. Zwiebel, Knoblauch (und Ingwer) glasig dünsten. Kürbisstücke dazu und kurz mitbraten, damit sie leichte Röstaromen bekommen.", timer: null },
+      { title: "Köcheln – 15 bis 20 Min.", desc: "700 ml Gemüsebrühe angießen, aufkochen und bei mittlerer Hitze köcheln lassen, bis der Kürbis weich ist.", timer: 1200 },
+      { title: "Pürieren & abschmecken", desc: "Mit dem Stabmixer fein pürieren. 200 ml Kokosmilch einrühren, mit Salz, Pfeffer und 1 Prise Muskatnuss abschmecken und kurz aufkochen. Zu dick → etwas Brühe nachgießen.", timer: null },
+      { title: "Servieren", desc: "Suppe in Schüsseln verteilen, je 1 EL Crème fraîche in die Mitte geben, mit gerösteten Kürbiskernen und optional Petersilie bestreuen. 🎃", timer: null },
+    ],
+    notes: "Hokkaido muss nicht geschält werden. Für mehr Kick: 1 TL Currypulver mit dem Kürbis anschwitzen oder zum Schluss etwas Chili. Für vegan: Crème fraîche durch einen Schuss Kokosmilch ersetzen."
+  },
 ];
 function fmtTime(s) {
   if (!s) return null;
@@ -1334,6 +1428,71 @@ function isPantry(name, unit) {
 }
 function isHeading(ing) {
   return ing.unit === "h";
+}
+
+// Ordnet jeder Zutat den ersten Schritt zu, in dem sie erwähnt wird.
+// Gleichnamige Zutaten (z.B. Zucker im Teig + in der Füllung) werden der Reihe nach verteilt.
+const STOP_WORDS = new Set(["frisch", "frische", "frischer", "gehackt", "gerieben", "geriebener", "gemahlen", "gemahlene", "gewürfelt", "weich", "fein", "grob", "klein", "kleine", "kleiner", "große", "großer", "groß", "mittelgroße", "type", "oder", "optional", "lauwarm", "warm", "warmes", "kalt", "kaltes", "extra", "fester", "zum", "bestreichen", "braten", "anbraten", "abgetropft", "geschnitten", "scheiben", "stücke", "streifen", "ringe", "würfel", "dose", "glas", "packung", "handvoll", "prise", "getrocknete", "getrockneter", "geräuchertes", "edelsüß", "naturjoghurt-ersatz", "nach", "geschmack", "bedarf", "selbst", "gemacht", "fertig", "oder", "sowie", "stange", "stangen", "zehe", "zehen", "bund", "stiele"]);
+function ingTokens(name) {
+  return cleanName(name).toLowerCase().replace(/[^a-zäöüß\s-]/g, " ").split(/[\s-]+/).filter(w => w.length >= 3 && !STOP_WORDS.has(w));
+}
+function stepWords(text) {
+  return text.toLowerCase().replace(/[^a-zäöüß\s-]/g, " ").split(/[\s-]+/).filter(w => w.length >= 3).map(w => w.replace(/(en|n|e|s)$/, "")).filter(w => w.length >= 3);
+}
+function mentions(tokens, words, text) {
+  return tokens.some(t => text.includes(t) || words.some(w => w.length >= 4 ? t.includes(w) : t === w));
+}
+function assignIngredientsToSteps(recipe) {
+  const ings = recipe.ingredients;
+  const group = [];
+  const gTok = {};
+  let g = -1;
+  ings.forEach((ing, i) => {
+    if (isHeading(ing)) {
+      g = i;
+      gTok[i] = ing.name.replace(/—/g, " ").replace(/\(.*?\)/g, " ").toLowerCase().replace(/[^a-zäöüß\s-]/g, " ").split(/[\s-]+/).filter(t => t.length >= 4 && !["für", "den", "die", "das", "zum"].includes(t));
+    }
+    group[i] = g;
+  });
+  const result = recipe.steps.map(() => []);
+  const used = new Set();
+  recipe.steps.forEach((st, si) => {
+    const text = ((st.title || "") + " " + (st.desc || "")).toLowerCase();
+    const words = stepWords(text);
+    const score = {};
+    Object.keys(gTok).forEach(k => {
+      score[k] = gTok[k].filter(t => text.includes(t) || words.some(w => w.length >= 4 && t.includes(w))).length;
+    });
+    const anyGroup = Object.values(score).some(v => v > 0);
+    const wholeWord = t => new RegExp("(^|[^a-zäöüß])" + t.replace(/[.*+?^${}()|[\]\\]/g, "") + "([^a-zäöüß]|$)").test(text);
+    const allowed = (ii, toks) => !anyGroup || group[ii] < 0 || score[group[ii]] > 0 || toks.some(wholeWord);
+    const byKey = {};
+    ings.forEach((ing, ii) => {
+      if (isHeading(ing) || used.has(ii)) return;
+      const toks = ingTokens(ing.name);
+      if (!toks.length || !allowed(ii, toks)) return;
+      let key = toks.find(t => text.includes(t));
+      if (!key) key = words.find(w => w.length >= 4 ? toks.some(t => t.includes(w)) : toks.includes(w));
+      if (!key) return;
+      const sc = group[ii] >= 0 ? score[group[ii]] || 0 : 0;
+      (byKey[key] = byKey[key] || []).push({
+        ii,
+        sc
+      });
+    });
+    Object.values(byKey).forEach(list => {
+      const best = [...list].sort((x, y) => y.sc - x.sc || x.ii - y.ii)[0];
+      const ids = new Set(list.map(c => c.ii));
+      let cur = best.ii;
+      while (ids.has(cur) && !used.has(cur) && group[cur] === group[best.ii]) {
+        used.add(cur);
+        result[si].push(cur);
+        cur++;
+      }
+    });
+    result[si].sort((x, y) => x - y);
+  });
+  return result;
 }
 const C = {
   bg: "#faf8f5",
@@ -1528,6 +1687,7 @@ function App() {
     return () => clearInterval(iv.current);
   }, [tActive]);
   const cook = r => {
+    setPortionen(p => sel && sel.id === r.id ? p : r.servings);
     setSel(r);
     setStep(0);
     resetTimer();
@@ -1660,6 +1820,38 @@ function App() {
     flexShrink: 0,
     lineHeight: 1
   });
+  const stepIng = sel ? assignIngredientsToSteps(sel) : [];
+  const IngChips = ({
+    idxs,
+    big
+  }) => idxs && idxs.length ? h("div", {
+    style: {
+      display: "flex",
+      flexWrap: "wrap",
+      gap: "0.35rem",
+      marginTop: big ? "0.2rem" : "0.45rem",
+      marginBottom: big ? "1.2rem" : 0
+    }
+  }, idxs.map(ii => {
+    const ing = sel.ingredients[ii];
+    const amt = scaleAmt(ing.amount, sel.servings, portionen);
+    return h("span", {
+      key: ii,
+      style: {
+        fontSize: big ? 14 : 12.5,
+        padding: big ? "5px 11px" : "3px 9px",
+        borderRadius: 14,
+        background: C.bg,
+        border: "1px solid " + C.line2,
+        color: C.ink,
+        lineHeight: 1.3
+      }
+    }, amt !== "" && h("b", {
+      style: {
+        fontWeight: 600
+      }
+    }, amt, ing.unit ? " " + ing.unit : "", " "), cleanName(ing.name));
+  })) : null;
   const Toast = () => toast ? h("div", {
     style: {
       position: "fixed",
@@ -1756,9 +1948,12 @@ function App() {
         fontSize: 16,
         lineHeight: 1.7,
         color: "#52493f",
-        marginBottom: "1.4rem"
+        marginBottom: stepIng[step] && stepIng[step].length ? "0.8rem" : "1.4rem"
       }
-    }, st.desc), st.timer && h("div", {
+    }, st.desc), h(IngChips, {
+      idxs: stepIng[step],
+      big: true
+    }), st.timer && h("div", {
       style: {
         background: tDone ? C.greenSoft : C.accentSoft,
         border: "1px solid " + (tDone ? "#cfe3bd" : C.accentLine),
@@ -2247,7 +2442,9 @@ function App() {
         color: "#52493f",
         lineHeight: 1.6
       }
-    }, x.desc), x.timer && h("div", {
+    }, x.desc), h(IngChips, {
+      idxs: stepIng[i]
+    }), x.timer && h("div", {
       style: {
         fontSize: 12,
         color: C.accent,
@@ -2949,6 +3146,7 @@ function App() {
     size: 17
   })))), h(Toast, null)));
 }
+
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(h(App, null));
 </script>
