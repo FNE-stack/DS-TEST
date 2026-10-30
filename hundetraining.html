@@ -24,6 +24,9 @@
 <div id="root"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script>window.DIARY_API="https://hundetagebuch.fabian-neidl.workers.dev";</script>
+<script src="tagebuch.js"></script>
+<script src="tagebuch-ui.js"></script>
 <script>
 (function() {
 "use strict";
@@ -225,6 +228,12 @@ function Sidebar(props){
         );
       })
     ),
+    h('div',{style:{padding:"0.6rem",borderTop:"1px solid "+C.sidebarLine}},
+      h('button',{onClick:function(){props.onSelect("diary");},style:{width:"100%",textAlign:"left",padding:"0.65rem 0.75rem",borderRadius:8,border:"none",cursor:"pointer",background:props.activeIdx==="diary"?"rgba(167,139,218,0.16)":"transparent",display:"flex",alignItems:"center",gap:"0.7rem"}},
+        h('span',{style:{fontSize:13,minWidth:20}},"\uD83D\uDCD3"),
+        h('span',{style:{flex:1,fontSize:13,fontWeight:props.activeIdx==="diary"?600:400,color:props.activeIdx==="diary"?"#fff":C.sidebarText}},"Tagebuch")
+      )
+    ),
     h('div',{style:{padding:"1rem 1.3rem",borderTop:"1px solid "+C.sidebarLine,fontSize:11.5,color:C.sidebarMuted}},"Sophie & Theresa")
   );
 }
@@ -255,7 +264,12 @@ function MobileDrawer(props){
             h('span',{style:{fontSize:12,fontWeight:800,color:active?C.sidebarActive:C.sidebarMuted,minWidth:20}},ch.num),
             h('span',{style:{flex:1,fontSize:13.5,fontWeight:active?600:400,color:active?"#fff":C.sidebarText}},ch.short)
           );
-        })
+        }),
+        h('div',{style:{height:1,background:C.sidebarLine,margin:"0.6rem 0.2rem"}}),
+        h('button',{onClick:function(){props.onSelect("diary");props.onClose();},style:{width:"100%",textAlign:"left",padding:"0.7rem 0.75rem",borderRadius:8,border:"none",cursor:"pointer",background:props.activeIdx==="diary"?"rgba(167,139,218,0.16)":"transparent",display:"flex",alignItems:"center",gap:"0.7rem"}},
+          h('span',{style:{fontSize:13,minWidth:20}},"\uD83D\uDCD3"),
+          h('span',{style:{flex:1,fontSize:13.5,fontWeight:props.activeIdx==="diary"?600:400,color:props.activeIdx==="diary"?"#fff":C.sidebarText}},"Tagebuch")
+        )
       ),
       h('div',{style:{padding:"1rem 1.2rem",borderTop:"1px solid "+C.sidebarLine,fontSize:11.5,color:C.sidebarMuted}},"Sophie & Theresa")
     )
@@ -268,11 +282,12 @@ function App(){
   var s3=useState(window.innerWidth>=768);var isDesktop=s3[0];var setIsDesktop=s3[1];
   var contentRef=useRef(null);
   useEffect(function(){function handler(){setIsDesktop(window.innerWidth>=768);}window.addEventListener('resize',handler);return function(){window.removeEventListener('resize',handler);};},[]);
-  function selectChapter(i){setActiveIdx(i);if(contentRef.current)contentRef.current.scrollTop=0;}
+  function selectChapter(i){setActiveIdx(i);setDrawerOpen(false);if(contentRef.current)contentRef.current.scrollTop=0;}
   function goHome(){setActiveIdx(null);if(contentRef.current)contentRef.current.scrollTop=0;}
-  var chapter=activeIdx!==null?CHAPTERS[activeIdx]:null;
+  var isDiary=activeIdx==="diary";
+  var chapter=(activeIdx!==null&&!isDiary)?CHAPTERS[activeIdx]:null;
   var contentEl=h('div',{ref:contentRef,style:{flex:1,overflowY:"auto",overflowX:"hidden",padding:isDesktop?"2rem 2.5rem":"1.2rem 1rem 5rem",width:"100%",maxWidth:isDesktop?760:"100%",minWidth:0}},
-    activeIdx===null?h(HomeView,{onSelect:selectChapter}):h(ChapterView,{chapter:chapter,isDesktop:isDesktop,onPrev:activeIdx>0?function(){selectChapter(activeIdx-1);}:null,onNext:activeIdx<CHAPTERS.length-1?function(){selectChapter(activeIdx+1);}:null,prevChapter:activeIdx>0?CHAPTERS[activeIdx-1]:null,nextChapter:activeIdx<CHAPTERS.length-1?CHAPTERS[activeIdx+1]:null})
+    isDiary?h(window.HundetagebuchUI.Diary,{}):activeIdx===null?h(HomeView,{onSelect:selectChapter}):h(ChapterView,{chapter:chapter,isDesktop:isDesktop,onPrev:activeIdx>0?function(){selectChapter(activeIdx-1);}:null,onNext:activeIdx<CHAPTERS.length-1?function(){selectChapter(activeIdx+1);}:null,prevChapter:activeIdx>0?CHAPTERS[activeIdx-1]:null,nextChapter:activeIdx<CHAPTERS.length-1?CHAPTERS[activeIdx+1]:null})
   );
   if(isDesktop){
     return h('div',{style:{display:"flex",height:"100vh",background:C.bg,color:C.ink}},
