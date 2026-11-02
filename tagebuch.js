@@ -41,6 +41,36 @@
   var CAT = {}; CATS.forEach(function (c) { CAT[c.id] = c; });
   var SEV_LABEL = ['', 'ganz leicht', 'leicht', 'mittel', 'stark', 'sehr stark'];
 
+  // Trainingsthemen = die Kapitel des Handbuchs, plus ein paar Alltagssachen,
+  // die dort nicht als eigenes Kapitel stehen. So laesst sich spaeter sagen
+  // "Kapitel 5 laeuft seit drei Wochen besser", ohne eine zweite Gliederung
+  // zu erfinden.
+  var TOPICS = [
+    { id: 'beziehung',        label: 'Beziehung & Grundhaltung', ch: '01' },
+    { id: 'stellvertreter',   label: 'Stellvertreterkonflikte',  ch: '02' },
+    { id: 'leine',            label: 'Orientierung an der Leine', ch: '03' },
+    { id: 'distanz',          label: 'Orientierung auf Distanz',  ch: '04' },
+    { id: 'begegnungen',      label: 'Hundebegegnungen',          ch: '05' },
+    { id: 'alltag',           label: 'Alltagsleinenführigkeit',   ch: '06' },
+    { id: 'rueckorientierung', label: 'Automatische Rückorientierung', ch: '07' },
+    { id: 'warte-stopp',      label: 'Warte & Not-Stopp',         ch: '08' },
+    { id: 'rueckruf',         label: 'Rückruf',                   ch: '' },
+    { id: 'allein',           label: 'Alleinbleiben',             ch: '' },
+    { id: 'autofahren',       label: 'Autofahren',                ch: '' },
+    { id: 'besuch',           label: 'Besuch zu Hause',           ch: '' },
+    { id: 'sonstiges',        label: 'Sonstiges',                 ch: '' },
+  ];
+  var TOPIC = {}; TOPICS.forEach(function (t) { TOPIC[t.id] = t; });
+  // -2 .. +2, damit "lief schlecht" und "lief gut" gleich weit auseinander
+  // liegen und 0 ehrlich "wie immer" heisst.
+  var RATING = { '-2': 'schwierig', '-1': 'durchwachsen', '0': 'wie immer', '1': 'gut', '2': 'sehr gut' };
+  var isTraining = function (e) { return e && e.kind === 'training'; };
+  var ofKind = function (entries, kind) {
+    return (entries || []).filter(function (e) {
+      return kind === 'training' ? isTraining(e) : !isTraining(e);
+    });
+  };
+
   // ── kleine Helfer ────────────────────────────────────────────────────────
   function two(n) { return String(n).padStart(2, '0'); }
   function localNow() {
@@ -83,7 +113,8 @@
   function summarize(entries, days) {
     var since = new Date(); since.setDate(since.getDate() - (days || 30));
     var sinceIso = since.getFullYear() + '-' + two(since.getMonth() + 1) + '-' + two(since.getDate());
-    var rows = entries.filter(function (e) { return dayOf(e.at) >= sinceIso; })
+    // Nur Gesundheit - Trainingseinträge haben beim Tierarzt nichts verloren.
+    var rows = ofKind(entries, 'health').filter(function (e) { return dayOf(e.at) >= sinceIso; })
                       .sort(function (a, b) { return String(a.at).localeCompare(String(b.at)); });
     if (!rows.length) return null;
 
@@ -146,8 +177,60 @@
     return L.join('\n');
   }
 
+  // Trainingsrückblick. Die Frage ist nicht "wie oft war was", sondern
+  // "woran arbeiten wir, und wird es besser?" - deshalb Tendenz statt Häufung:
+  // der Schnitt der letzten Einträge gegen den davor.
+  function trainingReview(entries, days) {
+    var since = new Date(); since.setDate(since.getDate() - (days || 30));
+    var sinceIso = since.getFullYear() + '-' + two(since.getMonth() + 1) + '-' + two(since.getDate());
+    var rows = ofKind(entries, 'training')
+      .filter(function (e) { return dayOf(e.at) >= sinceIso; })
+      .sort(function (a, b) { return String(a.at).localeCompare(String(b.at)); });
+    if (!rows.length) return null;
+
+    var byTopic = {};
+    rows.forEach(function (e) {
+      (e.cats || []).forEach(function (t) {
+        var b = byTopic[t] || (byTopic[t] = { n: 0, first: e.at, last: e.at, ratings: [], minutes: 0 });
+        b.n++; b.last = e.at;
+        if (typeof e.rating === 'number') b.ratings.push({ at: e.at, r: e.rating });
+        if (e.minutes) b.minutes += e.minutes;
+      });
+    });
+    var topics = Object.keys(byTopic).map(function (t) {
+      var b = byTopic[t];
+      var rs = b.ratings;
+      var avg = rs.length ? rs.reduce(function (x, y) { return x + y.r; }, 0) / rs.length : null;
+      // Tendenz: zweite Hälfte gegen erste Hälfte. Erst ab 4 Bewertungen,
+      // davor ist es Rauschen und keine Entwicklung.
+      var trend = null;
+      if (rs.length >= 4) {
+        var mid = Math.floor(rs.length / 2);
+        var a1 = rs.slice(0, mid).reduce(function (x, y) { return x + y.r; }, 0) / mid;
+        var a2 = rs.slice(mid).reduce(function (x, y) { return x + y.r; }, 0) / (rs.length - mid);
+        trend = Math.round((a2 - a1) * 100) / 100;
+      }
+      return {
+        id: t, label: (TOPIC[t] || {}).label || t, ch: (TOPIC[t] || {}).ch || '',
+        n: b.n, first: b.first, last: b.last, minutes: b.minutes,
+        avg: avg === null ? null : Math.round(avg * 100) / 100, trend: trend,
+      };
+    }).sort(function (a, b) { return b.n - a.n; });
+
+    return {
+      von: rows[0].at, bis: rows[rows.length - 1].at, days: days || 30,
+      anzahl: rows.length, minuten: rows.reduce(function (t, e) { return t + (e.minutes || 0); }, 0),
+      tage: Object.keys(rows.reduce(function (m, e) { m[dayOf(e.at)] = 1; return m; }, {})).length,
+      topics: topics, entries: rows,
+      good: rows.filter(function (e) { return e.good; }).slice(-8).reverse(),
+      bad: rows.filter(function (e) { return e.bad; }).slice(-8).reverse(),
+    };
+  }
+
   global.Hundetagebuch = {
     CATS: CATS, CAT: CAT, SEV_LABEL: SEV_LABEL,
+    TOPICS: TOPICS, TOPIC: TOPIC, RATING: RATING,
+    isTraining: isTraining, ofKind: ofKind, trainingReview: trainingReview,
     api: api, localNow: localNow, dayOf: dayOf, fmtDay: fmtDay, fmtTime: fmtTime,
     summarize: summarize, summaryText: summaryText,
     TOKEN_KEY: TOKEN_KEY, NAME_KEY: NAME_KEY, API: API,
