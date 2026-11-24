@@ -23,7 +23,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script>
 const { createElement: h, useState, useEffect, useRef } = React;
-const RECIPES_KEY = "rezeptbuch_v38";
+const RECIPES_KEY = "rezeptbuch_v39";
 // Simple SVG icon components - no external dependency needed
 function Icon({ children, size = 20, color = "currentColor", style = {} }) {
   return h('svg', { width: size, height: size, viewBox: "0 0 24 24", fill: "none", stroke: color, strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round", style: { flexShrink: 0, ...style } }, children);
@@ -1415,6 +1415,49 @@ const defaultRecipes = [
       { title: "Vanilleguss", desc: "100 g Puderzucker mit 2 EL Milch und ½ TL Vanille glatt rühren und über die leicht abgekühlten Schnecken träufeln. 🍎", timer: null },
     ],
     notes: "Vanillecreme 1,5-fach vom Grundrezept (Nr. 29), damit der ganze Teig gut bedeckt ist. Die Äpfel müssen trocken sein – die Feuchtigkeit kommt von der Creme. Creme und Äpfel lassen sich am Vortag vorbereiten."
+  },
+  {
+    id: 38,
+    emoji: "🎃",
+    title: "Proteinreiche Kürbisknödel mit Schwammerlsauce",
+    desc: "Kürbis-Räuchertofu-Knödel, in Butter angebraten, mit cremiger Pilz-Rahmsauce",
+    servings: 3,
+    tags: ["vegetarisch", "herbst", "knödel", "tofu"],
+    ingredients: [
+      { amount: 1, unit: "h", name: "—— KNÖDEL (9 STÜCK) ——" },
+      { amount: 350, unit: "g", name: "Hokkaido-Kürbis" },
+      { amount: 1, unit: "", name: "Zwiebel (ca. 60 g)" },
+      { amount: 2, unit: "TL", name: "Öl" },
+      { amount: 200, unit: "g", name: "Räuchertofu" },
+      { amount: 150, unit: "ml", name: "Haferdrink" },
+      { amount: 250, unit: "g", name: "Semmelwürfel (vegan)" },
+      { amount: 40, unit: "g", name: "Mehl (3 EL)" },
+      { amount: 20, unit: "g", name: "Grieß (2 EL)" },
+      { amount: 2, unit: "EL", name: "Petersilie" },
+      { amount: 1, unit: "Prise", name: "Muskat, Salz & Pfeffer" },
+      { amount: 2, unit: "EL", name: "Butter oder vegane Butter (zum Anbraten)" },
+      { amount: 1, unit: "h", name: "—— PILZSAUCE ——" },
+      { amount: 1.5, unit: "EL", name: "Butterschmalz" },
+      { amount: 1, unit: "", name: "Große Zwiebel" },
+      { amount: 750, unit: "g", name: "Pilze (Champignons oder Pfifferlinge)" },
+      { amount: 1.5, unit: "EL", name: "Weizenmehl" },
+      { amount: 75, unit: "ml", name: "Wasser" },
+      { amount: 75, unit: "g", name: "Sahne" },
+      { amount: 1.5, unit: "EL", name: "Petersilie, fein gehackt" },
+      { amount: 1, unit: "Prise", name: "Salz & Pfeffer" },
+    ],
+    steps: [
+      { title: "Kürbis rösten – 30 Min.", desc: "350 g Hokkaido und 1 Zwiebel (60 g) in kleine Stücke schneiden, mit 1 TL Öl benetzen und bei 200 °C 30 Min. in Ofen oder Airfryer garen.", timer: 1800 },
+      { title: "Räuchertofu anbraten – 10 Min.", desc: "200 g Räuchertofu klein schneiden und mit 1 TL Öl 10 Min. im Airfryer oder ca. 5 Min. in der Pfanne anbraten.", timer: 600 },
+      { title: "Kürbis pürieren", desc: "Das gebackene Gemüse mit 150 ml Haferdrink fein pürieren.", timer: null },
+      { title: "Knödelteig – ziehen lassen", desc: "250 g Semmelwürfel, 40 g Mehl, 20 g Grieß, den Tofu, 2 EL Petersilie, Muskat, Salz und Pfeffer mit der Kürbis-Haferdrink-Mischung vermengen und ca. 10 Min. ziehen lassen. Für sehr weiche Knödel noch etwas Haferdrink dazu.", timer: 600 },
+      { title: "Pilzsauce: Zwiebel bräunen", desc: "1,5 EL Butterschmalz in einer Pfanne erhitzen. 1 große Zwiebel fein hacken und goldbraun anbraten.", timer: null },
+      { title: "Pilzsauce: Pilze dünsten – 10 Min.", desc: "750 g Pilze putzen, klein schneiden, dazugeben und scharf anbraten. Dann ca. 10 Min. im eigenen Saft dünsten.", timer: 600 },
+      { title: "Knödel garen – 12 Min.", desc: "Parallel: Aus dem Teig 9 Knödel formen und 12 Min. in siedendem, nicht kochendem Salzwasser garen.", timer: 720 },
+      { title: "Pilzsauce binden", desc: "1,5 EL Mehl mit 75 ml Wasser glatt rühren und in die Pilze einrühren, kurz aufkochen. Zum Schluss 75 g Sahne einrühren, mit 1,5 EL Petersilie, Salz und Pfeffer abschmecken.", timer: null },
+      { title: "Knödel anbraten & servieren", desc: "Knödel gut abtropfen lassen und ein paar Minuten in 2 EL Butter rundum goldbraun anbraten. Mit der Schwammerlsauce servieren, optional Kürbiskerne drüber. 🎃", timer: null },
+    ],
+    notes: "Knödel nach einem veganen Instagram-Rezept (gesamt ca. 1588 kcal, 80 g Eiweiß für 9 Knödel). Sauce nach backenmitchristina.at (Eierschwammerlsauce, 4,7 ★ bei 153 Bewertungen), auf 3 Portionen skaliert. Vegan: Butterschmalz durch Öl, Sahne durch Hafer-Cuisine ersetzen. Alternative zur Sauce: klassische Salbeibutter."
   },
 ];
 function fmtTime(s) {
